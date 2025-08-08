@@ -33,8 +33,18 @@ var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
 
 Log.Information("Using connection string from: {Source}", 
     Environment.GetEnvironmentVariable("DATABASE_URL") != null ? "DATABASE_URL env var" : "appsettings");
-Log.Information("Connection string (masked): {ConnectionString}", 
-    connectionString?.Replace(connectionString.Split(';').FirstOrDefault(s => s.StartsWith("Password")) ?? "", "Password=***"));
+
+// Mask password in connection string for logging
+var maskedConnectionString = connectionString;
+if (!string.IsNullOrEmpty(connectionString))
+{
+    var passwordPart = connectionString.Split(';').FirstOrDefault(s => s.StartsWith("Password", StringComparison.OrdinalIgnoreCase));
+    if (!string.IsNullOrEmpty(passwordPart))
+    {
+        maskedConnectionString = connectionString.Replace(passwordPart, "Password=***");
+    }
+}
+Log.Information("Connection string (masked): {ConnectionString}", maskedConnectionString);
 
 if (connectionString?.StartsWith("postgres://") == true)
 {
