@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Civity Server", "Civity Server\Civity Server.csproj", "{7877063B-E407-4A2D-83FB-7E1B175F9298}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Civica.Api", "Civica.Api\Civica.Api.csproj", "{7877063B-E407-4A2D-83FB-7E1B175F9298}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
