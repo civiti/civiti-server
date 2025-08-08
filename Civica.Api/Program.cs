@@ -31,6 +31,11 @@ builder.Services.AddSwaggerGen();
 var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL") 
     ?? builder.Configuration.GetConnectionString("PostgreSQL");
 
+Log.Information("Using connection string from: {Source}", 
+    Environment.GetEnvironmentVariable("DATABASE_URL") != null ? "DATABASE_URL env var" : "appsettings");
+Log.Information("Connection string (masked): {ConnectionString}", 
+    connectionString?.Replace(connectionString.Split(';').FirstOrDefault(s => s.StartsWith("Password")) ?? "", "Password=***"));
+
 if (connectionString?.StartsWith("postgres://") == true)
 {
     // Convert Railway DATABASE_URL format
@@ -44,7 +49,10 @@ if (connectionString?.StartsWith("postgres://") == true)
 }
 
 builder.Services.AddDbContext<CivicaDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseNpgsql(connectionString, npgsqlOptions =>
+        npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory"))
+    .ConfigureWarnings(warnings =>
+        warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
 // Authentication with Supabase JWT
 var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") 
