@@ -57,17 +57,27 @@ if (!string.IsNullOrEmpty(connectionString))
 
 Log.Information("Connection string (masked): {ConnectionString}", maskedConnectionString);
 
-if (connectionString?.StartsWith("postgres://") == true)
+// Convert Railway DATABASE_URL format to Npgsql connection string
+if (connectionString?.StartsWith("postgres://") == true || connectionString?.StartsWith("postgresql://") == true)
 {
-    // Convert Railway DATABASE_URL format
-    connectionString = connectionString.Replace("postgres://", "");
-    var parts = connectionString.Split('@');
-    var userInfo = parts[0].Split(':');
-    var hostInfo = parts[1].Split('/');
-    var hostPortInfo = hostInfo[0].Split(':');
-
-    connectionString =
-        $"Host={hostPortInfo[0]};Port={hostPortInfo[1]};Database={hostInfo[1]};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
+    try
+    {
+        // Parse URL format: postgresql://user:password@host:port/database
+        var uri = new Uri(connectionString.Replace("postgres://", "postgresql://"));
+        
+        var userInfo = uri.UserInfo.Split(':');
+        var username = userInfo[0];
+        var password = userInfo.Length > 1 ? userInfo[1] : string.Empty;
+        
+        connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true";
+        
+        Log.Information("Converted Railway DATABASE_URL to Npgsql format successfully");
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Failed to parse DATABASE_URL");
+        throw new InvalidOperationException("Invalid DATABASE_URL format", ex);
+    }
 }
 
 builder.Services.AddDbContext<CivicaDbContext>(options =>
@@ -159,18 +169,48 @@ app.MapIssueEndpoints();
 app.MapAdminEndpoints();
 app.MapGamificationEndpoints();
 
-// Health check
-app.MapGet("/api/health", () => Results.Ok(new
+// Health check with database connectivity test
+app.MapGet("/api/health", async (CivicaDbContext context, ISupabaseService supabaseService) =>
+{
+    var health = new
     {
         Status = "Healthy",
         Timestamp = DateTime.UtcNow,
         Version = "1.0.0",
-        Database = "pending",
-        Supabase = "pending"
-    }))
+        Database = "unknown",
+        Supabase = "unknown"
+    };
+    
+    try
+    {
+        // Test database connectivity
+        await context.Database.CanConnectAsync();
+        health = health with { Database = "connected" };
+    }
+    catch (Exception ex)
+    {
+        Log.Warning(ex, "Database health check failed");
+        health = health with { Database = "disconnected" };
+    }
+    
+    try
+    {
+        // Test Supabase connectivity
+        var supabaseHealthy = await supabaseService.CheckHealthAsync();
+        health = health with { Supabase = supabaseHealthy ? "connected" : "disconnected" };
+    }
+    catch (Exception ex)
+    {
+        Log.Warning(ex, "Supabase health check failed");
+        health = health with { Supabase = "disconnected" };
+    }
+    
+    var overallStatus = health.Database == "connected" ? "Healthy" : "Unhealthy";
+    return Results.Ok(health with { Status = overallStatus });
+})
     .WithName("HealthCheck")
     .WithOpenApi()
-    .WithSummary("Health check endpoint");
+    .WithSummary("Health check endpoint with connectivity tests");
 
 // Database migration on startup (Railway compatible)
 Log.Information("Environment: {Environment}", app.Environment.EnvironmentName);

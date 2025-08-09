@@ -52,27 +52,30 @@ public enum IssueCategory
 
 public enum UrgencyLevel
 {
-    Low,
-    Medium,
-    High,
-    Urgent
+    Unspecified = 0,
+    Low = 1,
+    Medium = 2,
+    High = 3,
+    Urgent = 4
 }
 
 public enum IssueStatus
 {
-    Draft,
-    Submitted,
-    UnderReview,
-    Approved,
-    InProgress,
-    Resolved,
-    Rejected
+    Unspecified = 0,
+    Draft = 1,
+    Submitted = 2,
+    UnderReview = 3,
+    Approved = 4,
+    InProgress = 5,
+    Resolved = 6,
+    Rejected = 7
 }
 
 public enum Priority
 {
-    Low,
-    Medium,
-    High,
-    Critical
+    Unspecified = 0,
+    Low = 1,
+    Medium = 2,
+    High = 3,
+    Critical = 4
 }

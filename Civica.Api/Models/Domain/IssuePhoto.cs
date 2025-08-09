@@ -22,7 +22,8 @@ public class IssuePhoto
 
 public enum PhotoQuality
 {
-    Low,
-    Medium,
-    High
+    Unspecified = 0,
+    Low = 1,
+    Medium = 2,
+    High = 3
 }
