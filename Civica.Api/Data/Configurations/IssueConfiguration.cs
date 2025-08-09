@@ -35,17 +35,20 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
         builder.Property(i => i.Urgency)
             .HasConversion<string>()
             .HasMaxLength(20)
-            .HasDefaultValue(UrgencyLevel.Medium);
+            .HasDefaultValue(UrgencyLevel.Medium)
+            .HasSentinel(UrgencyLevel.Low); // Explicitly set a different sentinel value
             
         builder.Property(i => i.Status)
             .HasConversion<string>()
             .HasMaxLength(30)
-            .HasDefaultValue(IssueStatus.Submitted);
+            .HasDefaultValue(IssueStatus.Submitted)
+            .HasSentinel(IssueStatus.Draft); // Explicitly set a different sentinel value
             
         builder.Property(i => i.Priority)
             .HasConversion<string>()
             .HasMaxLength(20)
-            .HasDefaultValue(Priority.Medium);
+            .HasDefaultValue(Priority.Medium)
+            .HasSentinel(Priority.Low); // Explicitly set a different sentinel value
             
         builder.Property(i => i.AssignedDepartment)
             .HasMaxLength(100);

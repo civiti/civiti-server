@@ -23,7 +23,8 @@ public class IssuePhotoConfiguration : IEntityTypeConfiguration<IssuePhoto>
         builder.Property(p => p.Quality)
             .HasConversion<string>()
             .HasMaxLength(20)
-            .HasDefaultValue(PhotoQuality.Medium);
+            .HasDefaultValue(PhotoQuality.Medium)
+            .HasSentinel(PhotoQuality.Low);
             
         builder.Property(p => p.Format)
             .HasMaxLength(10);

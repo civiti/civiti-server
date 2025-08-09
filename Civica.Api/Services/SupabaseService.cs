@@ -138,4 +138,31 @@ public class SupabaseService(ILogger<SupabaseService> logger, IConfiguration con
             return Task.FromResult<string?>(null);
         }
     }
+
+    public async Task<bool> CheckHealthAsync()
+    {
+        try
+        {
+            var supabaseUrl = configuration["Supabase:Url"] ?? Environment.GetEnvironmentVariable("SUPABASE_URL");
+            
+            if (string.IsNullOrWhiteSpace(supabaseUrl))
+            {
+                logger.LogWarning("Supabase URL not configured");
+                return false;
+            }
+
+            // Simple health check - verify Supabase URL is reachable
+            using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(5);
+            
+            var response = await httpClient.GetAsync($"{supabaseUrl}/auth/v1/health");
+            
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Supabase health check failed");
+            return false;
+        }
+    }
 }

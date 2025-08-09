@@ -27,7 +27,7 @@ public static class AuthEndpoints
                 ? Results.Ok(profile) 
                 : Results.NotFound(new { error = "User profile not found" });
         })
-        .WithName("GetUserProfile")
+        .WithName("GetAuthProfile")
         .WithSummary("Get current user profile information")
         .Produces<UserProfileResponse>()
         .Produces(404);
@@ -74,7 +74,7 @@ public static class AuthEndpoints
                 return Results.NotFound(new { error = "User profile not found" });
             }
         })
-        .WithName("UpdateUserProfile")
+        .WithName("UpdateAuthProfile")
         .WithSummary("Update user profile information")
         .Produces<UserProfileResponse>()
         .Produces(404);
