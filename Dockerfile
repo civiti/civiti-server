@@ -20,8 +20,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-# Use PORT environment variable from Railway
-ENV ASPNETCORE_URLS=http://+:${PORT:-8080}
-EXPOSE ${PORT:-8080}
+# Railway will set PORT environment variable
+# Our app reads it in Program.cs
+EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "Civica.Api.dll"]

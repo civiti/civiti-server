@@ -28,10 +28,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Database
-var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL") 
-    ?? builder.Configuration.GetConnectionString("PostgreSQL");
+var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
+                       ?? builder.Configuration.GetConnectionString("PostgreSQL");
 
-Log.Information("Using connection string from: {Source}", 
+Log.Information("Using connection string from: {Source}",
     Environment.GetEnvironmentVariable("DATABASE_URL") != null ? "DATABASE_URL env var" : "appsettings");
 
 // Mask password in connection string for logging
@@ -54,6 +54,7 @@ if (!string.IsNullOrEmpty(connectionString))
         }
     }
 }
+
 Log.Information("Connection string (masked): {ConnectionString}", maskedConnectionString);
 
 if (connectionString?.StartsWith("postgres://") == true)
@@ -64,21 +65,22 @@ if (connectionString?.StartsWith("postgres://") == true)
     var userInfo = parts[0].Split(':');
     var hostInfo = parts[1].Split('/');
     var hostPortInfo = hostInfo[0].Split(':');
-    
-    connectionString = $"Host={hostPortInfo[0]};Port={hostPortInfo[1]};Database={hostInfo[1]};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
+
+    connectionString =
+        $"Host={hostPortInfo[0]};Port={hostPortInfo[1]};Database={hostInfo[1]};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
 }
 
 builder.Services.AddDbContext<CivicaDbContext>(options =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
-        npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory"))
-    .ConfigureWarnings(warnings =>
-        warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
+            npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory"))
+        .ConfigureWarnings(warnings =>
+            warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
 // Authentication with Supabase JWT
-var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") 
-    ?? builder.Configuration["Supabase:Url"];
-var supabaseAnonKey = Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY") 
-    ?? builder.Configuration["Supabase:AnonKey"];
+var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL")
+                  ?? builder.Configuration["Supabase:Url"];
+var supabaseAnonKey = Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY")
+                      ?? builder.Configuration["Supabase:AnonKey"];
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -103,7 +105,7 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(AuthorizationPolicies.AdminOnly, policy =>
         policy.RequireClaim(AuthorizationPolicies.Claims.Role, AuthorizationPolicies.Roles.Admin));
-    
+
     options.AddPolicy(AuthorizationPolicies.UserOnly, policy =>
         policy.RequireClaim(AuthorizationPolicies.Claims.Role, AuthorizationPolicies.Roles.User));
 });
@@ -114,9 +116,9 @@ builder.Services.AddCors(options =>
     options.AddPolicy("CivicaPolicy", policy =>
     {
         policy.WithOrigins(builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? ["http://localhost:4200"])
-              .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
     });
 });
 
@@ -158,24 +160,29 @@ app.MapAdminEndpoints();
 app.MapGamificationEndpoints();
 
 // Health check
-app.MapGet("/api/health", () => Results.Ok(new 
-{ 
-    Status = "Healthy", 
-    Timestamp = DateTime.UtcNow,
-    Version = "1.0.0",
-    Database = "pending",
-    Supabase = "pending"
-}))
-.WithName("HealthCheck")
-.WithOpenApi()
-.WithSummary("Health check endpoint");
+app.MapGet("/api/health", () => Results.Ok(new
+    {
+        Status = "Healthy",
+        Timestamp = DateTime.UtcNow,
+        Version = "1.0.0",
+        Database = "pending",
+        Supabase = "pending"
+    }))
+    .WithName("HealthCheck")
+    .WithOpenApi()
+    .WithSummary("Health check endpoint");
 
 // Database migration on startup (Railway compatible)
+Log.Information("Environment: {Environment}", app.Environment.EnvironmentName);
+Log.Information("Attempting database migration...");
+
 try
 {
     using (IServiceScope scope = app.Services.CreateScope())
     {
         CivicaDbContext context = scope.ServiceProvider.GetRequiredService<CivicaDbContext>();
+        
+        // EF Core Migrate() will create the database if it doesn't exist
         context.Database.Migrate();
         Log.Information("Database migration completed successfully");
     }
@@ -188,5 +195,6 @@ catch (Exception ex)
         throw;
 }
 
-var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+Log.Information("Starting application on port {Port}", port);
 app.Run($"http://0.0.0.0:{port}");
