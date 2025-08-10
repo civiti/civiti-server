@@ -1,11 +1,12 @@
 using Civica.Api.Services.Interfaces;
+using Civica.Api.Infrastructure.Configuration;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
 namespace Civica.Api.Services;
 
-public class SupabaseService(ILogger<SupabaseService> logger, IConfiguration configuration) : ISupabaseService
+public class SupabaseService(ILogger<SupabaseService> logger, SupabaseConfiguration supabaseConfig) : ISupabaseService
 {
     public async Task<bool> ValidateTokenAsync(string token)
     {
@@ -36,11 +37,10 @@ public class SupabaseService(ILogger<SupabaseService> logger, IConfiguration con
             }
 
             // Verify the issuer matches Supabase URL
-            var supabaseUrl = configuration["Supabase:Url"] ?? Environment.GetEnvironmentVariable("SUPABASE_URL");
-            if (jwt.Issuer != supabaseUrl)
+            if (jwt.Issuer != supabaseConfig.Url)
             {
                 logger.LogWarning("Token validation failed: invalid issuer. Expected: {Expected}, Actual: {Actual}", 
-                    supabaseUrl, jwt.Issuer);
+                    supabaseConfig.Url, jwt.Issuer);
                 return false;
             }
 
@@ -143,9 +143,7 @@ public class SupabaseService(ILogger<SupabaseService> logger, IConfiguration con
     {
         try
         {
-            var supabaseUrl = configuration["Supabase:Url"] ?? Environment.GetEnvironmentVariable("SUPABASE_URL");
-            
-            if (string.IsNullOrWhiteSpace(supabaseUrl))
+            if (string.IsNullOrWhiteSpace(supabaseConfig.Url))
             {
                 logger.LogWarning("Supabase URL not configured");
                 return false;
@@ -155,7 +153,7 @@ public class SupabaseService(ILogger<SupabaseService> logger, IConfiguration con
             using var httpClient = new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(5);
             
-            var response = await httpClient.GetAsync($"{supabaseUrl}/auth/v1/health");
+            var response = await httpClient.GetAsync($"{supabaseConfig.Url}/auth/v1/health");
             
             return response.IsSuccessStatusCode;
         }

@@ -10,6 +10,7 @@ using Civica.Api.Services;
 using Civica.Api.Infrastructure.Extensions;
 using Civica.Api.Infrastructure.Middleware;
 using Civica.Api.Infrastructure.Constants;
+using Civica.Api.Infrastructure.Configuration;
 using Civica.Api.Endpoints;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -92,6 +93,11 @@ var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL")
 var supabaseAnonKey = Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY")
                       ?? builder.Configuration["Supabase:AnonKey"];
 
+Log.Information("Supabase URL from env: {EnvUrl}, from config: {ConfigUrl}, using: {FinalUrl}", 
+    Environment.GetEnvironmentVariable("SUPABASE_URL"),
+    builder.Configuration["Supabase:Url"],
+    supabaseUrl);
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -130,6 +136,13 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader()
             .AllowCredentials();
     });
+});
+
+// Register Supabase configuration
+builder.Services.AddSingleton(new SupabaseConfiguration 
+{ 
+    Url = supabaseUrl ?? throw new InvalidOperationException("Supabase URL not configured"),
+    AnonKey = supabaseAnonKey ?? throw new InvalidOperationException("Supabase Anon Key not configured")
 });
 
 // Custom services

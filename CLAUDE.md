@@ -437,6 +437,13 @@ SUPABASE_SERVICE_KEY=xxx
 JWT_SECRET=xxx
 ```
 
+**Important Configuration Note**: 
+- The application now uses dependency injection for Supabase configuration
+- Environment variables take precedence over appsettings.json values
+- Configuration flow: ENV vars → appsettings.json → Exception if neither configured
+- SupabaseConfiguration is registered as singleton and injected into services
+- Empty strings in appsettings.json ensure environment variables are always used in production
+
 ## 📝 Documentation Requirements for ALL Agents
 
 **EVERY agent MUST maintain documentation**:
