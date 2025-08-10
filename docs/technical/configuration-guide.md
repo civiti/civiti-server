@@ -32,20 +32,31 @@ This configuration is:
 ### Configuration Flow in Program.cs
 
 ```csharp
-// 1. Try environment variables first
-var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL")
-                  ?? builder.Configuration["Supabase:Url"];
+// 1. Try environment variables first, then fall back to appsettings
+var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL");
+if (string.IsNullOrWhiteSpace(supabaseUrl))
+{
+    supabaseUrl = builder.Configuration["Supabase:Url"];
+}
 
-// 2. Register configuration
+// 2. Validate configuration using IsNullOrWhiteSpace (not just null check)
+if (string.IsNullOrWhiteSpace(supabaseUrl))
+{
+    throw new InvalidOperationException("Supabase URL not configured. Please set SUPABASE_URL environment variable or configure Supabase:Url in appsettings.json");
+}
+
+// 3. Register validated configuration
 builder.Services.AddSingleton(new SupabaseConfiguration 
 { 
-    Url = supabaseUrl ?? throw new InvalidOperationException("Supabase URL not configured"),
-    AnonKey = supabaseAnonKey ?? throw new InvalidOperationException("Supabase Anon Key not configured")
+    Url = supabaseUrl,
+    AnonKey = supabaseAnonKey
 });
 
-// 3. Inject into services
+// 4. Inject into services
 public class SupabaseService(ILogger<SupabaseService> logger, SupabaseConfiguration supabaseConfig)
 ```
+
+**Important**: The validation uses `string.IsNullOrWhiteSpace()` to catch both null and empty string values, ensuring the application fails fast at startup if Supabase is not properly configured.
 
 ## Environment Variables
 
@@ -92,6 +103,12 @@ The base configuration file intentionally has empty values for sensitive setting
   }
 }
 ```
+
+**Why empty strings instead of omitting the keys?**
+- Provides clear documentation of required configuration keys
+- Prevents NullReferenceException when accessing nested configuration
+- Forces explicit validation with `IsNullOrWhiteSpace()` 
+- Makes it obvious that these values must come from environment variables
 
 ### appsettings.Development.json
 
