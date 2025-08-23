@@ -18,7 +18,7 @@ public class SupabaseService(ILogger<SupabaseService> logger, SupabaseConfigurat
                 return false;
             }
 
-            JwtSecurityTokenHandler tokenHandler = new JwtSecurityTokenHandler();
+            JwtSecurityTokenHandler tokenHandler = new();
             
             // Try to read the token
             if (!tokenHandler.CanReadToken(token))
@@ -71,7 +71,7 @@ public class SupabaseService(ILogger<SupabaseService> logger, SupabaseConfigurat
                 return Task.FromResult<string?>(null);
             }
 
-            JwtSecurityTokenHandler tokenHandler = new JwtSecurityTokenHandler();
+            JwtSecurityTokenHandler tokenHandler = new();
             
             if (!tokenHandler.CanReadToken(token))
             {
@@ -110,7 +110,7 @@ public class SupabaseService(ILogger<SupabaseService> logger, SupabaseConfigurat
                 return Task.FromResult<string?>(null);
             }
 
-            JwtSecurityTokenHandler tokenHandler = new JwtSecurityTokenHandler();
+            JwtSecurityTokenHandler tokenHandler = new();
             
             if (!tokenHandler.CanReadToken(token))
             {
@@ -150,10 +150,10 @@ public class SupabaseService(ILogger<SupabaseService> logger, SupabaseConfigurat
             }
 
             // Simple health check - verify Supabase URL is reachable
-            using var httpClient = new HttpClient();
+            using HttpClient httpClient = new();
             httpClient.Timeout = TimeSpan.FromSeconds(5);
             
-            var response = await httpClient.GetAsync($"{supabaseConfig.Url}/auth/v1/health");
+            HttpResponseMessage response = await httpClient.GetAsync($"{supabaseConfig.Url}/auth/v1/health");
             
             return response.IsSuccessStatusCode;
         }

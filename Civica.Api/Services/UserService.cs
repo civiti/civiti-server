@@ -26,7 +26,7 @@ public class UserService(
             if (user == null)
             {
                 logger.LogWarning("User not found for Supabase ID: {SupabaseUserId}", supabaseUserId);
-                return new UserGamificationResponse();
+                return new();
             }
 
             // Get recent badges
@@ -42,7 +42,7 @@ public class UserService(
             var levelRange = nextLevelPoints - currentLevelPoints;
             var levelProgressPercentage = levelRange > 0 ? Math.Round((double)pointsInCurrentLevel / levelRange * 100, 2) : 100;
 
-            return new UserGamificationResponse
+            return new()
             {
                 Points = user.Points,
                 Level = user.Level,
@@ -83,7 +83,7 @@ public class UserService(
 
             UserGamificationResponse gamification = await GetUserGamificationAsync(supabaseUserId);
 
-            return new UserProfileResponse
+            return new()
             {
                 Id = user.Id,
                 Email = user.Email,
@@ -233,7 +233,7 @@ public class UserService(
             List<LeaderboardEntry> leaderboardEntries = topUsers.Select((user, index) => new LeaderboardEntry
             {
                 Rank = (page - 1) * pageSize + index + 1,
-                User = new UserInfo
+                User = new()
                 {
                     Id = user.Id,
                     DisplayName = user.DisplayName,
@@ -247,7 +247,7 @@ public class UserService(
                 RecentBadges = badgesByUser.TryGetValue(user.Id, out List<string>? value) ? value : []
             }).ToList();
 
-            return new LeaderboardResponse
+            return new()
             {
                 Leaderboard = leaderboardEntries,
                 Period = period,

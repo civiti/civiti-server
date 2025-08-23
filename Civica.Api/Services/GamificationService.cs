@@ -72,7 +72,7 @@ public class GamificationService(
                 var earned = await CheckBadgeRequirement(user, badge);
                 if (earned)
                 {
-                    UserBadge userBadge = new UserBadge
+                    UserBadge userBadge = new()
                     {
                         Id = Guid.NewGuid(),
                         UserId = userId,
@@ -135,7 +135,7 @@ public class GamificationService(
 
                         if (!existingBadge)
                         {
-                            UserBadge userBadge = new UserBadge
+                            UserBadge userBadge = new()
                             {
                                 Id = Guid.NewGuid(),
                                 UserId = userId,
@@ -175,7 +175,7 @@ public class GamificationService(
 
                 if (userAchievement == null)
                 {
-                    userAchievement = new UserAchievement
+                    userAchievement = new()
                     {
                         Id = Guid.NewGuid(),
                         UserId = userId,
@@ -439,7 +439,7 @@ public class GamificationService(
                 .ToListAsync();
 
             // Get recent badges for each user
-            var userIds = topUsers.Select(u => u.Id).ToList();
+            List<Guid> userIds = topUsers.Select(u => u.Id).ToList();
             var recentBadges = await context.UserBadges
                 .Include(ub => ub.Badge)
                 .Where(ub => userIds.Contains(ub.UserId))
@@ -454,12 +454,12 @@ public class GamificationService(
                 })
                 .ToListAsync();
 
-            var badgesByUser = recentBadges.ToDictionary(x => x.UserId, x => x.BadgeNames);
+            Dictionary<Guid, List<string>> badgesByUser = recentBadges.ToDictionary(x => x.UserId, x => x.BadgeNames);
 
-            var leaderboardEntries = topUsers.Select((user, index) => new LeaderboardEntry
+            List<LeaderboardEntry> leaderboardEntries = topUsers.Select((user, index) => new LeaderboardEntry
             {
                 Rank = index + 1,
-                User = new UserInfo
+                User = new()
                 {
                     Id = user.Id,
                     DisplayName = user.DisplayName,
@@ -473,7 +473,7 @@ public class GamificationService(
                 RecentBadges = badgesByUser.ContainsKey(user.Id) ? badgesByUser[user.Id] : []
             }).ToList();
 
-            return new LeaderboardResponse
+            return new()
             {
                 Leaderboard = leaderboardEntries,
                 Period = period,

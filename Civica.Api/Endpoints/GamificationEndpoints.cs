@@ -7,8 +7,15 @@ using Civica.Api.Models.Responses.Gamification;
 
 namespace Civica.Api.Endpoints;
 
+/// <summary>
+/// Gamification system endpoints for badges, achievements, and leaderboards
+/// </summary>
 public static class GamificationEndpoints
 {
+    /// <summary>
+    /// Maps gamification-related endpoints to the application
+    /// </summary>
+    /// <param name="app">The web application to map endpoints to</param>
     public static void MapGamificationEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup(ApiRoutes.Gamification.Base)
@@ -24,7 +31,9 @@ public static class GamificationEndpoints
         })
         .WithName("GetAllBadges")
         .WithSummary("Get all available badges")
-        .Produces<List<BadgeResponse>>(StatusCodes.Status200OK);
+        .WithDescription("Retrieves a list of all badges available in the gamification system, including their requirements and point values.")
+        .Produces<List<BadgeResponse>>(StatusCodes.Status200OK)
+        .WithOpenApi();
 
         // GET /api/gamification/badges/user
         group.MapGet("/badges/user", async (

@@ -83,7 +83,7 @@ public class IssueService(
                 })
                 .ToListAsync();
 
-            return new PagedResult<IssueListResponse>
+            return new()
             {
                 Items = items,
                 TotalItems = totalItems,
@@ -115,7 +115,7 @@ public class IssueService(
                 return null;
             }
 
-            return new IssueDetailResponse
+            return new()
             {
                 Id = issue.Id,
                 Title = issue.Title,
@@ -149,7 +149,7 @@ public class IssueService(
                     IsPrimary = p.IsPrimary,
                     CreatedAt = p.CreatedAt
                 }).ToList(),
-                User = new UserBasicResponse
+                User = new()
                 {
                     Id = issue.User.Id,
                     Name = issue.User.DisplayName,
@@ -180,7 +180,7 @@ public class IssueService(
             }
 
             // Create the issue
-            Issue issue = new Issue
+            Issue issue = new()
             {
                 Id = Guid.NewGuid(),
                 UserId = userProfile.Id,
@@ -242,7 +242,7 @@ public class IssueService(
             logger.LogInformation("Issue {IssueId} created successfully by user {UserId}", 
                 issue.Id, userProfile.Id);
 
-            return new CreateIssueResponse
+            return new()
             {
                 Id = issue.Id,
                 Status = issue.Status.ToString(),
@@ -296,7 +296,7 @@ public class IssueService(
             }
 
             // Create email tracking record
-            EmailTracking emailTracking = new EmailTracking
+            EmailTracking emailTracking = new()
             {
                 Id = Guid.NewGuid(),
                 IssueId = issueId,
@@ -351,7 +351,7 @@ public class IssueService(
 
             if (userProfile == null)
             {
-                return new PagedResult<IssueListResponse>
+                return new()
                 {
                     Items = [],
                     TotalItems = 0,
@@ -414,7 +414,7 @@ public class IssueService(
                 })
                 .ToListAsync();
 
-            return new PagedResult<IssueListResponse>
+            return new()
             {
                 Items = items,
                 TotalItems = totalItems,

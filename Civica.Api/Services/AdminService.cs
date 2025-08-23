@@ -100,7 +100,7 @@ public class AdminService(
                 })
                 .ToListAsync();
 
-            return new PagedResult<AdminIssueResponse>
+            return new()
             {
                 Items = items,
                 TotalItems = totalCount,
@@ -140,7 +140,7 @@ public class AdminService(
                 .OrderByDescending(et => et.SentAt)
                 .FirstOrDefault()?.SentAt;
 
-            return new AdminIssueDetailResponse
+            return new()
             {
                 Id = issue.Id,
                 Title = issue.Title,
@@ -230,7 +230,7 @@ public class AdminService(
 
             if (issue == null)
             {
-                return new IssueActionResponse
+                return new()
                 {
                     Success = false,
                     Message = "Issue not found"
@@ -239,7 +239,7 @@ public class AdminService(
 
             if (issue.Status != IssueStatus.Submitted && issue.Status != IssueStatus.UnderReview)
             {
-                return new IssueActionResponse
+                return new()
                 {
                     Success = false,
                     Message = "Issue is not in a reviewable state"
@@ -252,7 +252,7 @@ public class AdminService(
 
             if (adminUser == null)
             {
-                return new IssueActionResponse
+                return new()
                 {
                     Success = false,
                     Message = "Admin user not found"
@@ -271,7 +271,7 @@ public class AdminService(
             issue.UpdatedAt = DateTime.UtcNow;
 
             // Create admin action record
-            AdminAction adminAction = new AdminAction
+            AdminAction adminAction = new()
             {
                 Id = Guid.NewGuid(),
                 IssueId = issueId,
@@ -305,7 +305,7 @@ public class AdminService(
                 issueId,
                 adminUserId);
 
-            return new IssueActionResponse
+            return new()
             {
                 Success = true,
                 Message = "Issue approved successfully",
@@ -319,7 +319,7 @@ public class AdminService(
             await transaction.RollbackAsync();
             logger.LogError(ex, "Error approving issue: {IssueId}", issueId);
             
-            return new IssueActionResponse
+            return new()
             {
                 Success = false,
                 Message = "An error occurred while approving the issue"
@@ -338,7 +338,7 @@ public class AdminService(
 
             if (issue == null)
             {
-                return new IssueActionResponse
+                return new()
                 {
                     Success = false,
                     Message = "Issue not found"
@@ -347,7 +347,7 @@ public class AdminService(
 
             if (issue.Status != IssueStatus.Submitted && issue.Status != IssueStatus.UnderReview)
             {
-                return new IssueActionResponse
+                return new()
                 {
                     Success = false,
                     Message = "Issue is not in a reviewable state"
@@ -360,7 +360,7 @@ public class AdminService(
 
             if (adminUser == null)
             {
-                return new IssueActionResponse
+                return new()
                 {
                     Success = false,
                     Message = "Admin user not found"
@@ -377,7 +377,7 @@ public class AdminService(
             issue.UpdatedAt = DateTime.UtcNow;
 
             // Create admin action record
-            AdminAction adminAction = new AdminAction
+            AdminAction adminAction = new()
             {
                 Id = Guid.NewGuid(),
                 IssueId = issueId,
@@ -404,7 +404,7 @@ public class AdminService(
                 adminUserId,
                 request.Reason);
 
-            return new IssueActionResponse
+            return new()
             {
                 Success = true,
                 Message = "Issue rejected",
@@ -418,7 +418,7 @@ public class AdminService(
             await transaction.RollbackAsync();
             logger.LogError(ex, "Error rejecting issue: {IssueId}", issueId);
             
-            return new IssueActionResponse
+            return new()
             {
                 Success = false,
                 Message = "An error occurred while rejecting the issue"
@@ -437,7 +437,7 @@ public class AdminService(
 
             if (issue == null)
             {
-                return new IssueActionResponse
+                return new()
                 {
                     Success = false,
                     Message = "Issue not found"
@@ -450,7 +450,7 @@ public class AdminService(
 
             if (adminUser == null)
             {
-                return new IssueActionResponse
+                return new()
                 {
                     Success = false,
                     Message = "Admin user not found"
@@ -464,7 +464,7 @@ public class AdminService(
             issue.UpdatedAt = DateTime.UtcNow;
 
             // Create admin action record
-            AdminAction adminAction = new AdminAction
+            AdminAction adminAction = new()
             {
                 Id = Guid.NewGuid(),
                 IssueId = issueId,
@@ -487,7 +487,7 @@ public class AdminService(
                 issueId,
                 adminUserId);
 
-            return new IssueActionResponse
+            return new()
             {
                 Success = true,
                 Message = "Changes requested successfully",
@@ -501,7 +501,7 @@ public class AdminService(
             await transaction.RollbackAsync();
             logger.LogError(ex, "Error requesting changes for issue: {IssueId}", issueId);
             
-            return new IssueActionResponse
+            return new()
             {
                 Success = false,
                 Message = "An error occurred while requesting changes"
@@ -525,7 +525,7 @@ public class AdminService(
 
             DateTime today = now.Date;
             DateTime weekStart = now.AddDays(-(int)now.DayOfWeek).Date;
-            DateTime monthStart = new DateTime(now.Year, now.Month, 1);
+            DateTime monthStart = new(now.Year, now.Month, 1);
 
             // Get all issues for counting
             List<Issue> allIssues = await context.Issues.ToListAsync();
@@ -600,7 +600,7 @@ public class AdminService(
                 ? (double)resolvedCount / approvedCount * 100 
                 : 0;
 
-            return new AdminStatisticsResponse
+            return new()
             {
                 TotalSubmissions = totalIssues,
                 PendingReview = pendingCount,
@@ -641,7 +641,7 @@ public class AdminService(
         
         try
         {
-            BulkApproveResponse response = new BulkApproveResponse
+            BulkApproveResponse response = new()
             {
                 TotalRequested = request.IssueIds.Count,
                 SuccessfullyApproved = 0,
@@ -664,7 +664,7 @@ public class AdminService(
             {
                 try
                 {
-                    ApproveIssueRequest approveRequest = new ApproveIssueRequest
+                    ApproveIssueRequest approveRequest = new()
                     {
                         AdminNotes = request.AdminNotes,
                         Priority = request.DefaultPriority,
@@ -673,7 +673,7 @@ public class AdminService(
 
                     IssueActionResponse result = await ApproveIssueAsync(issueId, approveRequest, adminUserId);
                     
-                    response.Results.Add(new BulkApproveResult
+                    response.Results.Add(new()
                     {
                         IssueId = issueId,
                         Success = result.Success,
@@ -693,7 +693,7 @@ public class AdminService(
                 {
                     logger.LogError(ex, "Error in bulk approve for issue: {IssueId}", issueId);
                     response.Failed++;
-                    response.Results.Add(new BulkApproveResult
+                    response.Results.Add(new()
                     {
                         IssueId = issueId,
                         Success = false,
@@ -733,7 +733,7 @@ public class AdminService(
 
             DateTime today = DateTime.UtcNow.Date;
             DateTime weekStart = DateTime.UtcNow.AddDays(-(int)DateTime.UtcNow.DayOfWeek).Date;
-            DateTime monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+            DateTime monthStart = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
 
             // Calculate average review time
             List<Issue> reviewedIssues = await context.Issues
@@ -744,7 +744,7 @@ public class AdminService(
                 ? reviewedIssues.Average(i => (i.ReviewedAt!.Value - i.CreatedAt).TotalHours)
                 : 0;
 
-            return new GetModerationStatsResponse
+            return new()
             {
                 AdminUserId = adminUser.Id,
                 AdminName = adminUser.DisplayName,
@@ -834,7 +834,7 @@ public class AdminService(
                 })
                 .ToListAsync();
 
-            return new PagedResult<AdminActionResponse>
+            return new()
             {
                 Items = items,
                 TotalItems = totalCount,

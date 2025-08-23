@@ -13,8 +13,15 @@ using Civica.Api.Models.Responses.Common;
 
 namespace Civica.Api.Endpoints;
 
+/// <summary>
+/// User-specific endpoints for profile and personal data management
+/// </summary>
 public static class UserEndpoints
 {
+    /// <summary>
+    /// Maps user-related endpoints to the application
+    /// </summary>
+    /// <param name="app">The web application to map endpoints to</param>
     public static void MapUserEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup(ApiRoutes.User.Base)
@@ -39,9 +46,11 @@ public static class UserEndpoints
         })
         .WithName("GetUserProfile")
         .WithSummary("Get user's complete profile")
+        .WithDescription("Retrieves the complete profile for the authenticated user including personal information, gamification data, and notification preferences.")
         .Produces<UserProfileResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status404NotFound);
+        .Produces(StatusCodes.Status404NotFound)
+        .WithOpenApi();
 
         // PUT /api/user/profile
         group.MapPut("/profile", async (
@@ -127,7 +136,7 @@ public static class UserEndpoints
                 return Results.Unauthorized();
             }
 
-            GetUserIssuesRequest request = new GetUserIssuesRequest
+            GetUserIssuesRequest request = new()
             {
                 Page = page ?? 1,
                 PageSize = pageSize ?? 10,

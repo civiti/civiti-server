@@ -23,7 +23,7 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
         HttpResponse response = context.Response;
         response.ContentType = "application/json";
 
-        ErrorResponse errorResponse = new ErrorResponse
+        ErrorResponse errorResponse = new()
         {
             Timestamp = DateTime.UtcNow,
             Path = context.Request.Path
@@ -67,7 +67,7 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
                 break;
         }
 
-        JsonSerializerOptions jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        JsonSerializerOptions jsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         var errorJson = JsonSerializer.Serialize(errorResponse, jsonOptions);
         
         await response.WriteAsync(errorJson);

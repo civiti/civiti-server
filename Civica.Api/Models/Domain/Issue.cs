@@ -44,42 +44,78 @@ public class Issue
     public List<EmailTracking> EmailTrackings { get; set; } = [];
 }
 
+/// <summary>
+/// Categories for civic issues
+/// </summary>
 public enum IssueCategory
 {
+    /// <summary>Roads, sidewalks, bridges</summary>
     Infrastructure,
+    /// <summary>Parks, pollution, waste</summary>
     Environment,
+    /// <summary>Public transport, traffic</summary>
     Transportation,
+    /// <summary>Utilities, government services</summary>
     PublicServices,
+    /// <summary>Crime, lighting, hazards</summary>
     Safety,
+    /// <summary>Uncategorized issues</summary>
     Other
 }
 
+/// <summary>
+/// Urgency level of an issue
+/// </summary>
 public enum UrgencyLevel
 {
+    /// <summary>Not specified</summary>
     Unspecified = 0,
+    /// <summary>Can be addressed in normal course</summary>
     Low = 1,
+    /// <summary>Should be addressed soon</summary>
     Medium = 2,
+    /// <summary>Requires prompt attention</summary>
     High = 3,
+    /// <summary>Immediate action required</summary>
     Urgent = 4
 }
 
+/// <summary>
+/// Current status of an issue in the workflow
+/// </summary>
 public enum IssueStatus
 {
+    /// <summary>Not specified</summary>
     Unspecified = 0,
+    /// <summary>Saved as draft</summary>
     Draft = 1,
+    /// <summary>Submitted for review</summary>
     Submitted = 2,
+    /// <summary>Under admin review</summary>
     UnderReview = 3,
+    /// <summary>Approved and public</summary>
     Approved = 4,
+    /// <summary>Being worked on</summary>
     InProgress = 5,
+    /// <summary>Issue resolved</summary>
     Resolved = 6,
+    /// <summary>Rejected by admin</summary>
     Rejected = 7
 }
 
+/// <summary>
+/// Admin-assigned priority level
+/// </summary>
 public enum Priority
 {
+    /// <summary>Not specified</summary>
     Unspecified = 0,
+    /// <summary>Low priority</summary>
     Low = 1,
+    /// <summary>Medium priority</summary>
     Medium = 2,
+    /// <summary>High priority</summary>
     High = 3,
+    /// <summary>Critical priority</summary>
     Critical = 4
 }

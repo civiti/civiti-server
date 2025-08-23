@@ -20,7 +20,7 @@ public class AuthService(CivicaDbContext context, ISupabaseService supabaseServi
         if (user == null)
             return null;
 
-        return new UserProfileResponse
+        return new()
         {
             Id = user.Id,
             Email = user.Email,
@@ -47,7 +47,7 @@ public class AuthService(CivicaDbContext context, ISupabaseService supabaseServi
             throw new ArgumentException("User profile already exists");
         }
 
-        UserProfile user = new UserProfile
+        UserProfile user = new()
         {
             Id = Guid.NewGuid(),
             SupabaseUserId = supabaseUserId,
@@ -69,7 +69,7 @@ public class AuthService(CivicaDbContext context, ISupabaseService supabaseServi
         logger.LogInformation("User profile created: {UserId} for Supabase user {SupabaseUserId}", 
             user.Id, supabaseUserId);
 
-        return new UserProfileResponse
+        return new()
         {
             Id = user.Id,
             Email = user.Email,
@@ -120,7 +120,7 @@ public class AuthService(CivicaDbContext context, ISupabaseService supabaseServi
 
         await context.SaveChangesAsync();
 
-        return new UserProfileResponse
+        return new()
         {
             Id = user.Id,
             Email = user.Email,

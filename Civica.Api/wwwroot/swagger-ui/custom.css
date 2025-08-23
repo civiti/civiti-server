@@ -1,0 +1,225 @@
+/* Civica API Swagger UI Custom Styling */
+
+/* Color scheme based on Civica brand colors */
+:root {
+    --oxford-blue: #14213D;
+    --orange-web: #FCA311;
+    --platinum: #E5E5E5;
+    --white: #FFFFFF;
+}
+
+/* Header styling */
+.swagger-ui .topbar {
+    background-color: var(--oxford-blue);
+    padding: 10px 0;
+}
+
+.swagger-ui .topbar .download-url-wrapper {
+    display: none;
+}
+
+/* Title and info section */
+.swagger-ui .info .title {
+    color: var(--oxford-blue);
+    font-family: "Fira Sans", sans-serif;
+    font-weight: 700;
+}
+
+.swagger-ui .info .description {
+    font-family: "Fira Sans", sans-serif;
+}
+
+.swagger-ui .info .description h2 {
+    color: var(--oxford-blue);
+    font-weight: 600;
+    margin-top: 2rem;
+}
+
+.swagger-ui .info .description code {
+    background-color: var(--platinum);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+/* Authorization button */
+.swagger-ui .btn.authorize {
+    background-color: var(--orange-web);
+    border-color: var(--orange-web);
+    color: var(--white);
+    font-weight: 600;
+}
+
+.swagger-ui .btn.authorize:hover {
+    background-color: #e8920a;
+    border-color: #e8920a;
+}
+
+.swagger-ui .btn.authorize svg {
+    fill: var(--white);
+}
+
+/* Operation blocks */
+.swagger-ui .opblock.opblock-get .opblock-summary {
+    border-color: #61affe;
+    background: rgba(97, 175, 254, 0.1);
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary {
+    border-color: #49cc90;
+    background: rgba(73, 204, 144, 0.1);
+}
+
+.swagger-ui .opblock.opblock-put .opblock-summary {
+    border-color: var(--orange-web);
+    background: rgba(252, 163, 17, 0.1);
+}
+
+.swagger-ui .opblock.opblock-delete .opblock-summary {
+    border-color: #f93e3e;
+    background: rgba(249, 62, 62, 0.1);
+}
+
+/* Tags */
+.swagger-ui .opblock-tag {
+    color: var(--oxford-blue);
+    font-family: "Fira Sans", sans-serif;
+    font-weight: 600;
+    font-size: 1.2rem;
+    border-bottom: 2px solid var(--platinum);
+}
+
+/* Try it out button */
+.swagger-ui .btn.try-out__btn {
+    background-color: var(--orange-web);
+    border-color: var(--orange-web);
+    color: var(--white);
+    font-weight: 500;
+}
+
+.swagger-ui .btn.try-out__btn:hover {
+    background-color: #e8920a;
+    border-color: #e8920a;
+}
+
+/* Execute button */
+.swagger-ui .btn.execute {
+    background-color: var(--oxford-blue);
+    border-color: var(--oxford-blue);
+    color: var(--white);
+    font-weight: 600;
+}
+
+.swagger-ui .btn.execute:hover {
+    background-color: #0a1124;
+    border-color: #0a1124;
+}
+
+/* Response section */
+.swagger-ui .responses-wrapper .responses-inner h4,
+.swagger-ui .responses-wrapper .responses-inner h5 {
+    color: var(--oxford-blue);
+    font-family: "Fira Sans", sans-serif;
+}
+
+/* Model section */
+.swagger-ui .model-container {
+    background: #f7f7f7;
+    border-radius: 4px;
+    margin: 1rem 0;
+}
+
+.swagger-ui .model-title {
+    color: var(--oxford-blue);
+    font-family: "Fira Sans", sans-serif;
+    font-weight: 600;
+}
+
+/* Parameters */
+.swagger-ui .parameter__name {
+    color: var(--oxford-blue);
+    font-weight: 600;
+}
+
+.swagger-ui .parameter__name.required::after {
+    color: var(--orange-web);
+    font-weight: bold;
+}
+
+/* Scrollbar styling */
+.swagger-ui ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.swagger-ui ::-webkit-scrollbar-track {
+    background: var(--platinum);
+}
+
+.swagger-ui ::-webkit-scrollbar-thumb {
+    background: var(--oxford-blue);
+    border-radius: 4px;
+}
+
+.swagger-ui ::-webkit-scrollbar-thumb:hover {
+    background: #0a1124;
+}
+
+/* Loading spinner */
+.swagger-ui .loading-container .loading::after {
+    border-color: var(--orange-web) transparent var(--orange-web) transparent;
+}
+
+/* Error messages */
+.swagger-ui .errors-wrapper {
+    background: rgba(249, 62, 62, 0.1);
+    border: 1px solid #f93e3e;
+    border-radius: 4px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+/* Success messages */
+.swagger-ui .responses-wrapper .response.response-200,
+.swagger-ui .responses-wrapper .response.response-201 {
+    border-color: #49cc90;
+}
+
+/* Links */
+.swagger-ui .info a {
+    color: var(--orange-web);
+}
+
+.swagger-ui .info a:hover {
+    color: #e8920a;
+    text-decoration: underline;
+}
+
+/* Code blocks */
+.swagger-ui .highlight-code pre {
+    background: var(--oxford-blue);
+    color: var(--white);
+    border-radius: 4px;
+    padding: 1rem;
+}
+
+/* Improve readability */
+.swagger-ui {
+    font-family: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.swagger-ui .opblock-description-wrapper p,
+.swagger-ui .opblock-external-docs-wrapper p {
+    line-height: 1.6;
+}
+
+/* Security lock icon */
+.swagger-ui .authorization__btn svg {
+    fill: var(--orange-web);
+}
+
+/* Rate limit badge */
+.swagger-ui .opblock-summary-description:contains("Rate limited") {
+    color: var(--orange-web);
+    font-weight: 500;
+}

@@ -9,8 +9,19 @@ using System.Security.Claims;
 
 namespace Civica.Api.Endpoints;
 
+/// <summary>
+/// Administrative endpoints for issue moderation and system management
+/// </summary>
 public static class AdminEndpoints
 {
+    /// <summary>
+    /// Maps admin-related endpoints to the application
+    /// </summary>
+    /// <param name="app">The web application to map endpoints to</param>
+    /// <remarks>
+    /// All endpoints in this group require admin authentication and authorization.
+    /// Admin role is validated through JWT claims.
+    /// </remarks>
     public static void MapAdminEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup(ApiRoutes.Admin.Base)
@@ -31,7 +42,7 @@ public static class AdminEndpoints
             string sortBy = "CreatedAt",
             bool sortDescending = true) =>
         {
-            GetPendingIssuesRequest request = new GetPendingIssuesRequest
+            GetPendingIssuesRequest request = new()
             {
                 Page = page,
                 PageSize = pageSize,
@@ -57,7 +68,23 @@ public static class AdminEndpoints
         })
         .WithName("GetPendingIssues")
         .WithSummary("Get issues pending admin review")
-        .Produces<PagedResult<AdminIssueResponse>>(StatusCodes.Status200OK);
+        .WithDescription("Retrieves a paginated list of issues awaiting admin approval. Supports advanced filtering by category, urgency, date range, and search terms. This endpoint is critical for the moderation workflow and only accessible to administrators.")
+        .Produces<PagedResult<AdminIssueResponse>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .WithOpenApi(operation =>
+        {
+            operation.Parameters[0].Description = "Page number (default: 1)";
+            operation.Parameters[1].Description = "Items per page (default: 20, max: 100)";
+            operation.Parameters[2].Description = "Filter by issue category";
+            operation.Parameters[3].Description = "Filter by urgency level";
+            operation.Parameters[4].Description = "Search in title and description";
+            operation.Parameters[5].Description = "Filter issues submitted after this date";
+            operation.Parameters[6].Description = "Filter issues submitted before this date";
+            operation.Parameters[7].Description = "Sort field (CreatedAt, Urgency, Category)";
+            operation.Parameters[8].Description = "Sort in descending order (default: true)";
+            return operation;
+        });
 
         // GET /api/admin/issues/{id}
         group.MapGet(ApiRoutes.Admin.IssueById, async (
@@ -71,8 +98,12 @@ public static class AdminEndpoints
         })
         .WithName("GetIssueDetailsForAdmin")
         .WithSummary("Get detailed issue information for admin review")
+        .WithDescription("Retrieves comprehensive issue details including user information, full content, photos, and moderation history. This provides all information needed for admins to make informed moderation decisions.")
         .Produces<AdminIssueDetailResponse>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status404NotFound);
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound)
+        .WithOpenApi();
 
         // PUT /api/admin/issues/{id}/approve
         group.MapPut(ApiRoutes.Admin.Approve, async (
@@ -190,7 +221,7 @@ public static class AdminEndpoints
             string sortBy = "CreatedAt",
             bool sortDescending = true) =>
         {
-            GetAdminActionsRequest request = new GetAdminActionsRequest
+            GetAdminActionsRequest request = new()
             {
                 Page = page,
                 PageSize = pageSize,
