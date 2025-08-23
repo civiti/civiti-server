@@ -341,10 +341,16 @@ if (!skipMigration)
                     await Task.Delay(delayMs * retry); // Exponential backoff
                     continue;
                 }
+                else
+                {
+                    // Final retry failed - don't attempt migration
+                    Log.Error("Database connection failed after all retries - skipping migration");
+                    break;
+                }
             }
 
-            // EF Core Migrate() will create the database if it doesn't exist
-            Log.Information("Executing database migration...");
+            // Only attempt migration if we can connect
+            Log.Information("Database connection successful - executing migration...");
             await context.Database.MigrateAsync();
             Log.Information("Database migration completed successfully");
             migrationSuccess = true;
@@ -357,6 +363,12 @@ if (!skipMigration)
             {
                 Log.Information($"Waiting {delayMs * retry}ms before retry...");
                 await Task.Delay(delayMs * retry);
+                continue; // Explicitly continue to next retry
+            }
+            else
+            {
+                Log.Error("Database connection timed out after all retries");
+                break; // Exit the retry loop
             }
         }
         catch (Exception ex)
@@ -367,6 +379,7 @@ if (!skipMigration)
             {
                 Log.Information($"Waiting {delayMs * retry}ms before retry...");
                 await Task.Delay(delayMs * retry); // Exponential backoff
+                continue; // Explicitly continue to next retry
             }
             else
             {
@@ -374,6 +387,7 @@ if (!skipMigration)
                 // Don't throw in production to allow app to start
                 if (app.Environment.IsDevelopment())
                     throw;
+                break; // Exit the retry loop
             }
         }
     }
