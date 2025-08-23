@@ -6,6 +6,7 @@ using Civica.Api.Models.Domain;
 using Civica.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql.PostgresTypes;
 
 namespace Civica.Api.Services;
 

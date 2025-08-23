@@ -16,7 +16,7 @@ public class Issue
     public string? Landmark { get; set; }
     public UrgencyLevel Urgency { get; set; }
     public string? AuthorityEmail { get; set; } // Target authority email address
-    public string? EstimatedImpact { get; set; } // Estimated number of people affected
+    public int? EstimatedImpact { get; set; } // Estimated number of people affected
     public string? Tags { get; set; } // Comma-separated tags for categorization
     public IssueStatus Status { get; set; } = IssueStatus.Submitted;
     public int EmailsSent { get; set; } = 0;

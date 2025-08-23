@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using Civica.Api.Models.Domain;
-using System.ComponentModel.DataAnnotations;
 
 namespace Civica.Api.Models.Requests.Issues;
 
@@ -97,16 +96,12 @@ public class CreateIssueRequest
     /// <example>Cotroceni</example>
     [MaxLength(100)]
     public string? Neighborhood { get; set; }
-    public string? District { get; set; } // District/Sector for Romanian administrative divisions
     public string? Landmark { get; set; }
     
     /// <summary>
     /// Urgency level of the issue (default: Medium)
     /// </summary>
     public UrgencyLevel Urgency { get; set; } = UrgencyLevel.Medium;
-    public string? AuthorityEmail { get; set; } // Target authority email address
-    public string? EstimatedImpact { get; set; } // Estimated number of people affected
-    public List<string>? Tags { get; set; } // Issue tags for categorization
     public string? CurrentSituation { get; set; }
     
     /// <summary>

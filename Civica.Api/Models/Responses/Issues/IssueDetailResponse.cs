@@ -16,7 +16,7 @@ public class IssueDetailResponse
     public string? Landmark { get; set; }
     public UrgencyLevel Urgency { get; set; }
     public string? AuthorityEmail { get; set; }
-    public string? EstimatedImpact { get; set; }
+    public int? EstimatedImpact { get; set; }
     public List<string>? Tags { get; set; }
     public IssueStatus Status { get; set; }
     public int EmailsSent { get; set; }

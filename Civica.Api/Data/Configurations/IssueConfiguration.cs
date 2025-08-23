@@ -39,7 +39,7 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
             .HasMaxLength(255);
             
         builder.Property(i => i.EstimatedImpact)
-            .HasMaxLength(200);
+            .HasColumnType("integer");
             
         builder.Property(i => i.Tags)
             .HasMaxLength(500);

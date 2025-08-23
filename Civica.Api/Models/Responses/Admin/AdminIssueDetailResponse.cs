@@ -21,7 +21,7 @@ public class AdminIssueDetailResponse
     public string? District { get; set; }
     public string? Landmark { get; set; }
     public string? AuthorityEmail { get; set; }
-    public string? EstimatedImpact { get; set; }
+    public int? EstimatedImpact { get; set; }
     public List<string>? Tags { get; set; }
     
     // Extended details
