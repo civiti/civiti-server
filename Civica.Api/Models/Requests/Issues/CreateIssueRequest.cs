@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Civica.Api.Models.Domain;
 using System.ComponentModel.DataAnnotations;
 
@@ -96,24 +97,16 @@ public class CreateIssueRequest
     /// <example>Cotroceni</example>
     [MaxLength(100)]
     public string? Neighborhood { get; set; }
-    
-    /// <summary>
-    /// Nearby landmark for easier identification
-    /// </summary>
-    /// <example>În fața Parcului Herăstrău</example>
-    [MaxLength(200)]
+    public string? District { get; set; } // District/Sector for Romanian administrative divisions
     public string? Landmark { get; set; }
     
     /// <summary>
     /// Urgency level of the issue (default: Medium)
     /// </summary>
     public UrgencyLevel Urgency { get; set; } = UrgencyLevel.Medium;
-    
-    /// <summary>
-    /// Description of the current situation and its effects
-    /// </summary>
-    /// <example>Multiple vehicles have been damaged, pedestrians are forced to walk on the street</example>
-    [MaxLength(1000)]
+    public string? AuthorityEmail { get; set; } // Target authority email address
+    public string? EstimatedImpact { get; set; } // Estimated number of people affected
+    public List<string>? Tags { get; set; } // Issue tags for categorization
     public string? CurrentSituation { get; set; }
     
     /// <summary>

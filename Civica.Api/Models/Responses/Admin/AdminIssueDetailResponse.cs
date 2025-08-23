@@ -18,7 +18,11 @@ public class AdminIssueDetailResponse
     public double Longitude { get; set; }
     public int LocationAccuracy { get; set; }
     public string? Neighborhood { get; set; }
+    public string? District { get; set; }
     public string? Landmark { get; set; }
+    public string? AuthorityEmail { get; set; }
+    public string? EstimatedImpact { get; set; }
+    public List<string>? Tags { get; set; }
     
     // Extended details
     public string? CurrentSituation { get; set; }
