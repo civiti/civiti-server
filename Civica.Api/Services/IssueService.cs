@@ -38,8 +38,8 @@ public class IssueService(
 
             if (!string.IsNullOrWhiteSpace(request.District))
             {
-                query = query.Where(i => i.Neighborhood != null && 
-                    i.Neighborhood.Contains(request.District, StringComparison.OrdinalIgnoreCase));
+                query = query.Where(i => i.District != null && 
+                    i.District.Contains(request.District, StringComparison.OrdinalIgnoreCase));
             }
 
             // Apply sorting
@@ -78,6 +78,7 @@ public class IssueService(
                         .Select(p => p.Url)
                         .FirstOrDefault(),
                     Neighborhood = i.Neighborhood,
+                    District = i.District,
                     Status = i.Status
                 })
                 .ToListAsync();
@@ -124,8 +125,12 @@ public class IssueService(
                 Latitude = issue.Latitude,
                 Longitude = issue.Longitude,
                 Neighborhood = issue.Neighborhood,
+                District = issue.District,
                 Landmark = issue.Landmark,
                 Urgency = issue.Urgency,
+                AuthorityEmail = issue.AuthorityEmail,
+                EstimatedImpact = issue.EstimatedImpact,
+                Tags = issue.Tags?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList(),
                 Status = issue.Status,
                 EmailsSent = issue.EmailsSent,
                 CurrentSituation = issue.CurrentSituation,
@@ -187,8 +192,12 @@ public class IssueService(
                 Longitude = request.Longitude,
                 LocationAccuracy = request.LocationAccuracy,
                 Neighborhood = request.Neighborhood,
+                District = request.District,
                 Landmark = request.Landmark,
                 Urgency = request.Urgency,
+                AuthorityEmail = request.AuthorityEmail,
+                EstimatedImpact = request.EstimatedImpact,
+                Tags = request.Tags != null ? string.Join(",", request.Tags) : null,
                 CurrentSituation = request.CurrentSituation,
                 DesiredOutcome = request.DesiredOutcome,
                 CommunityImpact = request.CommunityImpact,
@@ -400,6 +409,7 @@ public class IssueService(
                         .Select(p => p.Url)
                         .FirstOrDefault(),
                     Neighborhood = i.Neighborhood,
+                    District = i.District,
                     Status = i.Status
                 })
                 .ToListAsync();

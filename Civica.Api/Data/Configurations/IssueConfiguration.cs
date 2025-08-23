@@ -29,8 +29,20 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
         builder.Property(i => i.Neighborhood)
             .HasMaxLength(100);
             
+        builder.Property(i => i.District)
+            .HasMaxLength(100);
+            
         builder.Property(i => i.Landmark)
             .HasMaxLength(200);
+            
+        builder.Property(i => i.AuthorityEmail)
+            .HasMaxLength(255);
+            
+        builder.Property(i => i.EstimatedImpact)
+            .HasMaxLength(200);
+            
+        builder.Property(i => i.Tags)
+            .HasMaxLength(500);
             
         builder.Property(i => i.Urgency)
             .HasConversion<string>()
@@ -67,6 +79,7 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
         builder.HasIndex(i => i.Status);
         builder.HasIndex(i => i.Category);
         builder.HasIndex(i => i.Urgency);
+        builder.HasIndex(i => i.District);
         builder.HasIndex(i => i.CreatedAt).IsDescending();
         builder.HasIndex(i => i.EmailsSent).IsDescending();
         builder.HasIndex(i => new { i.Status, i.PublicVisibility })

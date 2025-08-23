@@ -34,12 +34,8 @@ public static class UserEndpoints
             }
 
             UserProfileResponse? profile = await userService.GetUserProfileAsync(supabaseUserId);
-            if (profile == null)
-            {
-                return Results.NotFound(new { error = "User profile not found" });
-            }
-
-            return Results.Ok(profile);
+            
+            return profile == null ? Results.NotFound(new { error = "User profile not found" }) : Results.Ok(profile);
         })
         .WithName("GetUserProfile")
         .WithSummary("Get user's complete profile")
@@ -106,12 +102,8 @@ public static class UserEndpoints
             }
 
             var deleted = await userService.DeleteUserAsync(supabaseUserId);
-            if (!deleted)
-            {
-                return Results.NotFound(new { error = "User not found" });
-            }
-
-            return Results.NoContent();
+            
+            return !deleted ? Results.NotFound(new { error = "User not found" }) : Results.NoContent();
         })
         .WithName("DeleteUserAccount")
         .WithSummary("Delete user account (soft delete)")

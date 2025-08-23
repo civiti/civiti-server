@@ -178,12 +178,15 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 WebApplication app = builder.Build();
 
 // Configure pipeline
-if (app.Environment.IsDevelopment())
+// Enable Swagger in both Development and Production for Railway deployment
+app.UseSwagger();
+app.UseSwaggerUI(options =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-else
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Civica API v1");
+    options.RoutePrefix = "swagger";
+});
+
+if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
