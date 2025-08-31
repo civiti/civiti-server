@@ -139,21 +139,30 @@ if (string.IsNullOrWhiteSpace(supabaseAnonKey))
     throw new InvalidOperationException(errorMsg);
 }
 
+// In production, JWT secret is REQUIRED for security
+if (builder.Environment.IsProduction() && string.IsNullOrWhiteSpace(jwtSecret))
+{
+    var errorMsg = "JWT secret is REQUIRED in production for security. " +
+                   "Set SUPABASE_JWT_SECRET environment variable with your Supabase JWT secret.";
+    Log.Fatal(errorMsg);
+    throw new InvalidOperationException(errorMsg);
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         // The issuer in Supabase JWTs is the auth endpoint URL
         var issuer = $"{supabaseUrl}/auth/v1";
         
-        options.Authority = supabaseUrl;
+        // Fix: Authority should match the issuer for proper validation
+        options.Authority = issuer;  // Changed from supabaseUrl to match ValidIssuer
         options.Audience = "authenticated";
         options.RequireHttpsMetadata = builder.Environment.IsProduction();
         options.SaveToken = true;
         
-        // For Supabase, we can skip signature validation if we don't have the JWT secret
-        // and rely on the Supabase service to validate tokens
         if (!string.IsNullOrWhiteSpace(jwtSecret))
         {
+            // Production-ready configuration with full validation
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true,
@@ -166,23 +175,32 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 IssuerSigningKey = new SymmetricSecurityKey(
                     Encoding.UTF8.GetBytes(jwtSecret))
             };
+            
+            Log.Information("JWT validation configured with signature verification");
         }
         else
         {
-            // Simplified validation - rely on Supabase service for validation
+            // Development only - still validate structure but not signature
+            if (!builder.Environment.IsDevelopment())
+            {
+                throw new InvalidOperationException("JWT secret is required for non-development environments");
+            }
+            
+            // WARNING: This is only for development - tokens can be forged!
             options.TokenValidationParameters = new TokenValidationParameters
             {
-                ValidateIssuerSigningKey = false,  // Skip signature validation
+                ValidateIssuerSigningKey = false,  // Development only!
                 ValidateIssuer = true,
                 ValidateAudience = true,
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero,
                 ValidIssuer = issuer,
-                ValidAudience = "authenticated"
+                ValidAudience = "authenticated",
+                RequireSignedTokens = false  // Explicitly allow unsigned tokens in dev
             };
             
-            Log.Warning("JWT secret not configured. Token signature validation is disabled. " +
-                       "Set SUPABASE_JWT_SECRET environment variable for production use.");
+            Log.Warning("⚠️ DEVELOPMENT MODE: JWT signature validation is DISABLED. " +
+                       "This is INSECURE and should NEVER be used in production!");
         }
         
         // Log JWT validation events for debugging
