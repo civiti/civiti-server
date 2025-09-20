@@ -249,8 +249,24 @@ builder.Services.AddCors(options =>
     options.AddPolicy("CivicaPolicy", policy =>
     {
         // Get allowed origins from configuration or environment variable
-        var corsOrigins = Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS")?.Split(',', StringSplitOptions.RemoveEmptyEntries)
-            ?? builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+        // Fix: Check for null or whitespace before splitting to avoid empty array blocking fallback
+        var envOrigins = Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS");
+        string[]? corsOrigins = null;
+
+        // Only use environment variable if it has actual content
+        if (!string.IsNullOrWhiteSpace(envOrigins))
+        {
+            corsOrigins = envOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            // If splitting resulted in empty array, set to null to trigger fallback
+            if (corsOrigins.Length == 0)
+            {
+                corsOrigins = null;
+            }
+        }
+
+        // Fallback to configuration if environment variable is not usable
+        corsOrigins ??= builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
             ?? ["http://localhost:4200"];
 
         Log.Information("CORS configured with allowed origins: {Origins}", string.Join(", ", corsOrigins));
