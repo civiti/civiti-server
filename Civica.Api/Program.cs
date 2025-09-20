@@ -70,9 +70,9 @@ if (connectionString?.StartsWith("postgres://") == true || connectionString?.Sta
         var userInfo = uri.UserInfo.Split(':');
         var username = userInfo[0];
         var password = userInfo.Length > 1 ? userInfo[1] : string.Empty;
-        
+
         // Log parsed components (without password)
-        Log.Information("Parsed DATABASE_URL - Host: {Host}, Port: {Port}, Database: {Database}, Username: {Username}", 
+        Log.Information("Parsed DATABASE_URL - Host: {Host}, Port: {Port}, Database: {Database}, Username: {Username}",
             uri.Host, uri.Port, uri.AbsolutePath.TrimStart('/'), username);
 
         connectionString =
@@ -89,14 +89,14 @@ if (connectionString?.StartsWith("postgres://") == true || connectionString?.Sta
 
 builder.Services.AddDbContext<CivicaDbContext>(options =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
-            {
-                npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory");
-                npgsqlOptions.CommandTimeout(30);
-                npgsqlOptions.EnableRetryOnFailure(
-                    maxRetryCount: 3,
-                    maxRetryDelay: TimeSpan.FromSeconds(10),
-                    errorCodesToAdd: null);
-            })
+        {
+            npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory");
+            npgsqlOptions.CommandTimeout(30);
+            npgsqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(10),
+                errorCodesToAdd: null);
+        })
         .ConfigureWarnings(warnings =>
             warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning))
         .EnableSensitiveDataLogging(builder.Environment.IsDevelopment())
@@ -140,17 +140,19 @@ if (string.IsNullOrWhiteSpace(supabaseAnonKey))
 }
 
 // Define security policy based on environment
-bool requireJwtSecret = !builder.Environment.IsDevelopment(); // Consistent check: Dev=optional, all others=required
 string environmentName = builder.Environment.EnvironmentName;
 
-// JWT secret is REQUIRED for all non-development environments (Production, Staging, etc.)
-if (requireJwtSecret && string.IsNullOrWhiteSpace(jwtSecret))
+// For Supabase with JWT Keys, the JWT secret is now optional
+// Supabase provides a JWKS endpoint for automatic key discovery
+// The legacy JWT secret can still be provided for backward compatibility
+if (!string.IsNullOrWhiteSpace(jwtSecret))
 {
-    var errorMsg = $"JWT secret is REQUIRED in {environmentName} environment for security. " +
-                   "Set SUPABASE_JWT_SECRET environment variable with your Supabase JWT secret. " +
-                   "Only Development environment allows running without JWT secret.";
-    Log.Fatal(errorMsg);
-    throw new InvalidOperationException(errorMsg);
+    Log.Information("Legacy JWT secret provided - will be used as fallback for {Environment}", environmentName);
+}
+else
+{
+    Log.Information("No JWT secret provided - will use Supabase JWKS endpoint for key discovery. " +
+                    "This is the recommended approach for JWT Keys support.");
 }
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -159,61 +161,45 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         // Supabase JWTs can have different issuers depending on version
         // Check actual token with decode-jwt.html to verify
         var issuer = $"{supabaseUrl}/auth/v1";
-        
+
         // For debugging - log the expected issuer
         Log.Information("Configuring JWT validation with issuer: {Issuer}", issuer);
-        
-        // Authority is used for metadata discovery (not used by Supabase)
-        // Setting to supabaseUrl for compatibility
-        options.Authority = supabaseUrl;
+
+        // Use Supabase's JWKS endpoint for automatic key discovery and rotation support
+        // This supports both legacy HS256 and new ECC keys
+        var jwksUri = $"{supabaseUrl}/auth/v1/.well-known/jwks.json";
+
+        // Configure to use JWKS for key discovery (supports key rotation)
+        options.Authority = $"{supabaseUrl}/auth/v1";
         options.Audience = "authenticated";
         options.RequireHttpsMetadata = !builder.Environment.IsDevelopment(); // HTTPS required except in dev
         options.SaveToken = true;
-        
+
+        // Try to use JWKS endpoint first for automatic key discovery
+        options.MetadataAddress = jwksUri;
+
+        // Token validation parameters
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true, // Will use keys from JWKS
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero,
+            ValidIssuer = issuer,
+            ValidAudience = "authenticated"
+        };
+
+        // If JWT secret is provided (legacy support), add it as a fallback
         if (!string.IsNullOrWhiteSpace(jwtSecret))
         {
-            // Full validation with signature verification
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuerSigningKey = true,
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.Zero,
-                ValidIssuer = issuer,
-                ValidAudience = "authenticated",
-                IssuerSigningKey = new SymmetricSecurityKey(
-                    Encoding.UTF8.GetBytes(jwtSecret))
-            };
-            
-            Log.Information("JWT validation configured with signature verification for {Environment}", environmentName);
+            options.TokenValidationParameters.IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtSecret));
+            Log.Information("JWT validation configured with legacy secret as fallback for {Environment}", environmentName);
         }
-        else
-        {
-            // Only allowed in development - consistent with earlier check
-            if (requireJwtSecret) // Same condition as above
-            {
-                // This should never happen due to earlier check, but keeping for safety
-                throw new InvalidOperationException($"JWT secret is required for {environmentName} environment");
-            }
-            
-            // WARNING: Development only - tokens can be forged!
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuerSigningKey = false,  // Development only!
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.Zero,
-                ValidIssuer = issuer,
-                ValidAudience = "authenticated",
-                RequireSignedTokens = false  // Explicitly allow unsigned tokens in dev
-            };
-            
-            Log.Warning("⚠️ DEVELOPMENT MODE: JWT signature validation is DISABLED. " +
-                       "This is INSECURE and should NEVER be used in production or staging!");
-        }
-        
+
+        Log.Information("JWT validation configured with JWKS endpoint: {JwksUri}", jwksUri);
+
         // Log JWT validation events for debugging
         options.Events = new JwtBearerEvents
         {
@@ -224,13 +210,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             },
             OnTokenValidated = context =>
             {
-                Log.Information("Token validated for user: {UserId}", 
+                Log.Information("Token validated for user: {UserId}",
                     context.Principal?.FindFirst("sub")?.Value);
                 return Task.CompletedTask;
             },
             OnChallenge = context =>
             {
-                Log.Warning("JWT Challenge: {Error} - {ErrorDescription}", 
+                Log.Warning("JWT Challenge: {Error} - {ErrorDescription}",
                     context.Error, context.ErrorDescription);
                 return Task.CompletedTask;
             }
@@ -267,7 +253,7 @@ builder.Services.AddCors(options =>
 
         // Fallback to configuration if environment variable is not usable
         corsOrigins ??= builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-            ?? ["http://localhost:4200"];
+                        ?? ["http://localhost:4200"];
 
         Log.Information("CORS configured with allowed origins: {Origins}", string.Join(", ", corsOrigins));
 
@@ -360,15 +346,15 @@ app.MapGet("/", () => Results.Redirect("/swagger"))
 
 // Debug endpoint to check swagger generation
 app.MapGet("/swagger-debug", async (HttpContext context) =>
-{
-    var swaggerUrl = $"{context.Request.Scheme}://{context.Request.Host}/swagger/v1/swagger.json";
-    return Results.Ok(new 
-    { 
-        message = "If Swagger is working, the JSON should be available at the URL below",
-        swaggerJsonUrl = swaggerUrl,
-        hint = "Navigate directly to this URL to see if the JSON is generated correctly"
-    });
-})
+    {
+        var swaggerUrl = $"{context.Request.Scheme}://{context.Request.Host}/swagger/v1/swagger.json";
+        return Results.Ok(new
+        {
+            message = "If Swagger is working, the JSON should be available at the URL below",
+            swaggerJsonUrl = swaggerUrl,
+            hint = "Navigate directly to this URL to see if the JSON is generated correctly"
+        });
+    })
     .ExcludeFromDescription();
 
 app.MapGet("/api/health", async (CivicaDbContext context, ISupabaseService supabaseService) =>
@@ -447,7 +433,7 @@ if (!skipMigration)
             Log.Information($"Testing database connection (attempt {retry}/{maxRetries})...");
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             bool canConnect = await context.Database.CanConnectAsync(cts.Token);
-            
+
             if (!canConnect)
             {
                 Log.Warning($"Cannot connect to database on attempt {retry}");
@@ -489,7 +475,7 @@ if (!skipMigration)
         catch (Exception ex)
         {
             Log.Error(ex, $"Database migration attempt {retry} failed");
-            
+
             if (retry < maxRetries)
             {
                 Log.Information($"Waiting {delayMs * retry}ms before retry...");
