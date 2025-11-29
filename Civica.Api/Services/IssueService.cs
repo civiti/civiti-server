@@ -2,6 +2,7 @@ using Civica.Api.Services.Interfaces;
 using Civica.Api.Models.Requests.Issues;
 using Civica.Api.Models.Responses.Issues;
 using Civica.Api.Models.Responses.Common;
+using Civica.Api.Models.Responses.Authority;
 using Civica.Api.Models.Domain;
 using Civica.Api.Data;
 using Microsoft.EntityFrameworkCore;
@@ -111,6 +112,8 @@ public class IssueService(
             Issue? issue = await context.Issues
                 .Include(i => i.Photos)
                 .Include(i => i.User)
+                .Include(i => i.IssueAuthorities)
+                    .ThenInclude(ia => ia.Authority)
                 .Where(i => i.Id == id && i.PublicVisibility)
                 .FirstOrDefaultAsync();
 
@@ -152,6 +155,13 @@ public class IssueService(
                     Description = p.Description,
                     IsPrimary = p.IsPrimary,
                     CreatedAt = p.CreatedAt
+                }).ToList(),
+                Authorities = issue.IssueAuthorities.Select(ia => new IssueAuthorityResponse
+                {
+                    AuthorityId = ia.AuthorityId,
+                    Name = ia.Authority?.Name ?? ia.CustomName ?? string.Empty,
+                    Email = ia.Authority?.Email ?? ia.CustomEmail ?? string.Empty,
+                    IsPredefined = ia.AuthorityId.HasValue
                 }).ToList(),
                 User = new UserBasicResponse
                 {

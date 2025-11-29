@@ -2,6 +2,7 @@ using Civica.Api.Services.Interfaces;
 using Civica.Api.Models.Requests.Admin;
 using Civica.Api.Models.Responses.Admin;
 using Civica.Api.Models.Responses.Common;
+using Civica.Api.Models.Responses.Authority;
 using Civica.Api.Models.Domain;
 using Civica.Api.Data;
 using Microsoft.EntityFrameworkCore;
@@ -186,6 +187,13 @@ public class AdminService(
                     IsPrimary = p.IsPrimary,
                     FileSize = p.FileSize,
                     CreatedAt = p.CreatedAt
+                }).ToList(),
+                Authorities = issue.IssueAuthorities.Select(ia => new IssueAuthorityResponse
+                {
+                    AuthorityId = ia.AuthorityId,
+                    Name = ia.Authority?.Name ?? ia.CustomName ?? string.Empty,
+                    Email = ia.Authority?.Email ?? ia.CustomEmail ?? string.Empty,
+                    IsPredefined = ia.AuthorityId.HasValue
                 }).ToList(),
                 AdminActions = issue.AdminActions.Select(aa => new AdminActionResponse
                 {

@@ -1,4 +1,5 @@
 using Civica.Api.Models.Domain;
+using Civica.Api.Models.Responses.Authority;
 
 namespace Civica.Api.Models.Responses.Admin;
 
@@ -59,6 +60,7 @@ public class AdminIssueDetailResponse
     
     // Related data
     public List<AdminIssuePhotoResponse> Photos { get; set; } = [];
+    public List<IssueAuthorityResponse> Authorities { get; set; } = [];
     public List<AdminActionResponse> AdminActions { get; set; } = [];
     public int EmailsSent { get; set; }
 }
