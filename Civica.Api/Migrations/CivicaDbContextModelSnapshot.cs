@@ -78,7 +78,7 @@ namespace Civica.Api.Migrations
                         {
                             Id = new Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
                             AchievementType = "issues_reported",
-                            CreatedAt = new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(6570),
+                            CreatedAt = new DateTime(2025, 11, 29, 14, 10, 40, 989, DateTimeKind.Utc).AddTicks(6062),
                             Description = "Report your first issue",
                             IsActive = true,
                             MaxProgress = 1,
@@ -91,7 +91,7 @@ namespace Civica.Api.Migrations
                         {
                             Id = new Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
                             AchievementType = "issues_reported",
-                            CreatedAt = new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(6675),
+                            CreatedAt = new DateTime(2025, 11, 29, 14, 10, 40, 989, DateTimeKind.Utc).AddTicks(6172),
                             Description = "Report 10 issues",
                             IsActive = true,
                             MaxProgress = 10,
@@ -159,6 +159,136 @@ namespace Civica.Api.Migrations
                     b.ToTable("AdminActions");
                 });
 
+            modelBuilder.Entity("Civica.Api.Models.Domain.Authority", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.HasIndex("IsActive");
+
+                    b.ToTable("Authorities");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("a0000001-0000-0000-0000-000000000001"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "pmb@pmb.ro",
+                            IsActive = true,
+                            Name = "Primăria Municipiului București"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000001-0000-0000-0000-000000000002"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "primarie@primarias1.ro",
+                            IsActive = true,
+                            Name = "Primăria Sectorului 1 București"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000001-0000-0000-0000-000000000003"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "primarie@ps2.ro",
+                            IsActive = true,
+                            Name = "Primăria Sectorului 2 București"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000001-0000-0000-0000-000000000004"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "primarie@primarie3.ro",
+                            IsActive = true,
+                            Name = "Primăria Sectorului 3 București"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000001-0000-0000-0000-000000000005"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "primarie@ps4.ro",
+                            IsActive = true,
+                            Name = "Primăria Sectorului 4 București"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000001-0000-0000-0000-000000000006"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "primarie@sector5.ro",
+                            IsActive = true,
+                            Name = "Primăria Sectorului 5 București"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000001-0000-0000-0000-000000000007"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "primarie@primarie6.ro",
+                            IsActive = true,
+                            Name = "Primăria Sectorului 6 București"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000002-0000-0000-0000-000000000001"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "primarie@primariaclujnapoca.ro",
+                            IsActive = true,
+                            Name = "Primăria Municipiului Cluj-Napoca"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000002-0000-0000-0000-000000000002"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "primarie@primariatm.ro",
+                            IsActive = true,
+                            Name = "Primăria Municipiului Timișoara"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000002-0000-0000-0000-000000000003"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "primarie@primaria-iasi.ro",
+                            IsActive = true,
+                            Name = "Primăria Municipiului Iași"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000002-0000-0000-0000-000000000004"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "primarie@primaria-constanta.ro",
+                            IsActive = true,
+                            Name = "Primăria Municipiului Constanța"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0000002-0000-0000-0000-000000000005"),
+                            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "primarie@brasovcity.ro",
+                            IsActive = true,
+                            Name = "Primăria Municipiului Brașov"
+                        });
+                });
+
             modelBuilder.Entity("Civica.Api.Models.Domain.Badge", b =>
                 {
                     b.Property<Guid>("Id")
@@ -224,7 +354,7 @@ namespace Civica.Api.Migrations
                         {
                             Id = new Guid("11111111-1111-1111-1111-111111111111"),
                             Category = "Starter",
-                            CreatedAt = new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(305),
+                            CreatedAt = new DateTime(2025, 11, 29, 14, 10, 40, 988, DateTimeKind.Utc).AddTicks(9125),
                             Description = "Reported your first community issue",
                             IconUrl = "/assets/badges/civic-starter.svg",
                             IsActive = true,
@@ -238,7 +368,7 @@ namespace Civica.Api.Migrations
                         {
                             Id = new Guid("22222222-2222-2222-2222-222222222222"),
                             Category = "Progress",
-                            CreatedAt = new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(431),
+                            CreatedAt = new DateTime(2025, 11, 29, 14, 10, 40, 988, DateTimeKind.Utc).AddTicks(9190),
                             Description = "Uploaded high-quality photos with your report",
                             IconUrl = "/assets/badges/picture-perfect.svg",
                             IsActive = true,
@@ -250,23 +380,9 @@ namespace Civica.Api.Migrations
                         },
                         new
                         {
-                            Id = new Guid("33333333-3333-3333-3333-333333333333"),
-                            Category = "Starter",
-                            CreatedAt = new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(433),
-                            Description = "Sent your first email to authorities",
-                            IconUrl = "/assets/badges/email-warrior.svg",
-                            IsActive = true,
-                            Name = "Email Warrior",
-                            Rarity = "Common",
-                            RequirementDescription = "Send your first email",
-                            RequirementType = "emails_sent",
-                            RequirementValue = 1
-                        },
-                        new
-                        {
                             Id = new Guid("44444444-4444-4444-4444-444444444444"),
                             Category = "Progress",
-                            CreatedAt = new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(436),
+                            CreatedAt = new DateTime(2025, 11, 29, 14, 10, 40, 988, DateTimeKind.Utc).AddTicks(9193),
                             Description = "Voted on 10 community issues",
                             IconUrl = "/assets/badges/community-voice.svg",
                             IsActive = true,
@@ -280,7 +396,7 @@ namespace Civica.Api.Migrations
                         {
                             Id = new Guid("55555555-5555-5555-5555-555555555555"),
                             Category = "Achievement",
-                            CreatedAt = new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(438),
+                            CreatedAt = new DateTime(2025, 11, 29, 14, 10, 40, 988, DateTimeKind.Utc).AddTicks(9195),
                             Description = "3 of your issues have been resolved",
                             IconUrl = "/assets/badges/problem-solver.svg",
                             IsActive = true,
@@ -290,63 +406,6 @@ namespace Civica.Api.Migrations
                             RequirementType = "issues_resolved",
                             RequirementValue = 3
                         });
-                });
-
-            modelBuilder.Entity("Civica.Api.Models.Domain.EmailTracking", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("AuthorityEmail")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("AuthorityName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("EmailAddress")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("EmailBody")
-                        .HasColumnType("text");
-
-                    b.Property<string>("EmailSubject")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("IssueId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("RecipientType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("SentAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("TrackingStatus")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IssueId");
-
-                    b.HasIndex("SentAt")
-                        .IsDescending();
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("IssueId", "UserId", "AuthorityEmail")
-                        .IsUnique();
-
-                    b.ToTable("EmailTrackings");
                 });
 
             modelBuilder.Entity("Civica.Api.Models.Domain.Issue", b =>
@@ -376,10 +435,6 @@ namespace Civica.Api.Migrations
                     b.Property<string>("AssignedDepartment")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
-
-                    b.Property<string>("AuthorityEmail")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
 
                     b.Property<string>("Category")
                         .IsRequired()
@@ -509,6 +564,49 @@ namespace Civica.Api.Migrations
                         .HasFilter("\"Status\" = 'Approved' AND \"PublicVisibility\" = true");
 
                     b.ToTable("Issues");
+                });
+
+            modelBuilder.Entity("Civica.Api.Models.Domain.IssueAuthority", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AuthorityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CustomEmail")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("CustomName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("IssueId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorityId");
+
+                    b.HasIndex("IssueId");
+
+                    b.HasIndex("IssueId", "AuthorityId")
+                        .IsUnique()
+                        .HasFilter("\"AuthorityId\" IS NOT NULL");
+
+                    b.HasIndex("IssueId", "CustomEmail")
+                        .IsUnique()
+                        .HasFilter("\"CustomEmail\" IS NOT NULL");
+
+                    b.ToTable("IssueAuthorities", t =>
+                        {
+                            t.HasCheckConstraint("CK_IssueAuthority_AuthorityOrCustom", "(\"AuthorityId\" IS NOT NULL AND \"CustomName\" IS NULL AND \"CustomEmail\" IS NULL) OR (\"AuthorityId\" IS NULL AND \"CustomName\" IS NOT NULL AND \"CustomEmail\" IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Civica.Api.Models.Domain.IssuePhoto", b =>
@@ -812,25 +910,6 @@ namespace Civica.Api.Migrations
                     b.Navigation("Issue");
                 });
 
-            modelBuilder.Entity("Civica.Api.Models.Domain.EmailTracking", b =>
-                {
-                    b.HasOne("Civica.Api.Models.Domain.Issue", "Issue")
-                        .WithMany("EmailTrackings")
-                        .HasForeignKey("IssueId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Civica.Api.Models.Domain.UserProfile", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Issue");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("Civica.Api.Models.Domain.Issue", b =>
                 {
                     b.HasOne("Civica.Api.Models.Domain.UserProfile", "User")
@@ -840,6 +919,24 @@ namespace Civica.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Civica.Api.Models.Domain.IssueAuthority", b =>
+                {
+                    b.HasOne("Civica.Api.Models.Domain.Authority", "Authority")
+                        .WithMany("IssueAuthorities")
+                        .HasForeignKey("AuthorityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Civica.Api.Models.Domain.Issue", "Issue")
+                        .WithMany("IssueAuthorities")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Authority");
+
+                    b.Navigation("Issue");
                 });
 
             modelBuilder.Entity("Civica.Api.Models.Domain.IssuePhoto", b =>
@@ -896,6 +993,11 @@ namespace Civica.Api.Migrations
                     b.Navigation("UserAchievements");
                 });
 
+            modelBuilder.Entity("Civica.Api.Models.Domain.Authority", b =>
+                {
+                    b.Navigation("IssueAuthorities");
+                });
+
             modelBuilder.Entity("Civica.Api.Models.Domain.Badge", b =>
                 {
                     b.Navigation("UserBadges");
@@ -905,7 +1007,7 @@ namespace Civica.Api.Migrations
                 {
                     b.Navigation("AdminActions");
 
-                    b.Navigation("EmailTrackings");
+                    b.Navigation("IssueAuthorities");
 
                     b.Navigation("Photos");
                 });

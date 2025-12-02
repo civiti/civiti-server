@@ -1,4 +1,5 @@
 using Civica.Api.Models.Domain;
+using Civica.Api.Models.Responses.Authority;
 
 namespace Civica.Api.Models.Responses.Issues;
 
@@ -15,7 +16,6 @@ public class IssueDetailResponse
     public string? District { get; set; }
     public string? Landmark { get; set; }
     public UrgencyLevel Urgency { get; set; }
-    public string? AuthorityEmail { get; set; }
     public int? EstimatedImpact { get; set; }
     public List<string>? Tags { get; set; }
     public IssueStatus Status { get; set; }
@@ -31,6 +31,7 @@ public class IssueDetailResponse
     
     // Related data
     public List<IssuePhotoResponse> Photos { get; set; } = [];
+    public List<IssueAuthorityResponse> Authorities { get; set; } = [];
     public UserBasicResponse User { get; set; } = null!;
 }
 

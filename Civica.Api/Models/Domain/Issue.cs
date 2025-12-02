@@ -15,7 +15,6 @@ public class Issue
     public string? District { get; set; } // District/Sector for Romanian administrative divisions
     public string? Landmark { get; set; }
     public UrgencyLevel Urgency { get; set; }
-    public string? AuthorityEmail { get; set; } // Target authority email address
     public int? EstimatedImpact { get; set; } // Estimated number of people affected
     public string? Tags { get; set; } // Comma-separated tags for categorization
     public IssueStatus Status { get; set; } = IssueStatus.Submitted;
@@ -41,7 +40,7 @@ public class Issue
     public UserProfile User { get; set; } = null!;
     public List<IssuePhoto> Photos { get; set; } = [];
     public List<AdminAction> AdminActions { get; set; } = [];
-    public List<EmailTracking> EmailTrackings { get; set; } = [];
+    public List<IssueAuthority> IssueAuthorities { get; set; } = [];
 }
 
 /// <summary>

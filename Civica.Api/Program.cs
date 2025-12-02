@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.Options;
 using System.Text.RegularExpressions;
@@ -190,6 +191,12 @@ builder.Services.AddSingleton<IJwksManager, JwksManager>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHostedService<JwksBackgroundService>();
 
+// Register demo data seeder (Development only)
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddHostedService<DemoDataSeeder>();
+}
+
 // Add JWT Bearer authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -300,6 +307,7 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IIssueService, IssueService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<IGamificationService, GamificationService>();
+builder.Services.AddScoped<IAuthorityService, AuthorityService>();
 
 // Validators
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
@@ -308,6 +316,18 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddHttpClient();
 
 WebApplication app = builder.Build();
+
+// Configure forwarded headers for reverse proxy (Railway, etc.)
+// This must be first in the pipeline to correctly set RemoteIpAddress
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    ForwardLimit = 1 // Only trust the first proxy hop to prevent spoofing
+};
+// Clear default known networks/proxies to allow any proxy (needed for cloud deployments)
+forwardedHeadersOptions.KnownNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
 
 // Configure pipeline~~~
 // Enable Swagger in both Development and Production for Railway deployment
@@ -359,6 +379,7 @@ app.MapUserEndpoints();
 app.MapIssueEndpoints();
 app.MapAdminEndpoints();
 app.MapGamificationEndpoints();
+app.MapAuthorityEndpoints();
 app.MapJwksEndpoints(); // JWKS management and monitoring endpoints
 app.MapDevAuthEndpoints(); // Development-only endpoints for testing
 

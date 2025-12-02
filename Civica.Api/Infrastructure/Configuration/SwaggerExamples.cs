@@ -87,7 +87,11 @@ public class CreateIssueRequestExample : IExamplesProvider<CreateIssueRequest>
                 "https://storage.civica.ro/photos/issue-123-photo1.jpg",
                 "https://storage.civica.ro/photos/issue-123-photo2.jpg"
             ],
-            AuthorityEmail = "primarie.sector2@pmb.ro",
+            Authorities =
+            [
+                new IssueAuthorityInput { AuthorityId = Guid.NewGuid() },
+                new IssueAuthorityInput { CustomName = "Primăria Sector 2", CustomEmail = "primarie.sector2@pmb.ro" }
+            ],
             EstimatedImpact = 500,
             Tags = ["infrastructură", "siguranță", "urgent"]
         };
@@ -138,7 +142,7 @@ public class PagedIssueListResponseExample : IExamplesProvider<PagedResult<Issue
 }
 
 /// <summary>
-/// Example provider for AdminIssueResponse
+/// Example provider for AdminIssueResponse (lightweight list view)
 /// </summary>
 public class AdminIssueResponseExample : IExamplesProvider<AdminIssueResponse>
 {
@@ -148,44 +152,15 @@ public class AdminIssueResponseExample : IExamplesProvider<AdminIssueResponse>
         {
             Id = Guid.NewGuid(),
             Title = "Iluminat stradal defect",
-            Description = "Toate lămpile stradale de pe strada Victoriei sunt nefuncționale de 2 săptămâni.",
             Category = IssueCategory.Infrastructure,
             Urgency = UrgencyLevel.Medium,
             Priority = Priority.High,
-            Status = IssueStatus.Approved,
+            Status = IssueStatus.Submitted,
             Address = "Strada Victoriei, între nr. 10-50",
-            Neighborhood = "Centru",
             CreatedAt = DateTime.UtcNow.AddDays(-2),
-            UpdatedAt = DateTime.UtcNow.AddDays(-1),
             PhotoCount = 3,
             EmailsSent = 0,
-
-            // User info
-            UserId = Guid.NewGuid(),
-            UserName = "Maria Ionescu",
-            UserEmail = "maria.ionescu@example.com",
-            UserTotalIssues = 5,
-
-            // Review info
-            ReviewedAt = null,
-            ReviewedBy = null,
-            RejectionReason = null,
-            AdminNotes = null,
-
-            // Assignment info
-            AssignedDepartment = null,
-            EstimatedResolutionTime = null,
-
-            // Additional details
-            CurrentSituation = "Întuneric complet pe stradă seara, pericol pentru pietoni",
-            DesiredOutcome = "Repararea sistemului de iluminat în maximum 1 săptămână",
-            CommunityImpact = "Afectează siguranța a peste 200 de rezidenți",
-            PublicVisibility = false,
-
-            // AI analysis
-            AIGeneratedDescription = null,
-            AIProposedSolution = null,
-            AIConfidence = null
+            UserName = "Maria Ionescu"
         };
     }
 }

@@ -2,6 +2,7 @@ using Civica.Api.Services.Interfaces;
 using Civica.Api.Models.Requests.Admin;
 using Civica.Api.Models.Responses.Admin;
 using Civica.Api.Models.Responses.Common;
+using Civica.Api.Models.Responses.Authority;
 using Civica.Api.Models.Domain;
 using Civica.Api.Data;
 using Microsoft.EntityFrameworkCore;
@@ -76,27 +77,15 @@ public class AdminService(
                 {
                     Id = i.Id,
                     Title = i.Title,
-                    Description = i.Description,
                     Category = i.Category,
                     Urgency = i.Urgency,
                     Priority = i.Priority,
                     Status = i.Status,
                     Address = i.Address,
-                    Neighborhood = i.Neighborhood,
                     CreatedAt = i.CreatedAt,
-                    UpdatedAt = i.UpdatedAt,
                     PhotoCount = i.Photos.Count,
                     EmailsSent = i.EmailsSent,
-                    UserId = i.UserId,
-                    UserName = i.User.DisplayName,
-                    UserEmail = i.User.Email,
-                    UserTotalIssues = context.Issues.Count(issue => issue.UserId == i.UserId),
-                    ReviewedAt = i.ReviewedAt,
-                    ReviewedBy = i.ReviewedBy,
-                    RejectionReason = i.RejectionReason,
-                    AIGeneratedDescription = i.AIGeneratedDescription,
-                    AIProposedSolution = i.AIProposedSolution,
-                    AIConfidence = i.AIConfidence
+                    UserName = i.User.DisplayName
                 })
                 .ToListAsync();
 
@@ -125,7 +114,8 @@ public class AdminService(
                 .Include(i => i.Photos)
                 .Include(i => i.AdminActions)
                     .ThenInclude(aa => aa.AdminUser)
-                .Include(i => i.EmailTrackings)
+                .Include(i => i.IssueAuthorities)
+                    .ThenInclude(ia => ia.Authority)
                 .FirstOrDefaultAsync(i => i.Id == issueId);
 
             if (issue == null)
@@ -135,10 +125,6 @@ public class AdminService(
 
             var userResolvedIssues = await context.Issues
                 .CountAsync(i => i.UserId == issue.UserId && i.Status == IssueStatus.Resolved);
-
-            DateTime? lastEmailSent = issue.EmailTrackings
-                .OrderByDescending(et => et.SentAt)
-                .FirstOrDefault()?.SentAt;
 
             return new AdminIssueDetailResponse
             {
@@ -156,7 +142,6 @@ public class AdminService(
                 Neighborhood = issue.Neighborhood,
                 District = issue.District,
                 Landmark = issue.Landmark,
-                AuthorityEmail = issue.AuthorityEmail,
                 EstimatedImpact = issue.EstimatedImpact,
                 Tags = issue.Tags?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList(),
                 CurrentSituation = issue.CurrentSituation,
@@ -191,6 +176,13 @@ public class AdminService(
                     FileSize = p.FileSize,
                     CreatedAt = p.CreatedAt
                 }).ToList(),
+                Authorities = issue.IssueAuthorities.Select(ia => new IssueAuthorityResponse
+                {
+                    AuthorityId = ia.AuthorityId,
+                    Name = ia.Authority?.Name ?? ia.CustomName ?? string.Empty,
+                    Email = ia.Authority?.Email ?? ia.CustomEmail ?? string.Empty,
+                    IsPredefined = ia.AuthorityId.HasValue
+                }).ToList(),
                 AdminActions = issue.AdminActions.Select(aa => new AdminActionResponse
                 {
                     Id = aa.Id,
@@ -207,8 +199,7 @@ public class AdminService(
                     EstimatedResolutionTime = aa.EstimatedResolutionTime,
                     CreatedAt = aa.CreatedAt
                 }).ToList(),
-                EmailsSent = issue.EmailsSent,
-                LastEmailSentAt = lastEmailSent
+                EmailsSent = issue.EmailsSent
             };
         }
         catch (Exception ex)
@@ -582,7 +573,7 @@ public class AdminService(
                 .Distinct()
                 .CountAsync();
 
-            var totalEmailsSent = await context.EmailTrackings.CountAsync();
+            var totalEmailsSent = await context.Issues.SumAsync(i => i.EmailsSent);
 
             // Performance metrics
             var totalIssues = periodIssues.Count;

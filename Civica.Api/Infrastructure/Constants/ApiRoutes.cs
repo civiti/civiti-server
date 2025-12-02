@@ -44,6 +44,12 @@ public static class ApiRoutes
         public const string Achievements = "/achievements";
         public const string Leaderboard = "/leaderboard";
     }
+
+    public static class Authorities
+    {
+        public const string Base = $"{ApiBase}/authorities";
+        public const string ById = "/{id:guid}";
+    }
     
     public static class Utility
     {

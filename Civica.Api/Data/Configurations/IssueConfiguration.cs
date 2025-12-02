@@ -34,10 +34,7 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
             
         builder.Property(i => i.Landmark)
             .HasMaxLength(200);
-            
-        builder.Property(i => i.AuthorityEmail)
-            .HasMaxLength(255);
-            
+
         builder.Property(i => i.EstimatedImpact)
             .HasColumnType("integer");
             
@@ -105,10 +102,10 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
             .WithOne(a => a.Issue)
             .HasForeignKey(a => a.IssueId)
             .OnDelete(DeleteBehavior.Cascade);
-            
-        builder.HasMany(i => i.EmailTrackings)
-            .WithOne(e => e.Issue)
-            .HasForeignKey(e => e.IssueId)
+
+        builder.HasMany(i => i.IssueAuthorities)
+            .WithOne(ia => ia.Issue)
+            .HasForeignKey(ia => ia.IssueId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

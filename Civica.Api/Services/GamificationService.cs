@@ -498,7 +498,6 @@ public class GamificationService(
         {
             "issues_reported" => user.IssuesReported >= badge.RequirementValue,
             "issues_resolved" => user.IssuesResolved >= badge.RequirementValue,
-            "emails_sent" => await context.EmailTrackings.CountAsync(et => et.UserId == user.Id) >= badge.RequirementValue,
             "community_votes" => user.CommunityVotes >= badge.RequirementValue,
             "quality_photos" => await CheckQualityPhotos(user.Id, badge.RequirementValue.Value),
             "login_streak" => user.CurrentLoginStreak >= badge.RequirementValue,

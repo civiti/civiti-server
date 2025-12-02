@@ -14,6 +14,21 @@ namespace Civica.Api.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
+                name: "Authorities",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Email = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    IsActive = table.Column<bool>(type: "boolean", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Authorities", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Badges",
                 columns: table => new
                 {
@@ -118,7 +133,6 @@ namespace Civica.Api.Migrations
                     District = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     Landmark = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     Urgency = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false, defaultValue: "Medium"),
-                    AuthorityEmail = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
                     EstimatedImpact = table.Column<int>(type: "integer", nullable: true),
                     Tags = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     Status = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false, defaultValue: "Submitted"),
@@ -239,34 +253,30 @@ namespace Civica.Api.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "EmailTrackings",
+                name: "IssueAuthorities",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     IssueId = table.Column<Guid>(type: "uuid", nullable: false),
-                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
-                    EmailAddress = table.Column<string>(type: "text", nullable: false),
-                    AuthorityEmail = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
-                    AuthorityName = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
-                    EmailSubject = table.Column<string>(type: "text", nullable: true),
-                    EmailBody = table.Column<string>(type: "text", nullable: true),
-                    RecipientType = table.Column<string>(type: "text", nullable: false),
-                    TrackingStatus = table.Column<string>(type: "text", nullable: false),
-                    SentAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    AuthorityId = table.Column<Guid>(type: "uuid", nullable: true),
+                    CustomName = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    CustomEmail = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_EmailTrackings", x => x.Id);
+                    table.PrimaryKey("PK_IssueAuthorities", x => x.Id);
+                    table.CheckConstraint("CK_IssueAuthority_AuthorityOrCustom", "(\"AuthorityId\" IS NOT NULL AND \"CustomName\" IS NULL AND \"CustomEmail\" IS NULL) OR (\"AuthorityId\" IS NULL AND \"CustomName\" IS NOT NULL AND \"CustomEmail\" IS NOT NULL)");
                     table.ForeignKey(
-                        name: "FK_EmailTrackings_Issues_IssueId",
+                        name: "FK_IssueAuthorities_Authorities_AuthorityId",
+                        column: x => x.AuthorityId,
+                        principalTable: "Authorities",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_IssueAuthorities_Issues_IssueId",
                         column: x => x.IssueId,
                         principalTable: "Issues",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_EmailTrackings_UserProfiles_UserId",
-                        column: x => x.UserId,
-                        principalTable: "UserProfiles",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -303,36 +313,51 @@ namespace Civica.Api.Migrations
             migrationBuilder.InsertData(
                 table: "Achievements",
                 columns: new[] { "Id", "AchievementType", "CreatedAt", "Description", "IsActive", "MaxProgress", "RequirementData", "RewardBadgeId", "RewardPoints", "Title" },
-                values: new object[] { new Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), "issues_reported", new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(6675), "Report 10 issues", true, 10, "{\"target\": 10}", null, 200, "Community Champion" });
+                values: new object[] { new Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), "issues_reported", new DateTime(2025, 11, 29, 14, 10, 40, 989, DateTimeKind.Utc).AddTicks(6172), "Report 10 issues", true, 10, "{\"target\": 10}", null, 200, "Community Champion" });
 
             migrationBuilder.InsertData(
-                table: "Badges",
-                columns: new[] { "Id", "Category", "CreatedAt", "Description", "IconUrl", "IsActive", "Name", "RequirementDescription", "RequirementType", "RequirementValue" },
-                values: new object[] { new Guid("11111111-1111-1111-1111-111111111111"), "Starter", new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(305), "Reported your first community issue", "/assets/badges/civic-starter.svg", true, "Civic Starter", "Report your first issue", "issues_reported", 1 });
-
-            migrationBuilder.InsertData(
-                table: "Badges",
-                columns: new[] { "Id", "Category", "CreatedAt", "Description", "IconUrl", "IsActive", "Name", "Rarity", "RequirementDescription", "RequirementType", "RequirementValue" },
-                values: new object[] { new Guid("22222222-2222-2222-2222-222222222222"), "Progress", new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(431), "Uploaded high-quality photos with your report", "/assets/badges/picture-perfect.svg", true, "Picture Perfect", "Uncommon", "Upload 3 high-quality photos", "quality_photos", 3 });
-
-            migrationBuilder.InsertData(
-                table: "Badges",
-                columns: new[] { "Id", "Category", "CreatedAt", "Description", "IconUrl", "IsActive", "Name", "RequirementDescription", "RequirementType", "RequirementValue" },
+                table: "Authorities",
+                columns: new[] { "Id", "CreatedAt", "Email", "IsActive", "Name" },
                 values: new object[,]
                 {
-                    { new Guid("33333333-3333-3333-3333-333333333333"), "Starter", new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(433), "Sent your first email to authorities", "/assets/badges/email-warrior.svg", true, "Email Warrior", "Send your first email", "emails_sent", 1 },
-                    { new Guid("44444444-4444-4444-4444-444444444444"), "Progress", new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(436), "Voted on 10 community issues", "/assets/badges/community-voice.svg", true, "Community Voice", "Vote on 10 issues", "community_votes", 10 }
+                    { new Guid("a0000001-0000-0000-0000-000000000001"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "pmb@pmb.ro", true, "Primăria Municipiului București" },
+                    { new Guid("a0000001-0000-0000-0000-000000000002"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "primarie@primarias1.ro", true, "Primăria Sectorului 1 București" },
+                    { new Guid("a0000001-0000-0000-0000-000000000003"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "primarie@ps2.ro", true, "Primăria Sectorului 2 București" },
+                    { new Guid("a0000001-0000-0000-0000-000000000004"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "primarie@primarie3.ro", true, "Primăria Sectorului 3 București" },
+                    { new Guid("a0000001-0000-0000-0000-000000000005"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "primarie@ps4.ro", true, "Primăria Sectorului 4 București" },
+                    { new Guid("a0000001-0000-0000-0000-000000000006"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "primarie@sector5.ro", true, "Primăria Sectorului 5 București" },
+                    { new Guid("a0000001-0000-0000-0000-000000000007"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "primarie@primarie6.ro", true, "Primăria Sectorului 6 București" },
+                    { new Guid("a0000002-0000-0000-0000-000000000001"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "primarie@primariaclujnapoca.ro", true, "Primăria Municipiului Cluj-Napoca" },
+                    { new Guid("a0000002-0000-0000-0000-000000000002"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "primarie@primariatm.ro", true, "Primăria Municipiului Timișoara" },
+                    { new Guid("a0000002-0000-0000-0000-000000000003"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "primarie@primaria-iasi.ro", true, "Primăria Municipiului Iași" },
+                    { new Guid("a0000002-0000-0000-0000-000000000004"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "primarie@primaria-constanta.ro", true, "Primăria Municipiului Constanța" },
+                    { new Guid("a0000002-0000-0000-0000-000000000005"), new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "primarie@brasovcity.ro", true, "Primăria Municipiului Brașov" }
                 });
 
             migrationBuilder.InsertData(
                 table: "Badges",
+                columns: new[] { "Id", "Category", "CreatedAt", "Description", "IconUrl", "IsActive", "Name", "RequirementDescription", "RequirementType", "RequirementValue" },
+                values: new object[] { new Guid("11111111-1111-1111-1111-111111111111"), "Starter", new DateTime(2025, 11, 29, 14, 10, 40, 988, DateTimeKind.Utc).AddTicks(9125), "Reported your first community issue", "/assets/badges/civic-starter.svg", true, "Civic Starter", "Report your first issue", "issues_reported", 1 });
+
+            migrationBuilder.InsertData(
+                table: "Badges",
                 columns: new[] { "Id", "Category", "CreatedAt", "Description", "IconUrl", "IsActive", "Name", "Rarity", "RequirementDescription", "RequirementType", "RequirementValue" },
-                values: new object[] { new Guid("55555555-5555-5555-5555-555555555555"), "Achievement", new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(438), "3 of your issues have been resolved", "/assets/badges/problem-solver.svg", true, "Problem Solver", "Rare", "3 issues resolved", "issues_resolved", 3 });
+                values: new object[] { new Guid("22222222-2222-2222-2222-222222222222"), "Progress", new DateTime(2025, 11, 29, 14, 10, 40, 988, DateTimeKind.Utc).AddTicks(9190), "Uploaded high-quality photos with your report", "/assets/badges/picture-perfect.svg", true, "Picture Perfect", "Uncommon", "Upload 3 high-quality photos", "quality_photos", 3 });
+
+            migrationBuilder.InsertData(
+                table: "Badges",
+                columns: new[] { "Id", "Category", "CreatedAt", "Description", "IconUrl", "IsActive", "Name", "RequirementDescription", "RequirementType", "RequirementValue" },
+                values: new object[] { new Guid("44444444-4444-4444-4444-444444444444"), "Progress", new DateTime(2025, 11, 29, 14, 10, 40, 988, DateTimeKind.Utc).AddTicks(9193), "Voted on 10 community issues", "/assets/badges/community-voice.svg", true, "Community Voice", "Vote on 10 issues", "community_votes", 10 });
+
+            migrationBuilder.InsertData(
+                table: "Badges",
+                columns: new[] { "Id", "Category", "CreatedAt", "Description", "IconUrl", "IsActive", "Name", "Rarity", "RequirementDescription", "RequirementType", "RequirementValue" },
+                values: new object[] { new Guid("55555555-5555-5555-5555-555555555555"), "Achievement", new DateTime(2025, 11, 29, 14, 10, 40, 988, DateTimeKind.Utc).AddTicks(9195), "3 of your issues have been resolved", "/assets/badges/problem-solver.svg", true, "Problem Solver", "Rare", "3 issues resolved", "issues_resolved", 3 });
 
             migrationBuilder.InsertData(
                 table: "Achievements",
                 columns: new[] { "Id", "AchievementType", "CreatedAt", "Description", "IsActive", "MaxProgress", "RequirementData", "RewardBadgeId", "RewardPoints", "Title" },
-                values: new object[] { new Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), "issues_reported", new DateTime(2025, 8, 31, 12, 37, 39, 828, DateTimeKind.Utc).AddTicks(6570), "Report your first issue", true, 1, "{\"target\": 1}", new Guid("11111111-1111-1111-1111-111111111111"), 50, "First Steps" });
+                values: new object[] { new Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), "issues_reported", new DateTime(2025, 11, 29, 14, 10, 40, 989, DateTimeKind.Utc).AddTicks(6062), "Report your first issue", true, 1, "{\"target\": 1}", new Guid("11111111-1111-1111-1111-111111111111"), 50, "First Steps" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Achievements_AchievementType",
@@ -366,6 +391,17 @@ namespace Civica.Api.Migrations
                 column: "IssueId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Authorities_Email",
+                table: "Authorities",
+                column: "Email",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Authorities_IsActive",
+                table: "Authorities",
+                column: "IsActive");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Badges_Category",
                 table: "Badges",
                 column: "Category");
@@ -382,26 +418,28 @@ namespace Civica.Api.Migrations
                 column: "Rarity");
 
             migrationBuilder.CreateIndex(
-                name: "IX_EmailTrackings_IssueId",
-                table: "EmailTrackings",
+                name: "IX_IssueAuthorities_AuthorityId",
+                table: "IssueAuthorities",
+                column: "AuthorityId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IssueAuthorities_IssueId",
+                table: "IssueAuthorities",
                 column: "IssueId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_EmailTrackings_IssueId_UserId_AuthorityEmail",
-                table: "EmailTrackings",
-                columns: new[] { "IssueId", "UserId", "AuthorityEmail" },
-                unique: true);
+                name: "IX_IssueAuthorities_IssueId_AuthorityId",
+                table: "IssueAuthorities",
+                columns: new[] { "IssueId", "AuthorityId" },
+                unique: true,
+                filter: "\"AuthorityId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
-                name: "IX_EmailTrackings_SentAt",
-                table: "EmailTrackings",
-                column: "SentAt",
-                descending: new bool[0]);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EmailTrackings_UserId",
-                table: "EmailTrackings",
-                column: "UserId");
+                name: "IX_IssueAuthorities_IssueId_CustomEmail",
+                table: "IssueAuthorities",
+                columns: new[] { "IssueId", "CustomEmail" },
+                unique: true,
+                filter: "\"CustomEmail\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_IssuePhotos_CreatedAt",
@@ -542,7 +580,7 @@ namespace Civica.Api.Migrations
                 name: "AdminActions");
 
             migrationBuilder.DropTable(
-                name: "EmailTrackings");
+                name: "IssueAuthorities");
 
             migrationBuilder.DropTable(
                 name: "IssuePhotos");
@@ -552,6 +590,9 @@ namespace Civica.Api.Migrations
 
             migrationBuilder.DropTable(
                 name: "UserBadges");
+
+            migrationBuilder.DropTable(
+                name: "Authorities");
 
             migrationBuilder.DropTable(
                 name: "Issues");

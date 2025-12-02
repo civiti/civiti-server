@@ -47,13 +47,10 @@ public class CreateIssueRequest
     public string District { get; set; } = string.Empty;
     
     /// <summary>
-    /// Email address of the responsible authority
+    /// Target authorities for this issue (predefined or custom)
     /// </summary>
-    /// <example>primarie.sector2@pmb.ro</example>
-    [EmailAddress]
-    [MaxLength(200)]
-    public string? AuthorityEmail { get; set; }
-    
+    public List<IssueAuthorityInput>? Authorities { get; set; }
+
     /// <summary>
     /// Estimated number of people impacted
     /// </summary>
@@ -143,4 +140,28 @@ public class CreateIssueRequest
     /// <example>["https://storage.civica.ro/photos/issue-123-photo1.jpg"]</example>
     [MaxLength(5)]
     public List<string>? PhotoUrls { get; set; }
+}
+
+/// <summary>
+/// Input model for linking an authority to an issue
+/// </summary>
+public class IssueAuthorityInput
+{
+    /// <summary>
+    /// ID of a predefined authority. If provided, CustomName and CustomEmail should be null.
+    /// </summary>
+    public Guid? AuthorityId { get; set; }
+
+    /// <summary>
+    /// Custom authority name. Required if AuthorityId is not provided.
+    /// </summary>
+    [MaxLength(200)]
+    public string? CustomName { get; set; }
+
+    /// <summary>
+    /// Custom authority email. Required if AuthorityId is not provided.
+    /// </summary>
+    [EmailAddress]
+    [MaxLength(255)]
+    public string? CustomEmail { get; set; }
 }

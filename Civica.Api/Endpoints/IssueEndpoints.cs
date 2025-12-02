@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Civica.Api.Services;
 using Civica.Api.Services.Interfaces;
 using Civica.Api.Infrastructure.Constants;
 using Civica.Api.Infrastructure.Extensions;
@@ -126,43 +127,42 @@ public static class IssueEndpoints
         .Produces(429)
         .WithOpenApi();
 
-        // PUT /api/issues/{id}/email-sent
-        group.MapPut("/{id:guid}/email-sent", [Authorize] async Task<Results<Ok, BadRequest<string>, NotFound, UnauthorizedHttpResult>> (
+        // POST /api/issues/{id}/email-sent
+        group.MapPost("/{id:guid}/email-sent", async Task<Results<Ok, BadRequest<string>, NotFound, StatusCodeHttpResult>> (
             IIssueService issueService,
             Guid id,
-            TrackEmailRequest request,
             HttpContext httpContext) =>
         {
-            var supabaseUserId = httpContext.User.GetSupabaseUserId();
-            
-            if (string.IsNullOrEmpty(supabaseUserId))
-            {
-                return TypedResults.Unauthorized();
-            }
+            // Get client IP for rate limiting
+            // Note: ForwardedHeaders middleware handles X-Forwarded-For, so RemoteIpAddress is already correct
+            string? clientIp = httpContext.Connection.RemoteIpAddress?.ToString();
 
-            try
+            var (success, error) = await issueService.IncrementEmailCountAsync(id, clientIp);
+
+            if (!success)
             {
-                var success = await issueService.TrackEmailSentAsync(id, request, supabaseUserId);
-                
-                if (!success)
+                if (error == "Issue not found")
                 {
                     return TypedResults.NotFound();
                 }
 
-                return TypedResults.Ok();
+                if (error == IssueService.RateLimitedError)
+                {
+                    return TypedResults.StatusCode(429);
+                }
+
+                return TypedResults.BadRequest(error);
             }
-            catch (Exception ex)
-            {
-                return TypedResults.BadRequest(ex.Message);
-            }
+
+            return TypedResults.Ok();
         })
-        .WithName("TrackEmailSent")
-        .WithSummary("Track that a user sent an email about an issue")
-        .WithDescription("Records that the authenticated user has sent an email to authorities about this issue. This increments the email counter for the issue and awards gamification points to the user. Each user can only track one email per issue to prevent manipulation.")
+        .WithName("ConfirmEmailSent")
+        .WithSummary("Confirm that an email was sent about an issue")
+        .WithDescription("Increments the email counter for this issue. This is a public endpoint (no authentication required) with rate limiting - each IP can only confirm once per issue per hour to prevent abuse.")
         .Produces(200)
         .Produces(400)
         .Produces(404)
-        .Produces(401)
+        .Produces(429)
         .WithOpenApi();
     }
 }

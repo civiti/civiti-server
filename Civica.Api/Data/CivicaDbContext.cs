@@ -14,7 +14,8 @@ public class CivicaDbContext(DbContextOptions<CivicaDbContext> options) : DbCont
     public DbSet<UserBadge> UserBadges { get; set; } = null!;
     public DbSet<UserAchievement> UserAchievements { get; set; } = null!;
     public DbSet<AdminAction> AdminActions { get; set; } = null!;
-    public DbSet<EmailTracking> EmailTrackings { get; set; } = null!;
+    public DbSet<Authority> Authorities { get; set; } = null!;
+    public DbSet<IssueAuthority> IssueAuthorities { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -29,11 +30,13 @@ public class CivicaDbContext(DbContextOptions<CivicaDbContext> options) : DbCont
         modelBuilder.ApplyConfiguration(new UserBadgeConfiguration());
         modelBuilder.ApplyConfiguration(new UserAchievementConfiguration());
         modelBuilder.ApplyConfiguration(new AdminActionConfiguration());
-        modelBuilder.ApplyConfiguration(new EmailTrackingConfiguration());
+        modelBuilder.ApplyConfiguration(new AuthorityConfiguration());
+        modelBuilder.ApplyConfiguration(new IssueAuthorityConfiguration());
 
         // Seed data
         SeedBadges(modelBuilder);
         SeedAchievements(modelBuilder);
+        SeedAuthorities(modelBuilder);
     }
 
     private static void SeedBadges(ModelBuilder modelBuilder)
@@ -63,19 +66,6 @@ public class CivicaDbContext(DbContextOptions<CivicaDbContext> options) : DbCont
                 RequirementType = "quality_photos",
                 RequirementValue = 3,
                 RequirementDescription = "Upload 3 high-quality photos",
-                CreatedAt = DateTime.UtcNow
-            },
-            new Badge
-            {
-                Id = Guid.Parse("33333333-3333-3333-3333-333333333333"),
-                Name = "Email Warrior",
-                Description = "Sent your first email to authorities",
-                IconUrl = "/assets/badges/email-warrior.svg",
-                Category = BadgeCategory.Starter,
-                Rarity = BadgeRarity.Common,
-                RequirementType = "emails_sent",
-                RequirementValue = 1,
-                RequirementDescription = "Send your first email",
                 CreatedAt = DateTime.UtcNow
             },
             new Badge
@@ -133,6 +123,113 @@ public class CivicaDbContext(DbContextOptions<CivicaDbContext> options) : DbCont
                 AchievementType = "issues_reported",
                 RequirementData = "{\"target\": 10}",
                 CreatedAt = DateTime.UtcNow
+            }
+        );
+    }
+
+    private static void SeedAuthorities(ModelBuilder modelBuilder)
+    {
+        var createdAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        modelBuilder.Entity<Authority>().HasData(
+            // Bucharest General
+            new Authority
+            {
+                Id = Guid.Parse("a0000001-0000-0000-0000-000000000001"),
+                Name = "Primăria Municipiului București",
+                Email = "pmb@pmb.ro",
+                IsActive = true,
+                CreatedAt = createdAt
+            },
+            // Bucharest Sectors
+            new Authority
+            {
+                Id = Guid.Parse("a0000001-0000-0000-0000-000000000002"),
+                Name = "Primăria Sectorului 1 București",
+                Email = "primarie@primarias1.ro",
+                IsActive = true,
+                CreatedAt = createdAt
+            },
+            new Authority
+            {
+                Id = Guid.Parse("a0000001-0000-0000-0000-000000000003"),
+                Name = "Primăria Sectorului 2 București",
+                Email = "primarie@ps2.ro",
+                IsActive = true,
+                CreatedAt = createdAt
+            },
+            new Authority
+            {
+                Id = Guid.Parse("a0000001-0000-0000-0000-000000000004"),
+                Name = "Primăria Sectorului 3 București",
+                Email = "primarie@primarie3.ro",
+                IsActive = true,
+                CreatedAt = createdAt
+            },
+            new Authority
+            {
+                Id = Guid.Parse("a0000001-0000-0000-0000-000000000005"),
+                Name = "Primăria Sectorului 4 București",
+                Email = "primarie@ps4.ro",
+                IsActive = true,
+                CreatedAt = createdAt
+            },
+            new Authority
+            {
+                Id = Guid.Parse("a0000001-0000-0000-0000-000000000006"),
+                Name = "Primăria Sectorului 5 București",
+                Email = "primarie@sector5.ro",
+                IsActive = true,
+                CreatedAt = createdAt
+            },
+            new Authority
+            {
+                Id = Guid.Parse("a0000001-0000-0000-0000-000000000007"),
+                Name = "Primăria Sectorului 6 București",
+                Email = "primarie@primarie6.ro",
+                IsActive = true,
+                CreatedAt = createdAt
+            },
+            // Major Romanian Cities
+            new Authority
+            {
+                Id = Guid.Parse("a0000002-0000-0000-0000-000000000001"),
+                Name = "Primăria Municipiului Cluj-Napoca",
+                Email = "primarie@primariaclujnapoca.ro",
+                IsActive = true,
+                CreatedAt = createdAt
+            },
+            new Authority
+            {
+                Id = Guid.Parse("a0000002-0000-0000-0000-000000000002"),
+                Name = "Primăria Municipiului Timișoara",
+                Email = "primarie@primariatm.ro",
+                IsActive = true,
+                CreatedAt = createdAt
+            },
+            new Authority
+            {
+                Id = Guid.Parse("a0000002-0000-0000-0000-000000000003"),
+                Name = "Primăria Municipiului Iași",
+                Email = "primarie@primaria-iasi.ro",
+                IsActive = true,
+                CreatedAt = createdAt
+            },
+            new Authority
+            {
+                Id = Guid.Parse("a0000002-0000-0000-0000-000000000004"),
+                Name = "Primăria Municipiului Constanța",
+                Email = "primarie@primaria-constanta.ro",
+                IsActive = true,
+                CreatedAt = createdAt
+            },
+            new Authority
+            {
+                Id = Guid.Parse("a0000002-0000-0000-0000-000000000005"),
+                Name = "Primăria Municipiului Brașov",
+                Email = "primarie@brasovcity.ro",
+                IsActive = true,
+                CreatedAt = createdAt
             }
         );
     }

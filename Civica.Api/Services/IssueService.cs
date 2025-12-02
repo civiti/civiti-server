@@ -2,20 +2,28 @@ using Civica.Api.Services.Interfaces;
 using Civica.Api.Models.Requests.Issues;
 using Civica.Api.Models.Responses.Issues;
 using Civica.Api.Models.Responses.Common;
+using Civica.Api.Models.Responses.Authority;
 using Civica.Api.Models.Domain;
 using Civica.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using Npgsql.PostgresTypes;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Civica.Api.Services;
 
 public class IssueService(
     ILogger<IssueService> logger,
     CivicaDbContext context,
-    IGamificationService gamificationService)
+    IGamificationService gamificationService,
+    IMemoryCache memoryCache)
     : IIssueService
 {
+    private static readonly TimeSpan EmailCooldownDuration = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// Error message returned when rate limited. Used by endpoint to detect 429 response.
+    /// </summary>
+    public const string RateLimitedError = "RATE_LIMITED";
     public async Task<PagedResult<IssueListResponse>> GetAllIssuesAsync(GetIssuesRequest request)
     {
         try
@@ -109,6 +117,8 @@ public class IssueService(
             Issue? issue = await context.Issues
                 .Include(i => i.Photos)
                 .Include(i => i.User)
+                .Include(i => i.IssueAuthorities)
+                    .ThenInclude(ia => ia.Authority)
                 .Where(i => i.Id == id && i.PublicVisibility)
                 .FirstOrDefaultAsync();
 
@@ -131,7 +141,6 @@ public class IssueService(
                 District = issue.District,
                 Landmark = issue.Landmark,
                 Urgency = issue.Urgency,
-                AuthorityEmail = issue.AuthorityEmail,
                 EstimatedImpact = issue.EstimatedImpact,
                 Tags = issue.Tags?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList(),
                 Status = issue.Status,
@@ -151,6 +160,13 @@ public class IssueService(
                     Description = p.Description,
                     IsPrimary = p.IsPrimary,
                     CreatedAt = p.CreatedAt
+                }).ToList(),
+                Authorities = issue.IssueAuthorities.Select(ia => new IssueAuthorityResponse
+                {
+                    AuthorityId = ia.AuthorityId,
+                    Name = ia.Authority?.Name ?? ia.CustomName ?? string.Empty,
+                    Email = ia.Authority?.Email ?? ia.CustomEmail ?? string.Empty,
+                    IsPredefined = ia.AuthorityId.HasValue
                 }).ToList(),
                 User = new UserBasicResponse
                 {
@@ -198,7 +214,6 @@ public class IssueService(
                 District = request.District,
                 Landmark = request.Landmark,
                 Urgency = request.Urgency,
-                AuthorityEmail = request.AuthorityEmail,
                 EstimatedImpact = request.EstimatedImpact,
                 Tags = request.Tags != null ? string.Join(",", request.Tags) : null,
                 CurrentSituation = request.CurrentSituation,
@@ -227,6 +242,80 @@ public class IssueService(
                 }).ToList();
 
                 context.IssuePhotos.AddRange(photos);
+            }
+
+            // Add authorities if provided
+            if (request.Authorities != null && request.Authorities.Any())
+            {
+                // Filter out null elements from the list
+                var authorities = request.Authorities.Where(a => a != null).ToList();
+
+                // Check for duplicate AuthorityIds
+                var predefinedIds = authorities
+                    .Where(a => a.AuthorityId.HasValue)
+                    .Select(a => a.AuthorityId!.Value)
+                    .ToList();
+
+                if (predefinedIds.Count != predefinedIds.Distinct().Count())
+                {
+                    throw new InvalidOperationException("Duplicate authority IDs are not allowed");
+                }
+
+                // Check for duplicate custom emails (only for custom authorities, not predefined)
+                var customEmails = authorities
+                    .Where(a => !a.AuthorityId.HasValue && !string.IsNullOrWhiteSpace(a.CustomEmail))
+                    .Select(a => a.CustomEmail!.ToLowerInvariant())
+                    .ToList();
+
+                if (customEmails.Count != customEmails.Distinct().Count())
+                {
+                    throw new InvalidOperationException("Duplicate custom authority emails are not allowed");
+                }
+
+                foreach (var authorityInput in authorities)
+                {
+                    // Validate: either AuthorityId OR (CustomName AND CustomEmail) must be provided
+                    bool hasPredefined = authorityInput.AuthorityId.HasValue;
+                    bool hasCustom = !string.IsNullOrWhiteSpace(authorityInput.CustomName) &&
+                                     !string.IsNullOrWhiteSpace(authorityInput.CustomEmail);
+
+                    if (!hasPredefined && !hasCustom)
+                    {
+                        throw new InvalidOperationException(
+                            "Each authority must have either an AuthorityId or both CustomName and CustomEmail");
+                    }
+
+                    if (hasPredefined && hasCustom)
+                    {
+                        throw new InvalidOperationException(
+                            "Authority cannot have both AuthorityId and custom fields");
+                    }
+
+                    // Validate predefined authority exists and is active
+                    if (hasPredefined)
+                    {
+                        bool authorityExists = await context.Authorities
+                            .AnyAsync(a => a.Id == authorityInput.AuthorityId && a.IsActive);
+
+                        if (!authorityExists)
+                        {
+                            throw new InvalidOperationException(
+                                $"Authority with ID {authorityInput.AuthorityId} not found or is inactive");
+                        }
+                    }
+
+                    IssueAuthority issueAuthority = new()
+                    {
+                        Id = Guid.NewGuid(),
+                        IssueId = issue.Id,
+                        AuthorityId = authorityInput.AuthorityId,
+                        CustomName = hasPredefined ? null : authorityInput.CustomName,
+                        CustomEmail = hasPredefined ? null : authorityInput.CustomEmail,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    context.IssueAuthorities.Add(issueAuthority);
+                }
             }
 
             await context.SaveChangesAsync();
@@ -260,86 +349,64 @@ public class IssueService(
         }
     }
 
-    public async Task<bool> TrackEmailSentAsync(Guid issueId, TrackEmailRequest request, string supabaseUserId)
+    public async Task<(bool Success, string? Error)> IncrementEmailCountAsync(Guid issueId, string? clientIp)
     {
-        using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
-        
         try
         {
-            // Get user profile
-            UserProfile? userProfile = await context.UserProfiles
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+            // Check rate limiting (1 hour cooldown per IP per issue)
+            string cacheKey = $"email-cooldown:{issueId}:{clientIp ?? "unknown"}";
 
-            if (userProfile == null)
+            if (memoryCache.TryGetValue(cacheKey, out _))
             {
-                logger.LogWarning("User profile not found for Supabase ID: {SupabaseUserId}", supabaseUserId);
-                return false;
+                logger.LogInformation("Rate limit hit for issue {IssueId} from IP {ClientIp}", issueId, clientIp);
+                return (false, RateLimitedError);
             }
 
-            // Get the issue
-            Issue? issue = await context.Issues
-                .Include(i => i.EmailTrackings)
-                .FirstOrDefaultAsync(i => i.Id == issueId);
+            // Check if issue exists and is valid for incrementing
+            var issueInfo = await context.Issues
+                .Where(i => i.Id == issueId)
+                .Select(i => new { i.Status, i.PublicVisibility })
+                .FirstOrDefaultAsync();
 
-            if (issue == null)
+            if (issueInfo == null)
             {
                 logger.LogWarning("Issue {IssueId} not found", issueId);
-                return false;
+                return (false, "Issue not found");
             }
 
-            // Check if user already sent email for this issue
-            EmailTracking? existingTracking = issue.EmailTrackings
-                .FirstOrDefault(e => e.UserId == userProfile.Id);
-
-            if (existingTracking != null)
+            // Only allow incrementing for approved, publicly visible issues
+            if (issueInfo.Status != IssueStatus.Approved || !issueInfo.PublicVisibility)
             {
-                logger.LogWarning("User {UserId} already sent email for issue {IssueId}", 
-                    userProfile.Id, issueId);
-                return false;
+                logger.LogWarning("Attempt to increment email count for non-public issue {IssueId}", issueId);
+                return (false, "Issue is not publicly available");
             }
 
-            // Create email tracking record
-            EmailTracking emailTracking = new()
+            // Atomic increment with status/visibility check to prevent TOCTOU race condition
+            int rowsAffected = await context.Issues
+                .Where(i => i.Id == issueId
+                         && i.Status == IssueStatus.Approved
+                         && i.PublicVisibility)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(i => i.EmailsSent, i => i.EmailsSent + 1)
+                    .SetProperty(i => i.UpdatedAt, DateTime.UtcNow));
+
+            if (rowsAffected == 0)
             {
-                Id = Guid.NewGuid(),
-                IssueId = issueId,
-                UserId = userProfile.Id,
-                EmailAddress = request.EmailAddress,
-                SentAt = DateTime.UtcNow,
-                EmailSubject = request.Subject,
-                EmailBody = request.Body,
-                RecipientType = request.RecipientType ?? "authority",
-                TrackingStatus = "sent"
-            };
+                // Issue may have been unapproved/hidden between check and update
+                logger.LogWarning("Failed to increment email count for issue {IssueId} - may have been modified", issueId);
+                return (false, "Issue is no longer publicly available");
+            }
 
-            context.EmailTrackings.Add(emailTracking);
+            // Set cooldown in cache
+            memoryCache.Set(cacheKey, true, EmailCooldownDuration);
 
-            // Update issue email count
-            issue.EmailsSent++;
-            issue.UpdatedAt = DateTime.UtcNow;
+            logger.LogInformation("Email count incremented for issue {IssueId}", issueId);
 
-            await context.SaveChangesAsync();
-
-            // Award points for sending email
-            await gamificationService.AwardPointsAsync(
-                userProfile.Id, 
-                25, 
-                "Sent email to authorities about an issue");
-
-            // Check for achievements
-            await gamificationService.CheckAndAwardAchievementsAsync(userProfile.Id);
-
-            await transaction.CommitAsync();
-
-            logger.LogInformation("Email tracking recorded for issue {IssueId} by user {UserId}", 
-                issueId, userProfile.Id);
-
-            return true;
+            return (true, null);
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
-            logger.LogError(ex, "Error tracking email for issue {IssueId}", issueId);
+            logger.LogError(ex, "Error incrementing email count for issue {IssueId}", issueId);
             throw;
         }
     }
