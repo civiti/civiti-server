@@ -136,32 +136,25 @@ public static class IssueEndpoints
             // Note: ForwardedHeaders middleware handles X-Forwarded-For, so RemoteIpAddress is already correct
             string? clientIp = httpContext.Connection.RemoteIpAddress?.ToString();
 
-            try
+            var (success, error) = await issueService.IncrementEmailCountAsync(id, clientIp);
+
+            if (!success)
             {
-                var (success, error) = await issueService.IncrementEmailCountAsync(id, clientIp);
-
-                if (!success)
+                if (error == "Issue not found")
                 {
-                    if (error == "Issue not found")
-                    {
-                        return TypedResults.NotFound();
-                    }
-
-                    if (error?.Contains("wait") == true)
-                    {
-                        // Rate limited - return 429 Too Many Requests
-                        return TypedResults.StatusCode(429);
-                    }
-
-                    return TypedResults.BadRequest(error);
+                    return TypedResults.NotFound();
                 }
 
-                return TypedResults.Ok();
+                if (error?.Contains("wait") == true)
+                {
+                    // Rate limited - return 429 Too Many Requests
+                    return TypedResults.StatusCode(429);
+                }
+
+                return TypedResults.BadRequest(error);
             }
-            catch (Exception ex)
-            {
-                return TypedResults.BadRequest(ex.Message);
-            }
+
+            return TypedResults.Ok();
         })
         .WithName("ConfirmEmailSent")
         .WithSummary("Confirm that an email was sent about an issue")

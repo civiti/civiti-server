@@ -242,6 +242,28 @@ public class IssueService(
             // Add authorities if provided
             if (request.Authorities != null && request.Authorities.Any())
             {
+                // Check for duplicate AuthorityIds
+                var predefinedIds = request.Authorities
+                    .Where(a => a.AuthorityId.HasValue)
+                    .Select(a => a.AuthorityId!.Value)
+                    .ToList();
+
+                if (predefinedIds.Count != predefinedIds.Distinct().Count())
+                {
+                    throw new InvalidOperationException("Duplicate authority IDs are not allowed");
+                }
+
+                // Check for duplicate custom emails
+                var customEmails = request.Authorities
+                    .Where(a => !string.IsNullOrWhiteSpace(a.CustomEmail))
+                    .Select(a => a.CustomEmail!.ToLowerInvariant())
+                    .ToList();
+
+                if (customEmails.Count != customEmails.Distinct().Count())
+                {
+                    throw new InvalidOperationException("Duplicate custom authority emails are not allowed");
+                }
+
                 foreach (var authorityInput in request.Authorities)
                 {
                     // Validate: either AuthorityId OR (CustomName AND CustomEmail) must be provided
