@@ -253,9 +253,9 @@ public class IssueService(
                     throw new InvalidOperationException("Duplicate authority IDs are not allowed");
                 }
 
-                // Check for duplicate custom emails
+                // Check for duplicate custom emails (only for custom authorities, not predefined)
                 var customEmails = request.Authorities
-                    .Where(a => !string.IsNullOrWhiteSpace(a.CustomEmail))
+                    .Where(a => !a.AuthorityId.HasValue && !string.IsNullOrWhiteSpace(a.CustomEmail))
                     .Select(a => a.CustomEmail!.ToLowerInvariant())
                     .ToList();
 
@@ -354,33 +354,42 @@ public class IssueService(
                 return (false, "Please wait before confirming another email for this issue");
             }
 
-            // Get the issue
-            Issue? issue = await context.Issues.FirstOrDefaultAsync(i => i.Id == issueId);
+            // Check if issue exists and is valid for incrementing
+            var issueInfo = await context.Issues
+                .Where(i => i.Id == issueId)
+                .Select(i => new { i.Status, i.PublicVisibility })
+                .FirstOrDefaultAsync();
 
-            if (issue == null)
+            if (issueInfo == null)
             {
                 logger.LogWarning("Issue {IssueId} not found", issueId);
                 return (false, "Issue not found");
             }
 
             // Only allow incrementing for approved, publicly visible issues
-            if (issue.Status != IssueStatus.Approved || !issue.PublicVisibility)
+            if (issueInfo.Status != IssueStatus.Approved || !issueInfo.PublicVisibility)
             {
                 logger.LogWarning("Attempt to increment email count for non-public issue {IssueId}", issueId);
                 return (false, "Issue is not publicly available");
             }
 
-            // Increment email count
-            issue.EmailsSent++;
-            issue.UpdatedAt = DateTime.UtcNow;
+            // Atomic increment using ExecuteUpdateAsync to prevent race conditions
+            int rowsAffected = await context.Issues
+                .Where(i => i.Id == issueId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(i => i.EmailsSent, i => i.EmailsSent + 1)
+                    .SetProperty(i => i.UpdatedAt, DateTime.UtcNow));
 
-            await context.SaveChangesAsync();
+            if (rowsAffected == 0)
+            {
+                logger.LogWarning("Failed to increment email count for issue {IssueId}", issueId);
+                return (false, "Failed to update issue");
+            }
 
             // Set cooldown in cache
             memoryCache.Set(cacheKey, true, EmailCooldownDuration);
 
-            logger.LogInformation("Email count incremented for issue {IssueId} (now {Count})",
-                issueId, issue.EmailsSent);
+            logger.LogInformation("Email count incremented for issue {IssueId}", issueId);
 
             return (true, null);
         }

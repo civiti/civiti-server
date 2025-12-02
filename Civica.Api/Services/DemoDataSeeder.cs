@@ -82,7 +82,7 @@ public class DemoDataSeeder : IHostedService
             District = "Sector 3",
             Points = 150,
             Level = 2,
-            IssuesReported = 5,
+            IssuesReported = 10,
             IssuesResolved = 1,
             CommunityVotes = 10,
             CommentsGiven = 3,
