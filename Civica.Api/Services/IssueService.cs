@@ -247,8 +247,11 @@ public class IssueService(
             // Add authorities if provided
             if (request.Authorities != null && request.Authorities.Any())
             {
+                // Filter out null elements from the list
+                var authorities = request.Authorities.Where(a => a != null).ToList();
+
                 // Check for duplicate AuthorityIds
-                var predefinedIds = request.Authorities
+                var predefinedIds = authorities
                     .Where(a => a.AuthorityId.HasValue)
                     .Select(a => a.AuthorityId!.Value)
                     .ToList();
@@ -259,7 +262,7 @@ public class IssueService(
                 }
 
                 // Check for duplicate custom emails (only for custom authorities, not predefined)
-                var customEmails = request.Authorities
+                var customEmails = authorities
                     .Where(a => !a.AuthorityId.HasValue && !string.IsNullOrWhiteSpace(a.CustomEmail))
                     .Select(a => a.CustomEmail!.ToLowerInvariant())
                     .ToList();
@@ -269,7 +272,7 @@ public class IssueService(
                     throw new InvalidOperationException("Duplicate custom authority emails are not allowed");
                 }
 
-                foreach (var authorityInput in request.Authorities)
+                foreach (var authorityInput in authorities)
                 {
                     // Validate: either AuthorityId OR (CustomName AND CustomEmail) must be provided
                     bool hasPredefined = authorityInput.AuthorityId.HasValue;
