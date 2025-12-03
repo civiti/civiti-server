@@ -17,6 +17,15 @@ public class DemoDataSeeder : IHostedService
     // Fixed GUIDs for demo data (allows idempotent seeding)
     private static readonly Guid DemoUserId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
 
+    // Authority GUIDs from migration (must match InitialCreate.cs)
+    private static readonly Guid AuthorityPMB = Guid.Parse("a0000001-0000-0000-0000-000000000001");      // Primăria București
+    private static readonly Guid AuthoritySector1 = Guid.Parse("a0000001-0000-0000-0000-000000000002"); // Sector 1
+    private static readonly Guid AuthoritySector2 = Guid.Parse("a0000001-0000-0000-0000-000000000003"); // Sector 2
+    private static readonly Guid AuthoritySector3 = Guid.Parse("a0000001-0000-0000-0000-000000000004"); // Sector 3
+    private static readonly Guid AuthoritySector4 = Guid.Parse("a0000001-0000-0000-0000-000000000005"); // Sector 4
+    private static readonly Guid AuthoritySector5 = Guid.Parse("a0000001-0000-0000-0000-000000000006"); // Sector 5
+    private static readonly Guid AuthoritySector6 = Guid.Parse("a0000001-0000-0000-0000-000000000007"); // Sector 6
+
     public DemoDataSeeder(
         IServiceProvider serviceProvider,
         ILogger<DemoDataSeeder> logger)
@@ -63,9 +72,14 @@ public class DemoDataSeeder : IHostedService
         var demoIssues = CreateDemoIssues();
         context.Issues.AddRange(demoIssues);
 
+        // Create demo issue-authority links
+        var demoIssueAuthorities = CreateDemoIssueAuthorities();
+        context.IssueAuthorities.AddRange(demoIssueAuthorities);
+
         await context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Seeded 1 demo user and {IssueCount} demo issues", demoIssues.Count);
+        _logger.LogInformation("Seeded 1 demo user, {IssueCount} demo issues, and {LinkCount} issue-authority links",
+            demoIssues.Count, demoIssueAuthorities.Count);
     }
 
     private static UserProfile CreateDemoUser()
@@ -338,6 +352,127 @@ public class DemoDataSeeder : IHostedService
                 Priority = Priority.Critical,
                 CreatedAt = now.AddDays(-30),
                 UpdatedAt = now
+            }
+        ];
+    }
+
+    /// <summary>
+    /// Creates issue-authority links for demo data.
+    /// Links each issue to the appropriate sector authority based on the issue's district.
+    /// </summary>
+    private static List<IssueAuthority> CreateDemoIssueAuthorities()
+    {
+        return
+        [
+            // Issue 1 (Gropi Lipscani - Sector 3) -> Primăria Sector 3
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0001-0001-0001-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0001-0001-0001-eeeeeeeeeeee"),
+                AuthorityId = AuthoritySector3,
+                CreatedAt = DateTime.UtcNow
+            },
+
+            // Issue 2 (Gunoi Herăstrău - Sector 1) -> Primăria Sector 1
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0002-0001-0002-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0002-0002-0002-eeeeeeeeeeee"),
+                AuthorityId = AuthoritySector1,
+                CreatedAt = DateTime.UtcNow
+            },
+
+            // Issue 3 (Stație STB - Sector 1) -> Primăria Sector 1
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0003-0001-0003-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0003-0003-0003-eeeeeeeeeeee"),
+                AuthorityId = AuthoritySector1,
+                CreatedAt = DateTime.UtcNow
+            },
+
+            // Issue 4 (Iluminat Calea Victoriei - Sector 1) -> Primăria București + Sector 1
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0004-0001-0004-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0004-0004-0004-eeeeeeeeeeee"),
+                AuthorityId = AuthorityPMB,
+                CreatedAt = DateTime.UtcNow
+            },
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0004-0002-0004-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0004-0004-0004-eeeeeeeeeeee"),
+                AuthorityId = AuthoritySector1,
+                CreatedAt = DateTime.UtcNow
+            },
+
+            // Issue 5 (Hidrant - Sector 3) -> Primăria Sector 3
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0005-0001-0005-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0005-0005-0005-eeeeeeeeeeee"),
+                AuthorityId = AuthoritySector3,
+                CreatedAt = DateTime.UtcNow
+            },
+
+            // Issue 6 (Trotuar Panduri - Sector 5) -> Primăria Sector 5
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0006-0001-0006-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0006-0006-0006-eeeeeeeeeeee"),
+                AuthorityId = AuthoritySector5,
+                CreatedAt = DateTime.UtcNow
+            },
+
+            // Issue 7 (Semafoare Obor - Sector 2) -> Primăria București + Sector 2
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0007-0001-0007-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0007-0007-0007-eeeeeeeeeeee"),
+                AuthorityId = AuthorityPMB,
+                CreatedAt = DateTime.UtcNow
+            },
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0007-0002-0007-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0007-0007-0007-eeeeeeeeeeee"),
+                AuthorityId = AuthoritySector2,
+                CreatedAt = DateTime.UtcNow
+            },
+
+            // Issue 8 (Copaci Cișmigiu - Sector 1) -> Primăria Sector 1
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0008-0001-0008-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0008-0008-0008-eeeeeeeeeeee"),
+                AuthorityId = AuthoritySector1,
+                CreatedAt = DateTime.UtcNow
+            },
+
+            // Issue 9 (Rampe Sector 4) -> Primăria Sector 4
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0009-0001-0009-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0009-0009-0009-eeeeeeeeeeee"),
+                AuthorityId = AuthoritySector4,
+                CreatedAt = DateTime.UtcNow
+            },
+
+            // Issue 10 (Canalizare Știrbei Vodă - Sector 1) -> Primăria București + Sector 1
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0010-0001-0010-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0010-0010-0010-eeeeeeeeeeee"),
+                AuthorityId = AuthorityPMB,
+                CreatedAt = DateTime.UtcNow
+            },
+            new IssueAuthority
+            {
+                Id = Guid.Parse("bbbbbbbb-0010-0002-0010-bbbbbbbbbbbb"),
+                IssueId = Guid.Parse("eeeeeeee-0010-0010-0010-eeeeeeeeeeee"),
+                AuthorityId = AuthoritySector1,
+                CreatedAt = DateTime.UtcNow
             }
         ];
     }
