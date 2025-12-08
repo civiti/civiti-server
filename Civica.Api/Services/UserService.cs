@@ -97,6 +97,9 @@ public class UserService(
                 CommunityNewsEnabled = user.CommunityNewsEnabled,
                 MonthlyDigestEnabled = user.MonthlyDigestEnabled,
                 AchievementsEnabled = user.AchievementsEnabled,
+                Points = user.Points,
+                Level = user.Level,
+                EmailVerified = user.EmailVerified,
                 Gamification = gamification,
                 CreatedAt = user.CreatedAt
             };
@@ -105,6 +108,54 @@ public class UserService(
         {
             logger.LogError(ex, "Error getting user profile for Supabase ID: {SupabaseUserId}", supabaseUserId);
             throw new InvalidOperationException($"Failed to get user profile for Supabase ID: {supabaseUserId}", ex);
+        }
+    }
+
+    public async Task<UserProfileResponse> CreateUserProfileAsync(CreateUserProfileRequest request, string supabaseUserId, string email)
+    {
+        try
+        {
+            UserProfile? existingUser = await context.UserProfiles
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+
+            if (existingUser != null)
+            {
+                throw new ArgumentException("User profile already exists");
+            }
+
+            UserProfile user = new()
+            {
+                Id = Guid.NewGuid(),
+                SupabaseUserId = supabaseUserId,
+                Email = email,
+                DisplayName = request.DisplayName,
+                PhotoUrl = request.PhotoUrl,
+                County = request.County ?? "București",
+                City = request.City ?? "București",
+                District = request.District ?? "Sector 5",
+                ResidenceType = request.ResidenceType,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+                EmailVerified = true // Supabase handles verification
+            };
+
+            context.UserProfiles.Add(user);
+            await context.SaveChangesAsync();
+
+            logger.LogInformation("User profile created: {UserId} for Supabase user {SupabaseUserId}",
+                user.Id, supabaseUserId);
+
+            // Return full profile with gamification (will be empty for new user)
+            return (await GetUserProfileAsync(supabaseUserId))!;
+        }
+        catch (ArgumentException)
+        {
+            throw; // Re-throw argument exceptions as-is
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error creating user profile for Supabase ID: {SupabaseUserId}", supabaseUserId);
+            throw new InvalidOperationException($"Failed to create user profile for Supabase ID: {supabaseUserId}", ex);
         }
     }
 

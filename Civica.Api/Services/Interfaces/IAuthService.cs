@@ -1,11 +1,12 @@
-using Civica.Api.Models.Requests.Auth;
-using Civica.Api.Models.Responses.Auth;
-
 namespace Civica.Api.Services.Interfaces;
 
+/// <summary>
+/// Authentication service interface.
+/// Profile management has been consolidated to IUserService.
+/// </summary>
 public interface IAuthService
 {
-    Task<UserProfileResponse?> GetUserProfileAsync(string supabaseUserId);
-    Task<UserProfileResponse> CreateUserProfileAsync(CreateUserProfileRequest request, string supabaseUserId, string email);
-    Task<UserProfileResponse> UpdateUserProfileAsync(UpdateUserProfileRequest request, string supabaseUserId);
+    // Authentication-specific methods can be added here if needed
+    // For example: token refresh, logout cleanup, etc.
+    // Profile operations are now in IUserService
 }

@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -43,9 +42,9 @@ public class JwtBearerPostConfigureOptions : IPostConfigureOptions<JwtBearerOpti
             {
                 _logger.LogDebug("Resolving signing key for kid: {Kid}", kid);
 
+                // Try to find the specific key by kid in JWKS cache
                 if (!string.IsNullOrEmpty(kid))
                 {
-                    // Attempt synchronous cache lookup - the background service ensures keys are cached
                     var cachedJwks = _jwksManager.GetCachedJwks();
 
                     if (cachedJwks != null)
@@ -59,8 +58,8 @@ public class JwtBearerPostConfigureOptions : IPostConfigureOptions<JwtBearerOpti
                     }
                 }
 
-                // Fallback: get all cached signing keys
-                _logger.LogDebug("Kid not found, trying all cached signing keys");
+                // Fallback: return all cached signing keys for validation attempt
+                _logger.LogDebug("Kid not found in cache, returning all cached signing keys");
                 var cachedKeys = _jwksManager.GetCachedSigningKeys();
 
                 if (cachedKeys != null && cachedKeys.Any())
@@ -69,16 +68,7 @@ public class JwtBearerPostConfigureOptions : IPostConfigureOptions<JwtBearerOpti
                     return cachedKeys;
                 }
 
-                // Final fallback to legacy key if enabled
-                if (jwtValidationOptions.EnableLegacyFallback &&
-                    !string.IsNullOrWhiteSpace(jwtValidationOptions.LegacyJwtSecret))
-                {
-                    _logger.LogDebug("Using legacy symmetric key as fallback");
-                    var legacyKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtValidationOptions.LegacyJwtSecret));
-                    return new[] { legacyKey };
-                }
-
-                _logger.LogWarning("No signing keys available for JWT validation - background service may still be loading");
+                _logger.LogWarning("No signing keys available for JWT validation - JWKS may not be loaded yet");
                 return Enumerable.Empty<SecurityKey>();
             }
             catch (Exception ex)

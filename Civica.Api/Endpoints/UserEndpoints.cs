@@ -41,15 +41,51 @@ public static class UserEndpoints
             }
 
             UserProfileResponse? profile = await userService.GetUserProfileAsync(supabaseUserId);
-            
+
             return profile == null ? Results.NotFound(new { error = "User profile not found" }) : Results.Ok(profile);
         })
         .WithName("GetUserProfile")
         .WithSummary("Get user's complete profile")
-        .WithDescription("Retrieves the complete profile for the authenticated user including personal information, gamification data, and notification preferences.")
+        .WithDescription("Retrieves the complete profile for the authenticated user including personal information, gamification data (points, level, badges, achievements), and notification preferences. This is the primary endpoint for fetching user profile data.")
         .Produces<UserProfileResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
+        .WithOpenApi();
+
+        // POST /api/user/profile - Create profile after OAuth registration
+        group.MapPost("/profile", async (
+            CreateUserProfileRequest request,
+            HttpContext context,
+            IUserService userService) =>
+        {
+            var supabaseUserId = context.User.GetSupabaseUserId();
+            if (string.IsNullOrEmpty(supabaseUserId))
+            {
+                return Results.Unauthorized();
+            }
+
+            var email = context.User.GetEmail();
+            if (string.IsNullOrEmpty(email))
+            {
+                return Results.BadRequest(new { error = "Email not found in token" });
+            }
+
+            try
+            {
+                UserProfileResponse profile = await userService.CreateUserProfileAsync(request, supabaseUserId, email);
+                return Results.Created($"/api/user/profile", profile);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        })
+        .WithName("CreateUserProfile")
+        .WithSummary("Create user profile after OAuth registration")
+        .WithDescription("Creates a new user profile in the Civica system after successful Supabase OAuth authentication. This endpoint should be called once per user immediately after their first login. The profile includes personal information, location details, and notification preferences.")
+        .Produces<UserProfileResponse>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
         .WithOpenApi();
 
         // PUT /api/user/profile
@@ -76,9 +112,11 @@ public static class UserEndpoints
         })
         .WithName("UpdateUserProfile")
         .WithSummary("Update user's profile")
+        .WithDescription("Updates the authenticated user's profile information. Only provided fields will be updated; null fields are ignored. Returns the complete updated profile with gamification data.")
         .Produces<UserProfileResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status404NotFound);
+        .Produces(StatusCodes.Status404NotFound)
+        .WithOpenApi();
 
         // GET /api/user/gamification
         group.MapGet(ApiRoutes.User.Gamification, async (

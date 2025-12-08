@@ -7,7 +7,8 @@ public static class ApiRoutes
     public static class Auth
     {
         public const string Base = $"{ApiBase}/auth";
-        public const string Profile = "/profile";
+        public const string Status = "/status";
+        // Profile endpoints have been consolidated to User.Profile
     }
     
     public static class Issues
@@ -20,6 +21,7 @@ public static class ApiRoutes
     public static class User
     {
         public const string Base = $"{ApiBase}/user";
+        public const string Profile = "/profile";
         public const string Gamification = "/gamification";
         public const string Issues = "/issues";
         public const string Points = "/points";
