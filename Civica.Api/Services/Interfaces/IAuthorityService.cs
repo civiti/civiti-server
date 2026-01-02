@@ -6,9 +6,15 @@ namespace Civica.Api.Services.Interfaces;
 public interface IAuthorityService
 {
     /// <summary>
-    /// Get all active predefined authorities
+    /// Get all active predefined authorities with optional filtering
     /// </summary>
-    Task<List<AuthorityListResponse>> GetActiveAuthoritiesAsync();
+    /// <param name="city">Filter by city (e.g., "București")</param>
+    /// <param name="district">Filter by district within city (e.g., "Sector 1")</param>
+    /// <param name="search">Search by authority name</param>
+    Task<List<AuthorityListResponse>> GetActiveAuthoritiesAsync(
+        string? city = null,
+        string? district = null,
+        string? search = null);
 
     /// <summary>
     /// Get authority by ID
@@ -25,12 +31,23 @@ public interface IAuthorityService
     /// <summary>
     /// Create a new predefined authority (admin only)
     /// </summary>
-    Task<AuthorityResponse> CreateAuthorityAsync(string name, string email);
+    Task<AuthorityResponse> CreateAuthorityAsync(
+        string name,
+        string email,
+        string county,
+        string city,
+        string? district);
 
     /// <summary>
     /// Update an authority (admin only)
     /// </summary>
-    Task<AuthorityResponse?> UpdateAuthorityAsync(Guid id, string name, string email);
+    Task<AuthorityResponse?> UpdateAuthorityAsync(
+        Guid id,
+        string name,
+        string email,
+        string county,
+        string city,
+        string? district);
 
     /// <summary>
     /// Deactivate an authority (admin only)

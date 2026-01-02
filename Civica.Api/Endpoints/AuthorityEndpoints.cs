@@ -19,15 +19,29 @@ public static class AuthorityEndpoints
             .WithTags("Authorities")
             .WithOpenApi();
 
-        // GET /api/authorities - List all active predefined authorities (public)
-        group.MapGet("/", async (IAuthorityService authorityService) =>
+        // GET /api/authorities - List active authorities with optional filtering (public)
+        group.MapGet("/", async (
+            IAuthorityService authorityService,
+            string? city,
+            string? district,
+            string? search) =>
         {
-            List<AuthorityListResponse> authorities = await authorityService.GetActiveAuthoritiesAsync();
+            List<AuthorityListResponse> authorities = await authorityService
+                .GetActiveAuthoritiesAsync(city, district, search);
             return Results.Ok(authorities);
         })
         .WithName("GetAuthorities")
-        .WithSummary("Get list of active predefined authorities")
-        .WithDescription("Retrieves all active predefined authorities that can be selected when creating an issue. This is a public endpoint, no authentication required.")
+        .WithSummary("Get list of active authorities with optional filtering")
+        .WithDescription("""
+            Retrieves active authorities that can be selected when creating an issue.
+
+            Filter options:
+            - city: Filter by city name (e.g., 'București', 'Cluj-Napoca')
+            - district: Filter by district within city (e.g., 'Sector 1'). When specified with city, returns both district-specific and city-wide authorities.
+            - search: Search by authority name (case-insensitive, partial match)
+
+            This is a public endpoint, no authentication required.
+            """)
         .Produces<List<AuthorityListResponse>>(200);
 
         // GET /api/authorities/{id} - Get authority details (public)

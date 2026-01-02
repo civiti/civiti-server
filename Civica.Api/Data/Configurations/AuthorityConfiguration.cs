@@ -18,11 +18,28 @@ public class AuthorityConfiguration : IEntityTypeConfiguration<Authority>
             .IsRequired()
             .HasMaxLength(255);
 
+        builder.Property(a => a.County)
+            .IsRequired()
+            .HasMaxLength(100);
+
+        builder.Property(a => a.City)
+            .IsRequired()
+            .HasMaxLength(100);
+
+        builder.Property(a => a.District)
+            .HasMaxLength(100);
+
         // Indexes
         builder.HasIndex(a => a.Email)
             .IsUnique();
 
         builder.HasIndex(a => a.IsActive);
+
+        builder.HasIndex(a => a.Name);
+
+        builder.HasIndex(a => a.City);
+
+        builder.HasIndex(a => new { a.City, a.District });
 
         // Relationships
         builder.HasMany(a => a.IssueAuthorities)

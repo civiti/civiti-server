@@ -11,24 +11,55 @@ public class AuthorityService(
     CivicaDbContext context)
     : IAuthorityService
 {
-    public async Task<List<AuthorityListResponse>> GetActiveAuthoritiesAsync()
+    public async Task<List<AuthorityListResponse>> GetActiveAuthoritiesAsync(
+        string? city = null,
+        string? district = null,
+        string? search = null)
     {
         try
         {
-            return await context.Authorities
-                .Where(a => a.IsActive)
-                .OrderBy(a => a.Name)
+            IQueryable<Authority> query = context.Authorities.Where(a => a.IsActive);
+
+            // Text search by name (searches all authorities)
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                string searchLower = search.ToLower();
+                query = query.Where(a => a.Name.ToLower().Contains(searchLower));
+            }
+
+            // City filter (case-insensitive, typically from issue creation step 1)
+            if (!string.IsNullOrWhiteSpace(city))
+            {
+                string cityLower = city.ToLower();
+                query = query.Where(a => a.City.ToLower() == cityLower);
+
+                // District filter: include both specific district AND city-wide (case-insensitive)
+                if (!string.IsNullOrWhiteSpace(district))
+                {
+                    string districtLower = district.ToLower();
+                    query = query.Where(a =>
+                        (a.District != null && a.District.ToLower() == districtLower) ||
+                        a.District == null);
+                }
+            }
+
+            return await query
+                .OrderBy(a => a.District == null ? 0 : 1) // City-wide first
+                .ThenBy(a => a.Name)
                 .Select(a => new AuthorityListResponse
                 {
                     Id = a.Id,
                     Name = a.Name,
-                    Email = a.Email
+                    Email = a.Email,
+                    City = a.City,
+                    District = a.District
                 })
                 .ToListAsync();
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error getting active authorities");
+            logger.LogError(ex, "Error getting active authorities with city={City}, district={District}, search={Search}",
+                city, district, search);
             throw;
         }
     }
@@ -50,6 +81,9 @@ public class AuthorityService(
                 Id = authority.Id,
                 Name = authority.Name,
                 Email = authority.Email,
+                County = authority.County,
+                City = authority.City,
+                District = authority.District,
                 IsActive = authority.IsActive,
                 CreatedAt = authority.CreatedAt
             };
@@ -85,7 +119,12 @@ public class AuthorityService(
         }
     }
 
-    public async Task<AuthorityResponse> CreateAuthorityAsync(string name, string email)
+    public async Task<AuthorityResponse> CreateAuthorityAsync(
+        string name,
+        string email,
+        string county,
+        string city,
+        string? district)
     {
         try
         {
@@ -101,6 +140,9 @@ public class AuthorityService(
                 Id = Guid.NewGuid(),
                 Name = name,
                 Email = email,
+                County = county,
+                City = city,
+                District = district,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
             };
@@ -108,13 +150,16 @@ public class AuthorityService(
             context.Authorities.Add(authority);
             await context.SaveChangesAsync();
 
-            logger.LogInformation("Authority {AuthorityId} created: {Name}", authority.Id, name);
+            logger.LogInformation("Authority {AuthorityId} created: {Name} in {City}", authority.Id, name, city);
 
             return new AuthorityResponse
             {
                 Id = authority.Id,
                 Name = authority.Name,
                 Email = authority.Email,
+                County = authority.County,
+                City = authority.City,
+                District = authority.District,
                 IsActive = authority.IsActive,
                 CreatedAt = authority.CreatedAt
             };
@@ -126,7 +171,13 @@ public class AuthorityService(
         }
     }
 
-    public async Task<AuthorityResponse?> UpdateAuthorityAsync(Guid id, string name, string email)
+    public async Task<AuthorityResponse?> UpdateAuthorityAsync(
+        Guid id,
+        string name,
+        string email,
+        string county,
+        string city,
+        string? district)
     {
         try
         {
@@ -148,6 +199,9 @@ public class AuthorityService(
 
             authority.Name = name;
             authority.Email = email;
+            authority.County = county;
+            authority.City = city;
+            authority.District = district;
 
             await context.SaveChangesAsync();
 
@@ -158,6 +212,9 @@ public class AuthorityService(
                 Id = authority.Id,
                 Name = authority.Name,
                 Email = authority.Email,
+                County = authority.County,
+                City = authority.City,
+                District = authority.District,
                 IsActive = authority.IsActive,
                 CreatedAt = authority.CreatedAt
             };

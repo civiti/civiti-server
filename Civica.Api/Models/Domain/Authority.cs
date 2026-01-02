@@ -18,6 +18,21 @@ public class Authority
     public string Email { get; set; } = string.Empty;
 
     /// <summary>
+    /// Romanian county (Județ) where this authority operates (e.g., "București", "Cluj")
+    /// </summary>
+    public string County { get; set; } = string.Empty;
+
+    /// <summary>
+    /// City where this authority operates (e.g., "București", "Cluj-Napoca")
+    /// </summary>
+    public string City { get; set; } = string.Empty;
+
+    /// <summary>
+    /// District/Sector within city (e.g., "Sector 1"). Null for city-wide authorities.
+    /// </summary>
+    public string? District { get; set; }
+
+    /// <summary>
     /// Whether this authority is currently active and available for selection
     /// </summary>
     public bool IsActive { get; set; } = true;
