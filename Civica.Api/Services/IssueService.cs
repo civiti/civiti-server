@@ -236,7 +236,11 @@ public class IssueService(
             // Add photos if provided
             if (request.PhotoUrls != null && request.PhotoUrls.Any())
             {
-                List<IssuePhoto> photos = request.PhotoUrls.Select((url, index) => new IssuePhoto
+                var validPhotoUrls = request.PhotoUrls
+                    .Where(url => !string.IsNullOrWhiteSpace(url))
+                    .ToList();
+
+                List<IssuePhoto> photos = validPhotoUrls.Select((url, index) => new IssuePhoto
                 {
                     Id = Guid.NewGuid(),
                     IssueId = issue.Id,
@@ -707,9 +711,13 @@ public class IssueService(
                 {
                     context.IssuePhotos.RemoveRange(issue.Photos);
 
-                    if (request.PhotoUrls.Any())
+                    var validPhotoUrls = request.PhotoUrls
+                        .Where(url => !string.IsNullOrWhiteSpace(url))
+                        .ToList();
+
+                    if (validPhotoUrls.Any())
                     {
-                        List<IssuePhoto> photos = request.PhotoUrls.Select((url, index) => new IssuePhoto
+                        List<IssuePhoto> photos = validPhotoUrls.Select((url, index) => new IssuePhoto
                         {
                             Id = Guid.NewGuid(),
                             IssueId = issue.Id,

@@ -14,12 +14,14 @@ public class UpdateIssueRequest
     /// <summary>
     /// Brief, descriptive title of the issue (max 200 characters)
     /// </summary>
+    [MinLength(1)]
     [MaxLength(200)]
     public string? Title { get; set; }
 
     /// <summary>
     /// Detailed description of the issue
     /// </summary>
+    [MinLength(1)]
     [MaxLength(2000)]
     public string? Description { get; set; }
 
@@ -31,12 +33,14 @@ public class UpdateIssueRequest
     /// <summary>
     /// Street address or location description
     /// </summary>
+    [MinLength(1)]
     [MaxLength(500)]
     public string? Address { get; set; }
 
     /// <summary>
     /// District or sector name
     /// </summary>
+    [MinLength(1)]
     [MaxLength(50)]
     public string? District { get; set; }
 
