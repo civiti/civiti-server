@@ -174,10 +174,14 @@ public static class UserEndpoints
                 return Results.Unauthorized();
             }
 
+            // Validate pagination parameters
+            var actualPage = Math.Max(page ?? 1, 1);
+            var actualPageSize = Math.Clamp(pageSize ?? 10, 1, 100);
+
             GetUserIssuesRequest request = new()
             {
-                Page = page ?? 1,
-                PageSize = pageSize ?? 10,
+                Page = actualPage,
+                PageSize = actualPageSize,
                 SortBy = sortBy ?? "date",
                 SortDescending = sortDescending ?? true
             };

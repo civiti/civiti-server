@@ -42,10 +42,14 @@ public static class AdminEndpoints
             string sortBy = "CreatedAt",
             bool sortDescending = true) =>
         {
+            // Validate pagination parameters
+            var actualPage = Math.Max(page, 1);
+            var actualPageSize = Math.Clamp(pageSize, 1, 100);
+
             GetPendingIssuesRequest request = new()
             {
-                Page = page,
-                PageSize = pageSize,
+                Page = actualPage,
+                PageSize = actualPageSize,
                 SearchTerm = searchTerm,
                 SubmittedAfter = submittedAfter,
                 SubmittedBefore = submittedBefore,
@@ -221,10 +225,14 @@ public static class AdminEndpoints
             string sortBy = "CreatedAt",
             bool sortDescending = true) =>
         {
+            // Validate pagination parameters
+            var actualPage = Math.Max(page, 1);
+            var actualPageSize = Math.Clamp(pageSize, 1, 100);
+
             GetAdminActionsRequest request = new()
             {
-                Page = page,
-                PageSize = pageSize,
+                Page = actualPage,
+                PageSize = actualPageSize,
                 IssueId = issueId,
                 AdminUserId = adminUserId,
                 StartDate = startDate,

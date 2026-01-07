@@ -37,10 +37,14 @@ public static class IssueEndpoints
             string? sortBy,
             bool? sortDescending) =>
         {
+            // Validate pagination parameters
+            var actualPage = Math.Max(page ?? 1, 1);
+            var actualPageSize = Math.Clamp(pageSize ?? 12, 1, 100);
+
             GetIssuesRequest request = new()
             {
-                Page = page ?? 1,
-                PageSize = pageSize ?? 12,
+                Page = actualPage,
+                PageSize = actualPageSize,
                 District = district,
                 SortBy = sortBy ?? "date",
                 SortDescending = sortDescending ?? true
