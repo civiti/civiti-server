@@ -72,7 +72,9 @@ public class UserService(
     {
         try
         {
+            // Use AsNoTracking since we only need to read user data for the response
             UserProfile? user = await context.UserProfiles
+                .AsNoTracking()
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
@@ -85,7 +87,7 @@ public class UserService(
             await UpdateLoginStreakAsync(user.Id);
 
             // Reload user to get updated streak values after potential modification
-            user = (await context.UserProfiles.FirstOrDefaultAsync(u => u.Id == user.Id))!;
+            user = (await context.UserProfiles.AsNoTracking().FirstOrDefaultAsync(u => u.Id == user.Id))!;
 
             UserGamificationResponse gamification = await GetUserGamificationAsync(supabaseUserId);
 
@@ -125,6 +127,9 @@ public class UserService(
 
         await strategy.ExecuteAsync(async () =>
         {
+            // Clear change tracker to ensure fresh data on retry
+            context.ChangeTracker.Clear();
+
             using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
             try

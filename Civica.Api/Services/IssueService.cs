@@ -189,6 +189,9 @@ public class IssueService(
 
         return await strategy.ExecuteAsync(async () =>
         {
+            // Clear change tracker to ensure fresh data on retry (prevents double-incrementing counters)
+            context.ChangeTracker.Clear();
+
             using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
             try
@@ -348,12 +351,10 @@ public class IssueService(
             var photoCount = request.PhotoUrls?.Count(url => !string.IsNullOrWhiteSpace(url)) ?? 0;
             if (photoCount >= 3)
             {
-                // Count total issues with 3+ photos for this user (including this new one)
+                // Count total issues with 3+ photos for this user (already includes the new issue after SaveChangesAsync)
                 var qualityPhotoIssueCount = await context.Issues
                     .Where(i => i.UserId == userProfile.Id && i.Photos.Count >= 3)
                     .CountAsync();
-                // Add 1 for the current issue which hasn't been committed yet
-                qualityPhotoIssueCount++;
 
                 await gamificationService.UpdateAchievementProgressAsync(
                     userProfile.Id,
@@ -547,6 +548,9 @@ public class IssueService(
 
         return await strategy.ExecuteAsync(async () =>
         {
+            // Clear change tracker to ensure fresh data on retry (prevents skipping gamification on retry)
+            context.ChangeTracker.Clear();
+
             using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
             try
