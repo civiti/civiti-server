@@ -80,6 +80,8 @@ public class GamificationService(
                     };
 
                     context.UserBadges.Add(userBadge);
+                    // Update the HashSet to prevent duplicate insertions during nested calls
+                    earnedBadgeIds.Add(badge.Id);
                     logger.LogInformation("User {UserId} earned badge {BadgeName}", userId, badge.Name);
 
                     // Award points for earning badge
@@ -129,16 +131,26 @@ public class GamificationService(
                     // Award badge if associated
                     if (userAchievement.Achievement.RewardBadgeId.HasValue)
                     {
-                        var existingBadge = await context.UserBadges
-                            .AnyAsync(ub => ub.UserId == userId && ub.BadgeId == userAchievement.Achievement.RewardBadgeId.Value);
+                        var rewardBadgeId = userAchievement.Achievement.RewardBadgeId.Value;
 
-                        if (!existingBadge)
+                        // Check both database AND change tracker for existing badge
+                        // (change tracker may have badges added but not yet committed)
+                        var existingInDb = await context.UserBadges
+                            .AnyAsync(ub => ub.UserId == userId && ub.BadgeId == rewardBadgeId);
+
+                        var existingInChangeTracker = context.ChangeTracker
+                            .Entries<UserBadge>()
+                            .Any(e => e.Entity.UserId == userId &&
+                                      e.Entity.BadgeId == rewardBadgeId &&
+                                      e.State == EntityState.Added);
+
+                        if (!existingInDb && !existingInChangeTracker)
                         {
                             UserBadge userBadge = new()
                             {
                                 Id = Guid.NewGuid(),
                                 UserId = userId,
-                                BadgeId = userAchievement.Achievement.RewardBadgeId.Value,
+                                BadgeId = rewardBadgeId,
                                 EarnedAt = DateTime.UtcNow
                             };
                             context.UserBadges.Add(userBadge);
