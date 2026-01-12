@@ -146,7 +146,7 @@ Update user profile information.
 ### 📋 Issues Endpoints
 
 #### GET /api/issues
-Get paginated list of approved public issues.
+Get paginated list of active (admin-approved) public issues.
 
 **Authentication**: Optional
 **Method**: `GET`
@@ -459,7 +459,7 @@ Get user's own issues (all statuses).
 **Query Parameters**:
 - `page` (integer, default: 1): Page number
 - `pageSize` (integer, default: 10): Items per page
-- `status` (string): Filter by status (draft, submitted, under_review, approved, rejected)
+- `status` (string): Filter by status (draft, submitted, under_review, active, rejected, resolved, cancelled)
 
 **Response 200 (Success)**:
 ```json
@@ -470,12 +470,12 @@ Get user's own issues (all statuses).
       "title": "My Issue Title",
       "description": "Issue description...",
       "category": "infrastructure",
-      "status": "approved",
+      "status": "active",
       "urgency": "high",
       "emailsSent": 12,
       "createdAt": "2024-01-15T10:30:00Z",
       "updatedAt": "2024-01-16T09:15:00Z",
-      "adminNotes": "Approved for public visibility",
+      "adminNotes": "Issue approved for public visibility",
       "mainPhotoUrl": "https://example.com/photo.jpg"
     }
   ],

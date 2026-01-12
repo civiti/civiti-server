@@ -80,12 +80,12 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
         builder.HasIndex(i => i.CreatedAt).IsDescending();
         builder.HasIndex(i => i.EmailsSent).IsDescending();
         builder.HasIndex(i => new { i.Status, i.PublicVisibility })
-            .HasFilter("\"Status\" = 'Approved' AND \"PublicVisibility\" = true");
-            
+            .HasFilter("\"Status\" = 'Active' AND \"PublicVisibility\" = true");
+
         // Composite index for main query
         builder.HasIndex(i => new { i.Status, i.PublicVisibility, i.CreatedAt })
             .IsDescending()
-            .HasFilter("\"Status\" = 'Approved' AND \"PublicVisibility\" = true");
+            .HasFilter("\"Status\" = 'Active' AND \"PublicVisibility\" = true");
             
         // Relationships
         builder.HasOne(i => i.User)

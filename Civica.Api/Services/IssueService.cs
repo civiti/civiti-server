@@ -31,7 +31,7 @@ public class IssueService(
             IQueryable<Issue> query = context.Issues
                 .Include(i => i.Photos)
                 .Include(i => i.User)
-                .Where(i => i.Status == IssueStatus.Approved && i.PublicVisibility)
+                .Where(i => i.Status == IssueStatus.Active && i.PublicVisibility)
                 .AsQueryable();
 
             // Apply filters
@@ -407,8 +407,8 @@ public class IssueService(
                 return (false, "Issue not found");
             }
 
-            // Only allow incrementing for approved, publicly visible issues
-            if (issueInfo.Status != IssueStatus.Approved || !issueInfo.PublicVisibility)
+            // Only allow incrementing for active, publicly visible issues
+            if (issueInfo.Status != IssueStatus.Active || !issueInfo.PublicVisibility)
             {
                 logger.LogWarning("Attempt to increment email count for non-public issue {IssueId}", issueId);
                 return (false, "Issue is not publicly available");
@@ -417,7 +417,7 @@ public class IssueService(
             // Atomic increment with status/visibility check to prevent TOCTOU race condition
             int rowsAffected = await context.Issues
                 .Where(i => i.Id == issueId
-                         && i.Status == IssueStatus.Approved
+                         && i.Status == IssueStatus.Active
                          && i.PublicVisibility)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(i => i.EmailsSent, i => i.EmailsSent + 1)

@@ -607,11 +607,11 @@ namespace Civica.Api.Migrations
                     b.HasIndex("UserId");
 
                     b.HasIndex("Status", "PublicVisibility")
-                        .HasFilter("\"Status\" = 'Approved' AND \"PublicVisibility\" = true");
+                        .HasFilter("\"Status\" = 'Active' AND \"PublicVisibility\" = true");
 
                     b.HasIndex("Status", "PublicVisibility", "CreatedAt")
                         .IsDescending()
-                        .HasFilter("\"Status\" = 'Approved' AND \"PublicVisibility\" = true");
+                        .HasFilter("\"Status\" = 'Active' AND \"PublicVisibility\" = true");
 
                     b.ToTable("Issues");
                 });

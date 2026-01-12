@@ -252,7 +252,7 @@ public class AdminService(
 
             // Update issue
             var previousStatus = issue.Status.ToString();
-            issue.Status = IssueStatus.Approved;
+            issue.Status = IssueStatus.Active;
             issue.ReviewedAt = DateTime.UtcNow;
             issue.ReviewedBy = adminUser.DisplayName;
             issue.AdminNotes = request.AdminNotes;
@@ -271,7 +271,7 @@ public class AdminService(
                 ActionType = AdminActionType.Approve,
                 Notes = request.AdminNotes,
                 PreviousStatus = previousStatus,
-                NewStatus = IssueStatus.Approved.ToString(),
+                NewStatus = IssueStatus.Active.ToString(),
                 AssignedDepartment = request.AssignedDepartment,
                 EstimatedResolutionTime = request.EstimatedResolutionTime,
                 CreatedAt = DateTime.UtcNow
@@ -298,7 +298,7 @@ public class AdminService(
                 Success = true,
                 Message = "Issue approved successfully",
                 IssueId = issueId,
-                NewStatus = IssueStatus.Approved.ToString(),
+                NewStatus = IssueStatus.Active.ToString(),
                 UpdatedAt = DateTime.UtcNow
             };
         }
@@ -571,27 +571,27 @@ public class AdminService(
 
             // Performance metrics
             var totalIssues = periodIssues.Count;
-            var approvedCount = statusCounts.GetValueOrDefault(IssueStatus.Approved, 0);
+            var activeCount = statusCounts.GetValueOrDefault(IssueStatus.Active, 0);
             var rejectedCount = statusCounts.GetValueOrDefault(IssueStatus.Rejected, 0);
             var resolvedCount = statusCounts.GetValueOrDefault(IssueStatus.Resolved, 0);
-            var pendingCount = statusCounts.GetValueOrDefault(IssueStatus.Submitted, 0) + 
+            var pendingCount = statusCounts.GetValueOrDefault(IssueStatus.Submitted, 0) +
                               statusCounts.GetValueOrDefault(IssueStatus.UnderReview, 0);
 
-            var approvalRate = totalIssues > 0 
-                ? (double)approvedCount / (approvedCount + rejectedCount) * 100 
+            var approvalRate = totalIssues > 0
+                ? (double)activeCount / (activeCount + rejectedCount) * 100
                 : 0;
-            
-            var resolutionRate = approvedCount > 0 
-                ? (double)resolvedCount / approvedCount * 100 
+
+            var resolutionRate = activeCount > 0
+                ? (double)resolvedCount / activeCount * 100
                 : 0;
 
             return new AdminStatisticsResponse
             {
                 TotalSubmissions = totalIssues,
                 PendingReview = pendingCount,
-                Approved = approvedCount,
+                Approved = activeCount, // Active status is now used for approved issues
                 Rejected = rejectedCount,
-                Active = statusCounts.GetValueOrDefault(IssueStatus.Active, 0),
+                Active = activeCount,
                 Resolved = resolvedCount,
                 Cancelled = statusCounts.GetValueOrDefault(IssueStatus.Cancelled, 0),
                 SubmissionsToday = submissionsToday,

@@ -92,16 +92,14 @@ public enum IssueStatus
     Submitted = 2,
     /// <summary>Under admin review</summary>
     UnderReview = 3,
-    /// <summary>Approved and public</summary>
-    Approved = 4,
-    /// <summary>Active and visible to public</summary>
-    Active = 5,
+    /// <summary>Active and visible to public (admin approved)</summary>
+    Active = 4,
     /// <summary>Issue resolved</summary>
-    Resolved = 6,
+    Resolved = 5,
     /// <summary>Rejected by admin</summary>
-    Rejected = 7,
-    /// <summary> Cancelled </summary>
-    Cancelled = 8
+    Rejected = 6,
+    /// <summary>Cancelled by user</summary>
+    Cancelled = 7
 }
 
 /// <summary>
