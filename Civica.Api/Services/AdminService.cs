@@ -515,7 +515,7 @@ public class AdminService(
 
             // Get all issues for counting
             List<Issue> allIssues = await context.Issues.ToListAsync();
-            List<Issue> periodIssues = startDate != DateTime.MinValue 
+            List<Issue> periodIssues = startDate != DateTime.MinValue.ToUniversalTime()
                 ? allIssues.Where(i => i.CreatedAt >= startDate).ToList()
                 : allIssues;
 
