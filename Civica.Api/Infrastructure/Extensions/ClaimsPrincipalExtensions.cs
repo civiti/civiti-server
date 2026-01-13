@@ -48,7 +48,7 @@ public static class ClaimsPrincipalExtensions
         {
             try
             {
-                var metadata = JsonDocument.Parse(appMetadata);
+                using var metadata = JsonDocument.Parse(appMetadata);
                 if (metadata.RootElement.TryGetProperty("role", out var roleElement)
                     && roleElement.ValueKind == JsonValueKind.String)
                 {
