@@ -160,6 +160,11 @@ public class GamificationService(
 
             foreach (UserAchievement userAchievement in userAchievements)
             {
+                // Skip if already completed in memory (handles deferred save scenario where
+                // DB query returns row but tracked entity was already marked complete)
+                if (userAchievement.Completed)
+                    continue;
+
                 if (userAchievement.Progress >= userAchievement.Achievement.MaxProgress)
                 {
                     userAchievement.Completed = true;
