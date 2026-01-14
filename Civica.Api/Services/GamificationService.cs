@@ -129,10 +129,34 @@ public class GamificationService(
     {
         try
         {
+            // Get achievements from database
             List<UserAchievement> userAchievements = await context.UserAchievements
                 .Include(ua => ua.Achievement)
                 .Where(ua => ua.UserId == userId && !ua.Completed)
                 .ToListAsync();
+
+            // Also check change tracker for newly added achievements not yet saved
+            var achievementIdsInDb = userAchievements.Select(ua => ua.AchievementId).ToHashSet();
+            var newAchievementsFromTracker = context.ChangeTracker
+                .Entries<UserAchievement>()
+                .Where(e => e.Entity.UserId == userId &&
+                            !e.Entity.Completed &&
+                            e.State == EntityState.Added &&
+                            !achievementIdsInDb.Contains(e.Entity.AchievementId))
+                .Select(e => e.Entity)
+                .ToList();
+
+            // Eagerly load Achievement for new entries from tracker
+            foreach (var ua in newAchievementsFromTracker)
+            {
+                if (ua.Achievement == null)
+                {
+                    ua.Achievement = await context.Achievements.FindAsync(ua.AchievementId);
+                }
+            }
+
+            // Combine both sources
+            userAchievements.AddRange(newAchievementsFromTracker.Where(ua => ua.Achievement != null)!);
 
             foreach (UserAchievement userAchievement in userAchievements)
             {

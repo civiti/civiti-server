@@ -616,6 +616,9 @@ public class AdminService(
             else
             {
                 response.Failed++;
+                // Clear change tracker to prevent polluting subsequent approvals
+                // with any partial changes from the failed approval
+                context.ChangeTracker.Clear();
             }
         }
 

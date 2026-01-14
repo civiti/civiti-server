@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Civica.Api.Migrations
 {
     [DbContext(typeof(CivicaDbContext))]
-    [Migration("20260114150845_InitialCreate")]
+    [Migration("20260114155450_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
