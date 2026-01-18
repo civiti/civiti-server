@@ -65,4 +65,80 @@ public static class ClaimsPrincipalExtensions
 
         return "user";
     }
+
+    /// <summary>
+    /// Gets the user's display name from user_metadata.
+    /// Falls back through: full_name → name → email prefix
+    /// </summary>
+    public static string GetDisplayName(this ClaimsPrincipal user, string? fallbackEmail = null)
+    {
+        var userMetadata = user.FindFirst("user_metadata")?.Value;
+        if (!string.IsNullOrEmpty(userMetadata))
+        {
+            try
+            {
+                using var metadata = JsonDocument.Parse(userMetadata);
+                if (metadata.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    // Try full_name first, then name
+                    if (metadata.RootElement.TryGetProperty("full_name", out var fullName)
+                        && fullName.ValueKind == JsonValueKind.String)
+                    {
+                        var value = fullName.GetString();
+                        if (!string.IsNullOrWhiteSpace(value)) return value;
+                    }
+
+                    if (metadata.RootElement.TryGetProperty("name", out var name)
+                        && name.ValueKind == JsonValueKind.String)
+                    {
+                        var value = name.GetString();
+                        if (!string.IsNullOrWhiteSpace(value)) return value;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Invalid JSON, fall through to default
+            }
+        }
+
+        // Fallback to email prefix
+        var email = fallbackEmail ?? user.GetEmail();
+        return email?.Split('@')[0] ?? "User";
+    }
+
+    /// <summary>
+    /// Gets the user's photo URL from user_metadata (avatar_url or picture).
+    /// </summary>
+    public static string? GetPhotoUrl(this ClaimsPrincipal user)
+    {
+        var userMetadata = user.FindFirst("user_metadata")?.Value;
+        if (!string.IsNullOrEmpty(userMetadata))
+        {
+            try
+            {
+                using var metadata = JsonDocument.Parse(userMetadata);
+                if (metadata.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    if (metadata.RootElement.TryGetProperty("avatar_url", out var avatarUrl)
+                        && avatarUrl.ValueKind == JsonValueKind.String)
+                    {
+                        return avatarUrl.GetString();
+                    }
+
+                    if (metadata.RootElement.TryGetProperty("picture", out var picture)
+                        && picture.ValueKind == JsonValueKind.String)
+                    {
+                        return picture.GetString();
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Invalid JSON, fall through to default
+            }
+        }
+
+        return null;
+    }
 }

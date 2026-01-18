@@ -126,6 +126,57 @@ public class UserService(
         }
     }
 
+    public async Task<UserProfileResponse> GetOrCreateUserProfileAsync(
+        string supabaseUserId,
+        string email,
+        string displayName,
+        string? photoUrl)
+    {
+        try
+        {
+            // Try to get existing profile
+            UserProfileResponse? existingProfile = await GetUserProfileAsync(supabaseUserId);
+            if (existingProfile != null)
+            {
+                return existingProfile;
+            }
+
+            // Auto-create profile with data from JWT
+            logger.LogInformation("Auto-creating profile for user {SupabaseUserId}", supabaseUserId);
+
+            UserProfile user = new()
+            {
+                Id = Guid.NewGuid(),
+                SupabaseUserId = supabaseUserId,
+                Email = email,
+                DisplayName = displayName,
+                PhotoUrl = photoUrl,
+                County = "București",
+                City = "București",
+                District = "Sector 5",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+                LastActivityDate = DateTime.UtcNow,
+                CurrentLoginStreak = 1,
+                LongestLoginStreak = 1,
+                EmailVerified = true
+            };
+
+            context.UserProfiles.Add(user);
+            await context.SaveChangesAsync();
+
+            logger.LogInformation("User profile auto-created: {UserId} for Supabase user {SupabaseUserId}",
+                user.Id, supabaseUserId);
+
+            return (await GetUserProfileAsync(supabaseUserId))!;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error in GetOrCreateUserProfileAsync for Supabase ID: {SupabaseUserId}", supabaseUserId);
+            throw new InvalidOperationException($"Failed to get or create user profile for Supabase ID: {supabaseUserId}", ex);
+        }
+    }
+
     private async Task UpdateLoginStreakAsync(Guid userId)
     {
         // Use execution strategy to handle transient failures
