@@ -128,7 +128,7 @@ public static class UserEndpoints
                         UserProfileResponse updatedProfile = await userService.UpdateUserProfileAsync(supabaseUserId, updateRequest);
                         return Results.Ok(updatedProfile);
                     }
-                    catch (InvalidOperationException)
+                    catch (InvalidOperationException ex) when (ex.Message == "User not found")
                     {
                         // Profile was deleted between get and update - very rare edge case
                         return Results.NotFound(new { error = "User profile not found" });
@@ -136,7 +136,7 @@ public static class UserEndpoints
                 }
                 throw; // Re-throw if profile still doesn't exist (genuine DB error)
             }
-            catch (InvalidOperationException)
+            catch (InvalidOperationException ex) when (ex.Message == "User not found")
             {
                 // Profile was deleted between existence check and update
                 return Results.NotFound(new { error = "User profile not found" });
