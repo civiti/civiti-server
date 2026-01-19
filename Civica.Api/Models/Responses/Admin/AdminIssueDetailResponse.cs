@@ -16,23 +16,12 @@ public class AdminIssueDetailResponse
     public string Address { get; set; } = string.Empty;
     public double Latitude { get; set; }
     public double Longitude { get; set; }
-    public int LocationAccuracy { get; set; }
-    public string? Neighborhood { get; set; }
     public string? District { get; set; }
-    public string? Landmark { get; set; }
-    public int? EstimatedImpact { get; set; }
-    public List<string>? Tags { get; set; }
-    
+
     // Extended details
-    public string? CurrentSituation { get; set; }
     public string? DesiredOutcome { get; set; }
     public string? CommunityImpact { get; set; }
-    
-    // AI analysis
-    public string? AIGeneratedDescription { get; set; }
-    public string? AIProposedSolution { get; set; }
-    public decimal? AIConfidence { get; set; }
-    
+
     // Admin details
     public string? AdminNotes { get; set; }
     public string? RejectionReason { get; set; }

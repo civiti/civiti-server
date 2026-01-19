@@ -52,19 +52,6 @@ public class CreateIssueRequest
     public List<IssueAuthorityInput>? Authorities { get; set; }
 
     /// <summary>
-    /// Estimated number of people impacted
-    /// </summary>
-    /// <example>500</example>
-    [Range(1, 1000000)]
-    public int? EstimatedImpact { get; set; }
-    
-    /// <summary>
-    /// Tags for categorization and search
-    /// </summary>
-    /// <example>["infrastructură", "siguranță", "urgent"]</example>
-    public List<string>? Tags { get; set; }
-    
-    /// <summary>
     /// GPS latitude coordinate
     /// </summary>
     /// <example>44.4268</example>
@@ -79,28 +66,12 @@ public class CreateIssueRequest
     [Required]
     [Range(-180, 180)]
     public double Longitude { get; set; }
-    
-    /// <summary>
-    /// GPS location accuracy in meters (default: 10)
-    /// </summary>
-    /// <example>10</example>
-    [Range(1, 1000)]
-    public int LocationAccuracy { get; set; } = 10;
-    
-    /// <summary>
-    /// Neighborhood or area name
-    /// </summary>
-    /// <example>Cotroceni</example>
-    [MaxLength(100)]
-    public string? Neighborhood { get; set; }
-    public string? Landmark { get; set; }
-    
+
     /// <summary>
     /// Urgency level of the issue (default: Medium)
     /// </summary>
     public UrgencyLevel Urgency { get; set; } = UrgencyLevel.Medium;
-    public string? CurrentSituation { get; set; }
-    
+
     /// <summary>
     /// Desired outcome or solution
     /// </summary>
@@ -114,26 +85,7 @@ public class CreateIssueRequest
     /// <example>Affects approximately 500 residents daily, school children at risk</example>
     [MaxLength(1000)]
     public string? CommunityImpact { get; set; }
-    
-    /// <summary>
-    /// AI-generated enhanced description (if used)
-    /// </summary>
-    [MaxLength(2000)]
-    public string? AIGeneratedDescription { get; set; }
-    
-    /// <summary>
-    /// AI-proposed solution (if available)
-    /// </summary>
-    [MaxLength(1000)]
-    public string? AIProposedSolution { get; set; }
-    
-    /// <summary>
-    /// AI confidence score (0-1) for generated content
-    /// </summary>
-    /// <example>0.85</example>
-    [Range(0, 1)]
-    public decimal? AIConfidence { get; set; }
-    
+
     /// <summary>
     /// URLs of uploaded photos (max 5 photos)
     /// </summary>

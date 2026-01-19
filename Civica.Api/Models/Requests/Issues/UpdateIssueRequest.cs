@@ -50,17 +50,6 @@ public class UpdateIssueRequest
     public List<IssueAuthorityInput>? Authorities { get; set; }
 
     /// <summary>
-    /// Estimated number of people impacted
-    /// </summary>
-    [Range(1, 1000000)]
-    public int? EstimatedImpact { get; set; }
-
-    /// <summary>
-    /// Tags for categorization and search
-    /// </summary>
-    public List<string>? Tags { get; set; }
-
-    /// <summary>
     /// GPS latitude coordinate
     /// </summary>
     [Range(-90, 90)]
@@ -73,33 +62,9 @@ public class UpdateIssueRequest
     public double? Longitude { get; set; }
 
     /// <summary>
-    /// GPS location accuracy in meters
-    /// </summary>
-    [Range(1, 1000)]
-    public int? LocationAccuracy { get; set; }
-
-    /// <summary>
-    /// Neighborhood or area name
-    /// </summary>
-    [MaxLength(100)]
-    public string? Neighborhood { get; set; }
-
-    /// <summary>
-    /// Nearby landmark for easier identification
-    /// </summary>
-    [MaxLength(200)]
-    public string? Landmark { get; set; }
-
-    /// <summary>
     /// Urgency level of the issue
     /// </summary>
     public UrgencyLevel? Urgency { get; set; }
-
-    /// <summary>
-    /// Current situation description
-    /// </summary>
-    [MaxLength(2000)]
-    public string? CurrentSituation { get; set; }
 
     /// <summary>
     /// Desired outcome or solution
@@ -112,24 +77,6 @@ public class UpdateIssueRequest
     /// </summary>
     [MaxLength(1000)]
     public string? CommunityImpact { get; set; }
-
-    /// <summary>
-    /// AI-generated enhanced description (if used)
-    /// </summary>
-    [MaxLength(2000)]
-    public string? AIGeneratedDescription { get; set; }
-
-    /// <summary>
-    /// AI-proposed solution (if available)
-    /// </summary>
-    [MaxLength(1000)]
-    public string? AIProposedSolution { get; set; }
-
-    /// <summary>
-    /// AI confidence score (0-1) for generated content
-    /// </summary>
-    [Range(0, 1)]
-    public decimal? AIConfidence { get; set; }
 
     /// <summary>
     /// URLs of uploaded photos (replaces existing photos, max 5)

@@ -76,7 +76,7 @@ public class IssueService(
                 {
                     Id = i.Id,
                     Title = i.Title,
-                    Description = i.Description.Length > 200 ? 
+                    Description = i.Description.Length > 200 ?
                         i.Description.Substring(0, 197) + "..." : i.Description,
                     Category = i.Category,
                     Address = i.Address,
@@ -88,7 +88,6 @@ public class IssueService(
                         .OrderBy(p => p.CreatedAt)
                         .Select(p => p.Url)
                         .FirstOrDefault(),
-                    Neighborhood = i.Neighborhood,
                     District = i.District,
                     Status = i.Status
                 })
@@ -137,19 +136,12 @@ public class IssueService(
                 Address = issue.Address,
                 Latitude = issue.Latitude,
                 Longitude = issue.Longitude,
-                Neighborhood = issue.Neighborhood,
                 District = issue.District,
-                Landmark = issue.Landmark,
                 Urgency = issue.Urgency,
-                EstimatedImpact = issue.EstimatedImpact,
-                Tags = issue.Tags?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList(),
                 Status = issue.Status,
                 EmailsSent = issue.EmailsSent,
-                CurrentSituation = issue.CurrentSituation,
                 DesiredOutcome = issue.DesiredOutcome,
                 CommunityImpact = issue.CommunityImpact,
-                AIGeneratedDescription = issue.AIGeneratedDescription,
-                AIProposedSolution = issue.AIProposedSolution,
                 PublicVisibility = issue.PublicVisibility,
                 CreatedAt = issue.CreatedAt,
                 UpdatedAt = issue.UpdatedAt,
@@ -216,19 +208,10 @@ public class IssueService(
                 Address = request.Address,
                 Latitude = request.Latitude,
                 Longitude = request.Longitude,
-                LocationAccuracy = request.LocationAccuracy,
-                Neighborhood = request.Neighborhood,
                 District = request.District,
-                Landmark = request.Landmark,
                 Urgency = request.Urgency,
-                EstimatedImpact = request.EstimatedImpact,
-                Tags = request.Tags != null ? string.Join(",", request.Tags) : null,
-                CurrentSituation = request.CurrentSituation,
                 DesiredOutcome = request.DesiredOutcome,
                 CommunityImpact = request.CommunityImpact,
-                AIGeneratedDescription = request.AIGeneratedDescription,
-                AIProposedSolution = request.AIProposedSolution,
-                AIConfidence = request.AIConfidence,
                 Status = IssueStatus.Submitted,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -511,7 +494,6 @@ public class IssueService(
                         .OrderBy(p => p.CreatedAt)
                         .Select(p => p.Url)
                         .FirstOrDefault(),
-                    Neighborhood = i.Neighborhood,
                     District = i.District,
                     Status = i.Status
                 })
@@ -742,41 +724,14 @@ public class IssueService(
                 if (request.Longitude.HasValue)
                     issue.Longitude = request.Longitude.Value;
 
-                if (request.LocationAccuracy.HasValue)
-                    issue.LocationAccuracy = request.LocationAccuracy.Value;
-
-                if (request.Neighborhood != null)
-                    issue.Neighborhood = request.Neighborhood;
-
-                if (request.Landmark != null)
-                    issue.Landmark = request.Landmark;
-
                 if (request.Urgency.HasValue)
                     issue.Urgency = request.Urgency.Value;
-
-                if (request.EstimatedImpact.HasValue)
-                    issue.EstimatedImpact = request.EstimatedImpact.Value;
-
-                if (request.Tags != null)
-                    issue.Tags = request.Tags.Any() ? string.Join(",", request.Tags) : null;
-
-                if (request.CurrentSituation != null)
-                    issue.CurrentSituation = request.CurrentSituation;
 
                 if (request.DesiredOutcome != null)
                     issue.DesiredOutcome = request.DesiredOutcome;
 
                 if (request.CommunityImpact != null)
                     issue.CommunityImpact = request.CommunityImpact;
-
-                if (request.AIGeneratedDescription != null)
-                    issue.AIGeneratedDescription = request.AIGeneratedDescription;
-
-                if (request.AIProposedSolution != null)
-                    issue.AIProposedSolution = request.AIProposedSolution;
-
-                if (request.AIConfidence.HasValue)
-                    issue.AIConfidence = request.AIConfidence.Value;
 
                 // Handle photo updates (replace all if provided)
                 if (request.PhotoUrls != null)
@@ -922,19 +877,12 @@ public class IssueService(
                     Address = issue.Address,
                     Latitude = issue.Latitude,
                     Longitude = issue.Longitude,
-                    Neighborhood = issue.Neighborhood,
                     District = issue.District,
-                    Landmark = issue.Landmark,
                     Urgency = issue.Urgency,
-                    EstimatedImpact = issue.EstimatedImpact,
-                    Tags = issue.Tags?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList(),
                     Status = issue.Status,
                     EmailsSent = issue.EmailsSent,
-                    CurrentSituation = issue.CurrentSituation,
                     DesiredOutcome = issue.DesiredOutcome,
                     CommunityImpact = issue.CommunityImpact,
-                    AIGeneratedDescription = issue.AIGeneratedDescription,
-                    AIProposedSolution = issue.AIProposedSolution,
                     PublicVisibility = issue.PublicVisibility,
                     CreatedAt = issue.CreatedAt,
                     UpdatedAt = issue.UpdatedAt,

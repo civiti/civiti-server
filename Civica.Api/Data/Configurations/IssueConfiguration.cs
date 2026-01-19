@@ -25,22 +25,10 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
         builder.Property(i => i.Address)
             .IsRequired()
             .HasMaxLength(500);
-            
-        builder.Property(i => i.Neighborhood)
-            .HasMaxLength(100);
-            
+
         builder.Property(i => i.District)
             .HasMaxLength(100);
-            
-        builder.Property(i => i.Landmark)
-            .HasMaxLength(200);
 
-        builder.Property(i => i.EstimatedImpact)
-            .HasColumnType("integer");
-            
-        builder.Property(i => i.Tags)
-            .HasMaxLength(500);
-            
         builder.Property(i => i.Urgency)
             .HasConversion<string>()
             .HasMaxLength(20)
@@ -55,10 +43,7 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
             
         builder.Property(i => i.ReviewedBy)
             .HasMaxLength(255);
-            
-        builder.Property(i => i.AIConfidence)
-            .HasPrecision(3, 2);
-            
+
         // Indexes
         builder.HasIndex(i => i.UserId);
         builder.HasIndex(i => i.Status);

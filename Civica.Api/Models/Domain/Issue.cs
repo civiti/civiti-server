@@ -10,21 +10,12 @@ public class Issue
     public string Address { get; set; } = string.Empty;
     public double Latitude { get; set; }
     public double Longitude { get; set; }
-    public int LocationAccuracy { get; set; }
-    public string? Neighborhood { get; set; }
     public string? District { get; set; } // District/Sector for Romanian administrative divisions
-    public string? Landmark { get; set; }
     public UrgencyLevel Urgency { get; set; }
-    public int? EstimatedImpact { get; set; } // Estimated number of people affected
-    public string? Tags { get; set; } // Comma-separated tags for categorization
     public IssueStatus Status { get; set; } = IssueStatus.Submitted;
     public int EmailsSent { get; set; } = 0;
-    public string? CurrentSituation { get; set; }
     public string? DesiredOutcome { get; set; }
     public string? CommunityImpact { get; set; }
-    public string? AIGeneratedDescription { get; set; }
-    public string? AIProposedSolution { get; set; }
-    public decimal? AIConfidence { get; set; }
     public string? AdminNotes { get; set; }
     public string? RejectionReason { get; set; }
     public bool PublicVisibility { get; set; } = true;

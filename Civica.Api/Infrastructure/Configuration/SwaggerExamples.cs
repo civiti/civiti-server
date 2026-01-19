@@ -91,9 +91,7 @@ public class CreateIssueRequestExample : IExamplesProvider<CreateIssueRequest>
             [
                 new IssueAuthorityInput { AuthorityId = Guid.NewGuid() },
                 new IssueAuthorityInput { CustomName = "Primăria Sector 2", CustomEmail = "primarie.sector2@pmb.ro" }
-            ],
-            EstimatedImpact = 500,
-            Tags = ["infrastructură", "siguranță", "urgent"]
+            ]
         };
     }
 }
@@ -116,7 +114,6 @@ public class IssueListResponseExample : IExamplesProvider<IssueListResponse>
             EmailsSent = 245,
             CreatedAt = DateTime.UtcNow.AddDays(-5),
             MainPhotoUrl = "https://storage.civica.ro/photos/issue-123-photo1.jpg",
-            Neighborhood = "Cotroceni",
             Status = IssueStatus.Active
         };
     }

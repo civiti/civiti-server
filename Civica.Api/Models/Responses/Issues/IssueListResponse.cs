@@ -13,7 +13,6 @@ public class IssueListResponse
     public int EmailsSent { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? MainPhotoUrl { get; set; }
-    public string? Neighborhood { get; set; }
     public string? District { get; set; }
     public IssueStatus Status { get; set; }
 }

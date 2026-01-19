@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Civica.Api.Migrations
 {
     [DbContext(typeof(CivicaDbContext))]
-    [Migration("20260114155450_InitialCreate")]
+    [Migration("20260119182822_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -718,16 +718,6 @@ namespace Civica.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<decimal?>("AIConfidence")
-                        .HasPrecision(3, 2)
-                        .HasColumnType("numeric(3,2)");
-
-                    b.Property<string>("AIGeneratedDescription")
-                        .HasColumnType("text");
-
-                    b.Property<string>("AIProposedSolution")
-                        .HasColumnType("text");
-
                     b.Property<string>("Address")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -747,9 +737,6 @@ namespace Civica.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("CurrentSituation")
-                        .HasColumnType("text");
-
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(5000)
@@ -765,25 +752,11 @@ namespace Civica.Api.Migrations
                     b.Property<int>("EmailsSent")
                         .HasColumnType("integer");
 
-                    b.Property<int?>("EstimatedImpact")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Landmark")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
                     b.Property<double>("Latitude")
                         .HasColumnType("double precision");
 
-                    b.Property<int>("LocationAccuracy")
-                        .HasColumnType("integer");
-
                     b.Property<double>("Longitude")
                         .HasColumnType("double precision");
-
-                    b.Property<string>("Neighborhood")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
 
                     b.Property<bool>("PublicVisibility")
                         .HasColumnType("boolean");
@@ -804,10 +777,6 @@ namespace Civica.Api.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)")
                         .HasDefaultValue("Submitted");
-
-                    b.Property<string>("Tags")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("Title")
                         .IsRequired()
