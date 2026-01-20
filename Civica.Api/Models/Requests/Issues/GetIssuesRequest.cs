@@ -9,6 +9,7 @@ public class GetIssuesRequest
     public IssueCategory? Category { get; set; }
     public UrgencyLevel? Urgency { get; set; }
     public string? District { get; set; }
+    public string? Address { get; set; }
     public string SortBy { get; set; } = "date";
     public bool SortDescending { get; set; } = true;
 }

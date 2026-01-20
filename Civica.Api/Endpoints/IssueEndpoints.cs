@@ -34,6 +34,7 @@ public static class IssueEndpoints
             string? category,
             string? urgency,
             string? district,
+            string? address,
             string? sortBy,
             bool? sortDescending) =>
         {
@@ -46,6 +47,7 @@ public static class IssueEndpoints
                 Page = actualPage,
                 PageSize = actualPageSize,
                 District = district,
+                Address = address,
                 SortBy = sortBy ?? "date",
                 SortDescending = sortDescending ?? true
             };
@@ -67,7 +69,7 @@ public static class IssueEndpoints
         })
         .WithName("GetIssues")
         .WithSummary("Get paginated list of approved issues")
-        .WithDescription("Retrieves a paginated list of approved civic issues. Supports filtering by category, urgency level, and district. Results can be sorted by date, popularity (email count), or urgency. This endpoint returns only issues that have been approved by administrators.")
+        .WithDescription("Retrieves a paginated list of approved civic issues. Supports filtering by category, urgency level, district, and address. Results can be sorted by date, popularity (email count), or urgency. This endpoint returns only issues that have been approved by administrators.")
         .Produces<PagedResult<IssueListResponse>>(200)
         .WithOpenApi(operation =>
         {
@@ -76,8 +78,9 @@ public static class IssueEndpoints
             operation.Parameters[2].Description = "Filter by category (Infrastructure, StreetLighting, GreenSpaces, etc.)";
             operation.Parameters[3].Description = "Filter by urgency (Low, Medium, High, Critical)";
             operation.Parameters[4].Description = "Filter by district (e.g., Sector 1, Sector 2)";
-            operation.Parameters[5].Description = "Sort field (date, emails, urgency)";
-            operation.Parameters[6].Description = "Sort in descending order (default: true)";
+            operation.Parameters[5].Description = "Filter by address (partial match, case-insensitive)";
+            operation.Parameters[6].Description = "Sort field (date, emails, urgency)";
+            operation.Parameters[7].Description = "Sort in descending order (default: true)";
             return operation;
         });
 

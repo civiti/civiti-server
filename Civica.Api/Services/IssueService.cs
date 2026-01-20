@@ -49,8 +49,15 @@ public class IssueService(
             {
                 // Use ToLower for case-insensitive comparison that works with SQL
                 var districtLower = request.District.ToLower();
-                query = query.Where(i => i.District != null && 
+                query = query.Where(i => i.District != null &&
                     i.District.ToLower().Contains(districtLower));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Address))
+            {
+                // Use ToLower for case-insensitive comparison that works with SQL
+                var addressLower = request.Address.ToLower();
+                query = query.Where(i => i.Address.ToLower().Contains(addressLower));
             }
 
             // Apply sorting
