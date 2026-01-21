@@ -296,12 +296,12 @@ var claudeConfig = new ClaudeConfiguration
 builder.Services.AddSingleton(claudeConfig);
 
 // Configure rate limiter for Claude AI requests using sliding window algorithm
-builder.Services.AddSingleton(sp =>
+builder.Services.AddSingleton<PartitionedRateLimiter<Guid>>(sp =>
 {
     var config = sp.GetRequiredService<ClaudeConfiguration>();
-    return PartitionedRateLimiter.Create<Guid, string>(userId =>
+    return PartitionedRateLimiter.Create<Guid, Guid>(userId =>
         RateLimitPartition.GetSlidingWindowLimiter(
-            partitionKey: userId.ToString(),
+            partitionKey: userId,
             factory: _ => new SlidingWindowRateLimiterOptions
             {
                 PermitLimit = config.RateLimitPerMinute,

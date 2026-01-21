@@ -16,7 +16,7 @@ namespace Civica.Api.Services;
 public class ClaudeEnhancementService(
     ILogger<ClaudeEnhancementService> logger,
     ClaudeConfiguration configuration,
-    PartitionedRateLimiter<Guid, string> rateLimiter)
+    PartitionedRateLimiter<Guid> rateLimiter)
     : IClaudeEnhancementService
 {
     private const string SystemPrompt = """
