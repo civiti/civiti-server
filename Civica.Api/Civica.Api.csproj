@@ -11,6 +11,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Anthropic.SDK" Version="5.8.0" />
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.0" />
         <PackageReference Include="Supabase" Version="1.1.1" />
         <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.3" />

@@ -283,6 +283,42 @@ builder.Services.AddSingleton(new SupabaseConfiguration
     AnonKey = supabaseAnonKey
 });
 
+// Claude AI Configuration
+var claudeConfig = new ClaudeConfiguration
+{
+    ApiKey = GetEnvOrConfig("CLAUDE_API_KEY", "Claude:ApiKey") ?? string.Empty,
+    Model = GetEnvOrConfig("CLAUDE_MODEL", "Claude:Model") ?? ClaudeConfiguration.DefaultModel,
+    MaxTokens = GetEnvOrConfigInt("CLAUDE_MAX_TOKENS", "Claude:MaxTokens", ClaudeConfiguration.DefaultMaxTokens),
+    TimeoutSeconds = GetEnvOrConfigInt("CLAUDE_TIMEOUT_SECONDS", "Claude:TimeoutSeconds", ClaudeConfiguration.DefaultTimeoutSeconds),
+    RateLimitPerMinute = GetEnvOrConfigInt("CLAUDE_RATE_LIMIT_PER_MINUTE", "Claude:RateLimitPerMinute", ClaudeConfiguration.DefaultRateLimitPerMinute)
+};
+builder.Services.AddSingleton(claudeConfig);
+
+if (claudeConfig.IsConfigured)
+{
+    Log.Information("Claude AI configured with model: {Model}", claudeConfig.Model);
+}
+else
+{
+    Log.Warning("Claude API key is not configured. AI text enhancement will return original text.");
+}
+
+string? GetEnvOrConfig(string envVar, string configKey)
+{
+    var value = Environment.GetEnvironmentVariable(envVar);
+    return !string.IsNullOrWhiteSpace(value) ? value : builder.Configuration[configKey];
+}
+
+int GetEnvOrConfigInt(string envVar, string configKey, int defaultValue)
+{
+    var envValue = Environment.GetEnvironmentVariable(envVar);
+    if (int.TryParse(envValue, out var result))
+    {
+        return result;
+    }
+    return builder.Configuration.GetValue(configKey, defaultValue);
+}
+
 // Custom services
 builder.Services.AddScoped<ISupabaseService, SupabaseService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -291,6 +327,7 @@ builder.Services.AddScoped<IIssueService, IssueService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<IGamificationService, GamificationService>();
 builder.Services.AddScoped<IAuthorityService, AuthorityService>();
+builder.Services.AddScoped<IClaudeEnhancementService, ClaudeEnhancementService>();
 
 // Validators
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
@@ -363,6 +400,7 @@ app.MapIssueEndpoints();
 app.MapAdminEndpoints();
 app.MapGamificationEndpoints();
 app.MapAuthorityEndpoints();
+app.MapUtilityEndpoints(); // Utility endpoints (categories, etc.)
 app.MapJwksEndpoints(); // JWKS management and monitoring endpoints
 app.MapDevAuthEndpoints(); // Development-only endpoints for testing
 

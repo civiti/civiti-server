@@ -171,5 +171,45 @@ public static class IssueEndpoints
         .Produces(404)
         .Produces(429)
         .WithOpenApi();
+
+        // POST /api/issues/enhance-text
+        group.MapPost(ApiRoutes.Issues.EnhanceText, [Authorize] async Task<Results<Ok<EnhanceTextResponse>, BadRequest<string>, UnauthorizedHttpResult, StatusCodeHttpResult>> (
+            IClaudeEnhancementService enhancementService,
+            IUserService userService,
+            EnhanceTextRequest request,
+            HttpContext httpContext) =>
+        {
+            var supabaseUserId = httpContext.User.GetSupabaseUserId();
+
+            if (string.IsNullOrEmpty(supabaseUserId))
+            {
+                return TypedResults.Unauthorized();
+            }
+
+            // Get internal user ID for rate limiting
+            var userProfile = await userService.GetUserProfileAsync(supabaseUserId);
+            if (userProfile == null)
+            {
+                return TypedResults.Unauthorized();
+            }
+
+            var response = await enhancementService.EnhanceTextAsync(request, userProfile.Id);
+
+            // Return 429 if rate limited (handled atomically in service)
+            if (response.IsRateLimited)
+            {
+                return TypedResults.StatusCode(429);
+            }
+
+            return TypedResults.Ok(response);
+        })
+        .WithName("EnhanceText")
+        .WithSummary("Enhance civic issue text using AI (requires authentication)")
+        .WithDescription("Uses Claude AI to improve the quality, clarity, and professionalism of civic issue descriptions while preserving all original information. Returns enhanced text in Romanian. If AI enhancement fails, returns the original text with a warning. Rate limited to 10 requests per user per minute.")
+        .Produces<EnhanceTextResponse>(200)
+        .Produces(400)
+        .Produces(401)
+        .Produces(429)
+        .WithOpenApi();
     }
 }
