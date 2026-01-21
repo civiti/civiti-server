@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading.RateLimiting;
 using Serilog;
 using FluentValidation;
 using Civica.Api.Data;
@@ -293,6 +294,23 @@ var claudeConfig = new ClaudeConfiguration
     RateLimitPerMinute = GetEnvOrConfigInt("CLAUDE_RATE_LIMIT_PER_MINUTE", "Claude:RateLimitPerMinute", ClaudeConfiguration.DefaultRateLimitPerMinute)
 };
 builder.Services.AddSingleton(claudeConfig);
+
+// Configure rate limiter for Claude AI requests using sliding window algorithm
+builder.Services.AddSingleton(sp =>
+{
+    var config = sp.GetRequiredService<ClaudeConfiguration>();
+    return PartitionedRateLimiter.Create<Guid, string>(userId =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            partitionKey: userId.ToString(),
+            factory: _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = config.RateLimitPerMinute,
+                Window = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow = 6, // 10-second segments for smoother rate limiting
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
 
 if (claudeConfig.IsConfigured)
 {

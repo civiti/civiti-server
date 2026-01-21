@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Threading.RateLimiting;
 using Anthropic.SDK;
 using Anthropic.SDK.Messaging;
 using Civica.Api.Infrastructure.Configuration;
@@ -15,35 +15,10 @@ namespace Civica.Api.Services;
 /// </summary>
 public class ClaudeEnhancementService(
     ILogger<ClaudeEnhancementService> logger,
-    ClaudeConfiguration configuration)
+    ClaudeConfiguration configuration,
+    PartitionedRateLimiter<Guid, string> rateLimiter)
     : IClaudeEnhancementService
 {
-    private static readonly TimeSpan RateLimitWindow = TimeSpan.FromMinutes(1);
-
-    /// <summary>
-    /// Thread-safe storage for rate limit counters using ConcurrentDictionary for atomic operations
-    /// </summary>
-    private static readonly ConcurrentDictionary<string, RateLimitEntry> RateLimitCounters = new();
-
-    /// <summary>
-    /// Thread-safe rate limit entry with built-in expiration
-    /// </summary>
-    private sealed class RateLimitEntry
-    {
-        private int _count;
-        private readonly long _expiresAtTicks;
-
-        public RateLimitEntry(TimeSpan window)
-        {
-            _count = 0;
-            _expiresAtTicks = DateTime.UtcNow.Add(window).Ticks;
-        }
-
-        public bool IsExpired => DateTime.UtcNow.Ticks >= _expiresAtTicks;
-        public int Increment() => Interlocked.Increment(ref _count);
-        public int Count => Volatile.Read(ref _count);
-    }
-
     private const string SystemPrompt = """
         Ești un asistent specializat în îmbunătățirea textelor pentru sesizări civice în România.
 
@@ -70,12 +45,11 @@ public class ClaudeEnhancementService(
             return CreateFallbackResponse(request, "AI enhancement is not available.");
         }
 
-        // Atomically increment and check rate limit using ConcurrentDictionary
-        var currentCount = IncrementAndGetRateLimit(userId);
-        if (currentCount > configuration.RateLimitPerMinute)
+        // Use built-in rate limiter with sliding window algorithm
+        using var lease = rateLimiter.AttemptAcquire(userId);
+        if (!lease.IsAcquired)
         {
-            logger.LogWarning("User {UserId} exceeded rate limit ({Count}/{Limit})",
-                userId, currentCount, configuration.RateLimitPerMinute);
+            logger.LogWarning("User {UserId} exceeded rate limit", userId);
             return CreateRateLimitedResponse(request);
         }
 
@@ -130,44 +104,9 @@ public class ClaudeEnhancementService(
     /// <inheritdoc />
     public bool IsRateLimited(Guid userId)
     {
-        var cacheKey = GetRateLimitCacheKey(userId);
-        if (RateLimitCounters.TryGetValue(cacheKey, out var entry) && !entry.IsExpired)
-        {
-            return entry.Count >= configuration.RateLimitPerMinute;
-        }
-        return false;
+        var statistics = rateLimiter.GetStatistics(userId);
+        return statistics?.CurrentAvailablePermits == 0;
     }
-
-    /// <summary>
-    /// Atomically increments the rate limit counter and returns the new count.
-    /// Uses ConcurrentDictionary.GetOrAdd for truly atomic counter creation,
-    /// preventing race conditions where concurrent first requests could bypass rate limiting.
-    /// </summary>
-    private int IncrementAndGetRateLimit(Guid userId)
-    {
-        var cacheKey = GetRateLimitCacheKey(userId);
-
-        while (true)
-        {
-            var entry = RateLimitCounters.GetOrAdd(cacheKey, _ => new RateLimitEntry(RateLimitWindow));
-
-            if (entry.IsExpired)
-            {
-                // Entry expired, try to replace it with a fresh one
-                var newEntry = new RateLimitEntry(RateLimitWindow);
-                if (RateLimitCounters.TryUpdate(cacheKey, newEntry, entry))
-                {
-                    return newEntry.Increment();
-                }
-                // Another thread updated it first, retry to get the current entry
-                continue;
-            }
-
-            return entry.Increment();
-        }
-    }
-
-    private static string GetRateLimitCacheKey(Guid userId) => $"claude-rate-limit:{userId}";
 
     private static string BuildUserPrompt(EnhanceTextRequest request)
     {
