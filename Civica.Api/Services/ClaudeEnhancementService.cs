@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Anthropic.SDK;
 using Anthropic.SDK.Messaging;
@@ -6,7 +7,6 @@ using Civica.Api.Models.Domain;
 using Civica.Api.Models.Requests.Issues;
 using Civica.Api.Models.Responses.Issues;
 using Civica.Api.Services.Interfaces;
-using Microsoft.Extensions.Caching.Memory;
 
 namespace Civica.Api.Services;
 
@@ -15,18 +15,33 @@ namespace Civica.Api.Services;
 /// </summary>
 public class ClaudeEnhancementService(
     ILogger<ClaudeEnhancementService> logger,
-    ClaudeConfiguration configuration,
-    IMemoryCache memoryCache)
+    ClaudeConfiguration configuration)
     : IClaudeEnhancementService
 {
     private static readonly TimeSpan RateLimitWindow = TimeSpan.FromMinutes(1);
 
     /// <summary>
-    /// Thread-safe counter for rate limiting
+    /// Thread-safe storage for rate limit counters using ConcurrentDictionary for atomic operations
     /// </summary>
-    private sealed class RateLimitCounter
+    private static readonly ConcurrentDictionary<string, RateLimitEntry> RateLimitCounters = new();
+
+    /// <summary>
+    /// Thread-safe rate limit entry with built-in expiration
+    /// </summary>
+    private sealed class RateLimitEntry
     {
-        public int Count;
+        private int _count;
+        private readonly long _expiresAtTicks;
+
+        public RateLimitEntry(TimeSpan window)
+        {
+            _count = 0;
+            _expiresAtTicks = DateTime.UtcNow.Add(window).Ticks;
+        }
+
+        public bool IsExpired => DateTime.UtcNow.Ticks >= _expiresAtTicks;
+        public int Increment() => Interlocked.Increment(ref _count);
+        public int Count => Volatile.Read(ref _count);
     }
 
     private const string SystemPrompt = """
@@ -48,19 +63,20 @@ public class ClaudeEnhancementService(
     /// <inheritdoc />
     public async Task<EnhanceTextResponse> EnhanceTextAsync(EnhanceTextRequest request, Guid userId)
     {
-        // Atomically increment and check rate limit to prevent race conditions
+        // Check if Claude is configured before consuming rate limit
+        if (!configuration.IsConfigured)
+        {
+            logger.LogWarning("Claude API key is not configured, returning original text");
+            return CreateFallbackResponse(request, "AI enhancement is not available.");
+        }
+
+        // Atomically increment and check rate limit using ConcurrentDictionary
         var currentCount = IncrementAndGetRateLimit(userId);
         if (currentCount > configuration.RateLimitPerMinute)
         {
             logger.LogWarning("User {UserId} exceeded rate limit ({Count}/{Limit})",
                 userId, currentCount, configuration.RateLimitPerMinute);
             return CreateRateLimitedResponse(request);
-        }
-
-        if (!configuration.IsConfigured)
-        {
-            logger.LogWarning("Claude API key is not configured, returning original text");
-            return CreateFallbackResponse(request, "AI enhancement is not available.");
         }
 
         try
@@ -115,26 +131,40 @@ public class ClaudeEnhancementService(
     public bool IsRateLimited(Guid userId)
     {
         var cacheKey = GetRateLimitCacheKey(userId);
-        if (memoryCache.TryGetValue(cacheKey, out RateLimitCounter? counter))
+        if (RateLimitCounters.TryGetValue(cacheKey, out var entry) && !entry.IsExpired)
         {
-            return Volatile.Read(ref counter!.Count) >= configuration.RateLimitPerMinute;
+            return entry.Count >= configuration.RateLimitPerMinute;
         }
         return false;
     }
 
     /// <summary>
     /// Atomically increments the rate limit counter and returns the new count.
-    /// This prevents race conditions where two requests could both pass the rate limit check.
+    /// Uses ConcurrentDictionary.GetOrAdd for truly atomic counter creation,
+    /// preventing race conditions where concurrent first requests could bypass rate limiting.
     /// </summary>
     private int IncrementAndGetRateLimit(Guid userId)
     {
         var cacheKey = GetRateLimitCacheKey(userId);
-        var counter = memoryCache.GetOrCreate(cacheKey, entry =>
+
+        while (true)
         {
-            entry.AbsoluteExpirationRelativeToNow = RateLimitWindow;
-            return new RateLimitCounter();
-        });
-        return Interlocked.Increment(ref counter!.Count);
+            var entry = RateLimitCounters.GetOrAdd(cacheKey, _ => new RateLimitEntry(RateLimitWindow));
+
+            if (entry.IsExpired)
+            {
+                // Entry expired, try to replace it with a fresh one
+                var newEntry = new RateLimitEntry(RateLimitWindow);
+                if (RateLimitCounters.TryUpdate(cacheKey, newEntry, entry))
+                {
+                    return newEntry.Increment();
+                }
+                // Another thread updated it first, retry to get the current entry
+                continue;
+            }
+
+            return entry.Increment();
+        }
     }
 
     private static string GetRateLimitCacheKey(Guid userId) => $"claude-rate-limit:{userId}";
