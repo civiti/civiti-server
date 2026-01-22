@@ -60,4 +60,10 @@ public static class ApiRoutes
         public const string Health = "/health";
         public const string Categories = "/categories";
     }
+
+    public static class Activity
+    {
+        public const string Base = $"{ApiBase}/activity";
+        public const string My = "/my";
+    }
 }

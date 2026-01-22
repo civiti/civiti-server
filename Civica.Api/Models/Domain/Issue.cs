@@ -29,6 +29,7 @@ public class Issue
     public List<IssuePhoto> Photos { get; set; } = [];
     public List<AdminAction> AdminActions { get; set; } = [];
     public List<IssueAuthority> IssueAuthorities { get; set; } = [];
+    public List<Activity> Activities { get; set; } = [];
 }
 
 /// <summary>

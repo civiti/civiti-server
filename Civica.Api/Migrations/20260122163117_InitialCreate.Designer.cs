@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Civica.Api.Migrations
 {
     [DbContext(typeof(CivicaDbContext))]
-    [Migration("20260119182822_InitialCreate")]
+    [Migration("20260122163117_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -207,6 +207,65 @@ namespace Civica.Api.Migrations
                             RewardPoints = 100,
                             Title = "Level Up!"
                         });
+                });
+
+            modelBuilder.Entity("Civica.Api.Models.Domain.Activity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorDisplayName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AggregatedCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("IssueId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("IssueOwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IssueTitle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Metadata")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("IssueId");
+
+                    b.HasIndex("IssueOwnerUserId");
+
+                    b.HasIndex("Type");
+
+                    b.HasIndex("IssueOwnerUserId", "CreatedAt")
+                        .IsDescending(false, true);
+
+                    b.ToTable("Activities");
                 });
 
             modelBuilder.Entity("Civica.Api.Models.Domain.AdminAction", b =>
@@ -1150,6 +1209,32 @@ namespace Civica.Api.Migrations
                     b.Navigation("RewardBadge");
                 });
 
+            modelBuilder.Entity("Civica.Api.Models.Domain.Activity", b =>
+                {
+                    b.HasOne("Civica.Api.Models.Domain.UserProfile", "ActorUser")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Civica.Api.Models.Domain.Issue", "Issue")
+                        .WithMany("Activities")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Civica.Api.Models.Domain.UserProfile", "IssueOwner")
+                        .WithMany()
+                        .HasForeignKey("IssueOwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ActorUser");
+
+                    b.Navigation("Issue");
+
+                    b.Navigation("IssueOwner");
+                });
+
             modelBuilder.Entity("Civica.Api.Models.Domain.AdminAction", b =>
                 {
                     b.HasOne("Civica.Api.Models.Domain.UserProfile", "AdminUser")
@@ -1263,6 +1348,8 @@ namespace Civica.Api.Migrations
 
             modelBuilder.Entity("Civica.Api.Models.Domain.Issue", b =>
                 {
+                    b.Navigation("Activities");
+
                     b.Navigation("AdminActions");
 
                     b.Navigation("IssueAuthorities");

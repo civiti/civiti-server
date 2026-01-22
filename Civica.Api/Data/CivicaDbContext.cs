@@ -16,6 +16,7 @@ public class CivicaDbContext(DbContextOptions<CivicaDbContext> options) : DbCont
     public DbSet<AdminAction> AdminActions { get; set; } = null!;
     public DbSet<Authority> Authorities { get; set; } = null!;
     public DbSet<IssueAuthority> IssueAuthorities { get; set; } = null!;
+    public DbSet<Activity> Activities { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,6 +33,7 @@ public class CivicaDbContext(DbContextOptions<CivicaDbContext> options) : DbCont
         modelBuilder.ApplyConfiguration(new AdminActionConfiguration());
         modelBuilder.ApplyConfiguration(new AuthorityConfiguration());
         modelBuilder.ApplyConfiguration(new IssueAuthorityConfiguration());
+        modelBuilder.ApplyConfiguration(new ActivityConfiguration());
 
         // Seed data
         SeedBadges(modelBuilder);

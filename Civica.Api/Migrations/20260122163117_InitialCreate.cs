@@ -211,6 +211,44 @@ namespace Civica.Api.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Activities",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Type = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false),
+                    ActorUserId = table.Column<Guid>(type: "uuid", nullable: true),
+                    IssueId = table.Column<Guid>(type: "uuid", nullable: false),
+                    IssueOwnerUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Metadata = table.Column<string>(type: "jsonb", nullable: true),
+                    IssueTitle = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    ActorDisplayName = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    AggregatedCount = table.Column<int>(type: "integer", nullable: false, defaultValue: 1),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Activities", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Activities_Issues_IssueId",
+                        column: x => x.IssueId,
+                        principalTable: "Issues",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_Activities_UserProfiles_ActorUserId",
+                        column: x => x.ActorUserId,
+                        principalTable: "UserProfiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_Activities_UserProfiles_IssueOwnerUserId",
+                        column: x => x.IssueOwnerUserId,
+                        principalTable: "UserProfiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "AdminActions",
                 columns: table => new
                 {
@@ -381,6 +419,38 @@ namespace Civica.Api.Migrations
                 name: "IX_Achievements_RewardBadgeId",
                 table: "Achievements",
                 column: "RewardBadgeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Activities_ActorUserId",
+                table: "Activities",
+                column: "ActorUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Activities_CreatedAt",
+                table: "Activities",
+                column: "CreatedAt",
+                descending: new bool[0]);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Activities_IssueId",
+                table: "Activities",
+                column: "IssueId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Activities_IssueOwnerUserId",
+                table: "Activities",
+                column: "IssueOwnerUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Activities_IssueOwnerUserId_CreatedAt",
+                table: "Activities",
+                columns: new[] { "IssueOwnerUserId", "CreatedAt" },
+                descending: new[] { false, true });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Activities_Type",
+                table: "Activities",
+                column: "Type");
 
             migrationBuilder.CreateIndex(
                 name: "IX_AdminActions_ActionType",
@@ -604,6 +674,9 @@ namespace Civica.Api.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "Activities");
+
             migrationBuilder.DropTable(
                 name: "AdminActions");
 

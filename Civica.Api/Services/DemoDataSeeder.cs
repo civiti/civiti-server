@@ -80,10 +80,14 @@ public class DemoDataSeeder : IHostedService
         var demoPhotos = CreateDemoPhotos();
         context.IssuePhotos.AddRange(demoPhotos);
 
+        // Create demo activities
+        var demoActivities = CreateDemoActivities();
+        context.Activities.AddRange(demoActivities);
+
         await context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Seeded 1 demo user, {IssueCount} demo issues, {LinkCount} issue-authority links, and {PhotoCount} photos",
-            demoIssues.Count, demoIssueAuthorities.Count, demoPhotos.Count);
+        _logger.LogInformation("Seeded 1 demo user, {IssueCount} demo issues, {LinkCount} issue-authority links, {PhotoCount} photos, and {ActivityCount} activities",
+            demoIssues.Count, demoIssueAuthorities.Count, demoPhotos.Count, demoActivities.Count);
     }
 
     private static UserProfile CreateDemoUser()
@@ -529,5 +533,107 @@ public class DemoDataSeeder : IHostedService
         }
 
         return photos;
+    }
+
+    /// <summary>
+    /// Creates demo activities for the activity feed.
+    /// Includes supporter activities, status changes, and approvals.
+    /// </summary>
+    private static List<Activity> CreateDemoActivities()
+    {
+        var now = DateTime.UtcNow;
+
+        return
+        [
+            // Issue 4 (Iluminat) - 3 supporters in last 2 hours (aggregated)
+            new Activity
+            {
+                Id = Guid.Parse("aaaaaaaa-0001-0001-0001-aaaaaaaaaaaa"),
+                Type = ActivityType.NewSupporters,
+                IssueId = Guid.Parse("eeeeeeee-0004-0004-0004-eeeeeeeeeeee"),
+                IssueOwnerUserId = DemoUserId,
+                IssueTitle = "Iluminat stradal defect pe Calea Victoriei",
+                AggregatedCount = 3,
+                Metadata = "{\"supporterCount\":3}",
+                CreatedAt = now.AddHours(-2)
+            },
+
+            // Issue 2 (Gunoi) - 5 supporters earlier today
+            new Activity
+            {
+                Id = Guid.Parse("aaaaaaaa-0002-0002-0002-aaaaaaaaaaaa"),
+                Type = ActivityType.NewSupporters,
+                IssueId = Guid.Parse("eeeeeeee-0002-0002-0002-eeeeeeeeeeee"),
+                IssueOwnerUserId = DemoUserId,
+                IssueTitle = "Gunoi abandonat în Parcul Herăstrău",
+                AggregatedCount = 5,
+                Metadata = "{\"supporterCount\":5}",
+                CreatedAt = now.AddHours(-8)
+            },
+
+            // Issue 10 (Canalizare) - Status changed to "Active"
+            new Activity
+            {
+                Id = Guid.Parse("aaaaaaaa-0003-0003-0003-aaaaaaaaaaaa"),
+                Type = ActivityType.StatusChange,
+                IssueId = Guid.Parse("eeeeeeee-0010-0010-0010-eeeeeeeeeeee"),
+                IssueOwnerUserId = DemoUserId,
+                IssueTitle = "Canalizare înfundată pe Strada Știrbei Vodă",
+                Metadata = "{\"previousStatus\":\"Submitted\",\"newStatus\":\"Active\"}",
+                AggregatedCount = 1,
+                CreatedAt = now.AddDays(-1)
+            },
+
+            // Issue 1 (Gropi) - Was approved
+            new Activity
+            {
+                Id = Guid.Parse("aaaaaaaa-0004-0004-0004-aaaaaaaaaaaa"),
+                Type = ActivityType.IssueApproved,
+                IssueId = Guid.Parse("eeeeeeee-0001-0001-0001-eeeeeeeeeeee"),
+                IssueOwnerUserId = DemoUserId,
+                IssueTitle = "Gropi periculoase pe Strada Lipscani",
+                AggregatedCount = 1,
+                CreatedAt = now.AddDays(-4)
+            },
+
+            // Issue 3 (Stație STB) - Was approved
+            new Activity
+            {
+                Id = Guid.Parse("aaaaaaaa-0005-0005-0005-aaaaaaaaaaaa"),
+                Type = ActivityType.IssueApproved,
+                IssueId = Guid.Parse("eeeeeeee-0003-0003-0003-eeeeeeeeeeee"),
+                IssueOwnerUserId = DemoUserId,
+                IssueTitle = "Stație STB fără acoperiș - Piața Romană",
+                AggregatedCount = 1,
+                CreatedAt = now.AddDays(-6)
+            },
+
+            // Issue 8 (Copaci) - New issue created
+            new Activity
+            {
+                Id = Guid.Parse("aaaaaaaa-0006-0006-0006-aaaaaaaaaaaa"),
+                Type = ActivityType.IssueCreated,
+                ActorUserId = DemoUserId,
+                IssueId = Guid.Parse("eeeeeeee-0008-0008-0008-eeeeeeeeeeee"),
+                IssueOwnerUserId = DemoUserId,
+                IssueTitle = "Copaci uscați periculoși în Parcul Cișmigiu",
+                ActorDisplayName = "Maria Ionescu",
+                AggregatedCount = 1,
+                CreatedAt = now.AddDays(-6)
+            },
+
+            // Issue 10 (Canalizare) - 12 supporters yesterday
+            new Activity
+            {
+                Id = Guid.Parse("aaaaaaaa-0007-0007-0007-aaaaaaaaaaaa"),
+                Type = ActivityType.NewSupporters,
+                IssueId = Guid.Parse("eeeeeeee-0010-0010-0010-eeeeeeeeeeee"),
+                IssueOwnerUserId = DemoUserId,
+                IssueTitle = "Canalizare înfundată pe Strada Știrbei Vodă",
+                AggregatedCount = 12,
+                Metadata = "{\"supporterCount\":12}",
+                CreatedAt = now.AddDays(-1).AddHours(-3)
+            }
+        ];
     }
 }

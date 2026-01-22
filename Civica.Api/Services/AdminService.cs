@@ -12,7 +12,8 @@ namespace Civica.Api.Services;
 public class AdminService(
     ILogger<AdminService> logger,
     CivicaDbContext context,
-    IGamificationService gamificationService)
+    IGamificationService gamificationService,
+    IActivityService activityService)
     : IAdminService
 {
     public async Task<PagedResult<AdminIssueResponse>> GetPendingIssuesAsync(GetPendingIssuesRequest request)
@@ -259,6 +260,19 @@ public class AdminService(
 
             // Single atomic save for all changes (issue, admin action, points, badges)
             await context.SaveChangesAsync();
+
+            // Record activity (outside transaction to avoid issues)
+            try
+            {
+                await activityService.RecordActivityAsync(
+                    ActivityType.IssueApproved,
+                    issueId,
+                    adminUser.Id);
+            }
+            catch (Exception activityEx)
+            {
+                logger.LogError(activityEx, "Failed to record IssueApproved activity for issue {IssueId}", issueId);
+            }
 
             logger.LogInformation(
                 "Issue approved: {IssueId} by admin: {AdminUserId}",
