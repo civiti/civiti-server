@@ -66,4 +66,12 @@ public static class ApiRoutes
         public const string Base = $"{ApiBase}/activity";
         public const string My = "/my";
     }
+
+    public static class Comments
+    {
+        public const string Base = $"{ApiBase}/comments";
+        public const string ById = "/{id:guid}";
+        public const string Vote = "/{id:guid}/vote";
+        public const string IssueComments = $"{Issues.Base}/{{issueId:guid}}/comments";
+    }
 }

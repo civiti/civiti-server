@@ -280,6 +280,51 @@ namespace Civica.Api.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Comments",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    IssueId = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Content = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                    HelpfulCount = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
+                    IsEdited = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false),
+                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false, defaultValue: false),
+                    DeletedByUserId = table.Column<Guid>(type: "uuid", nullable: true),
+                    ParentCommentId = table.Column<Guid>(type: "uuid", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Comments", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Comments_Comments_ParentCommentId",
+                        column: x => x.ParentCommentId,
+                        principalTable: "Comments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_Comments_Issues_IssueId",
+                        column: x => x.IssueId,
+                        principalTable: "Issues",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_Comments_UserProfiles_DeletedByUserId",
+                        column: x => x.DeletedByUserId,
+                        principalTable: "UserProfiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_Comments_UserProfiles_UserId",
+                        column: x => x.UserId,
+                        principalTable: "UserProfiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "IssueAuthorities",
                 columns: table => new
                 {
@@ -333,6 +378,32 @@ namespace Civica.Api.Migrations
                         name: "FK_IssuePhotos_Issues_IssueId",
                         column: x => x.IssueId,
                         principalTable: "Issues",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "CommentVotes",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    CommentId = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CommentVotes", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_CommentVotes_Comments_CommentId",
+                        column: x => x.CommentId,
+                        principalTable: "Comments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_CommentVotes_UserProfiles_UserId",
+                        column: x => x.UserId,
+                        principalTable: "UserProfiles",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -516,6 +587,48 @@ namespace Civica.Api.Migrations
                 column: "Rarity");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Comments_CreatedAt",
+                table: "Comments",
+                column: "CreatedAt",
+                descending: new bool[0]);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Comments_DeletedByUserId",
+                table: "Comments",
+                column: "DeletedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Comments_IssueId",
+                table: "Comments",
+                column: "IssueId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Comments_IssueId_IsDeleted_CreatedAt",
+                table: "Comments",
+                columns: new[] { "IssueId", "IsDeleted", "CreatedAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Comments_ParentCommentId",
+                table: "Comments",
+                column: "ParentCommentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Comments_UserId",
+                table: "Comments",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CommentVotes_CommentId_UserId",
+                table: "CommentVotes",
+                columns: new[] { "CommentId", "UserId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CommentVotes_UserId",
+                table: "CommentVotes",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_IssueAuthorities_AuthorityId",
                 table: "IssueAuthorities",
                 column: "AuthorityId");
@@ -681,6 +794,9 @@ namespace Civica.Api.Migrations
                 name: "AdminActions");
 
             migrationBuilder.DropTable(
+                name: "CommentVotes");
+
+            migrationBuilder.DropTable(
                 name: "IssueAuthorities");
 
             migrationBuilder.DropTable(
@@ -693,19 +809,22 @@ namespace Civica.Api.Migrations
                 name: "UserBadges");
 
             migrationBuilder.DropTable(
-                name: "Authorities");
+                name: "Comments");
 
             migrationBuilder.DropTable(
-                name: "Issues");
+                name: "Authorities");
 
             migrationBuilder.DropTable(
                 name: "Achievements");
 
             migrationBuilder.DropTable(
-                name: "UserProfiles");
+                name: "Issues");
 
             migrationBuilder.DropTable(
                 name: "Badges");
+
+            migrationBuilder.DropTable(
+                name: "UserProfiles");
         }
     }
 }

@@ -5,6 +5,7 @@ namespace Civica.Api.Services.Interfaces;
 public interface IGamificationService
 {
     Task AwardPointsAsync(Guid userId, int points, string reason, bool saveChanges = true);
+    Task DeductPointsAsync(Guid userId, int points, string reason, bool saveChanges = true);
     Task CheckAndAwardBadgesAsync(Guid userId, bool saveChanges = true);
     Task CheckAndAwardAchievementsAsync(Guid userId, bool saveChanges = true);
     Task UpdateAchievementProgressAsync(Guid userId, string achievementType, int progress = 1, bool isAbsolute = false, bool saveChanges = true);

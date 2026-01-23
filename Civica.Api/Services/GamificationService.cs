@@ -51,6 +51,46 @@ public class GamificationService(
         }
     }
 
+    public async Task DeductPointsAsync(Guid userId, int points, string reason, bool saveChanges = true)
+    {
+        try
+        {
+            UserProfile? user = await context.UserProfiles.FindAsync(userId);
+            if (user == null)
+            {
+                logger.LogWarning("User not found for deducting points: {UserId}", userId);
+                return;
+            }
+
+            user.Points = Math.Max(0, user.Points - points);
+
+            // Recalculate level based on new points
+            var newLevel = CalculateLevelFromPoints(user.Points);
+            if (newLevel < user.Level)
+            {
+                user.Level = newLevel;
+                logger.LogInformation("User {UserId} level decreased to {Level} after point deduction", userId, newLevel);
+
+                // Note: Achievement progress is intentionally NOT decreased when level drops.
+                // Achievements represent historical accomplishments and should not regress.
+            }
+
+            user.UpdatedAt = DateTime.UtcNow;
+
+            if (saveChanges)
+            {
+                await context.SaveChangesAsync();
+            }
+
+            logger.LogInformation("Deducted {Points} points from user {UserId} for {Reason}", points, userId, reason);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error deducting points from user {UserId}", userId);
+            throw;
+        }
+    }
+
     public async Task CheckAndAwardBadgesAsync(Guid userId, bool saveChanges = true)
     {
         try

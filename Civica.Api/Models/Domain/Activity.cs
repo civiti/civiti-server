@@ -36,5 +36,7 @@ public enum ActivityType
     /// <summary>Issue was marked as resolved</summary>
     IssueResolved,
     /// <summary>New issue was created</summary>
-    IssueCreated
+    IssueCreated,
+    /// <summary>New comment was added to an issue</summary>
+    NewComment
 }
