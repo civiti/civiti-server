@@ -318,6 +318,8 @@ public class ActivityService(
                 $"Problema \"{activity.IssueTitle}\" a fost rezolvată",
             ActivityType.IssueCreated =>
                 $"O nouă problemă a fost raportată: \"{activity.IssueTitle}\"",
+            ActivityType.NewComment =>
+                $"Un nou comentariu la problema \"{activity.IssueTitle}\"",
             _ => $"Activitate pentru \"{activity.IssueTitle}\""
         };
     }

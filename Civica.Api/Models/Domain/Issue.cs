@@ -30,6 +30,7 @@ public class Issue
     public List<AdminAction> AdminActions { get; set; } = [];
     public List<IssueAuthority> IssueAuthorities { get; set; } = [];
     public List<Activity> Activities { get; set; } = [];
+    public List<Comment> Comments { get; set; } = [];
 }
 
 /// <summary>

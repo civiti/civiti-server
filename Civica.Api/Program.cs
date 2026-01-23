@@ -347,6 +347,7 @@ builder.Services.AddScoped<IGamificationService, GamificationService>();
 builder.Services.AddScoped<IAuthorityService, AuthorityService>();
 builder.Services.AddScoped<IClaudeEnhancementService, ClaudeEnhancementService>();
 builder.Services.AddScoped<IActivityService, ActivityService>();
+builder.Services.AddScoped<ICommentService, CommentService>();
 
 // Validators
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
@@ -415,6 +416,7 @@ app.MapUtilityEndpoints(); // Utility endpoints (categories, etc.)
 app.MapJwksEndpoints(); // JWKS management and monitoring endpoints
 app.MapDevAuthEndpoints(); // Development-only endpoints for testing
 app.MapActivityEndpoints(); // Activity feed endpoints
+app.MapCommentEndpoints(); // Comment endpoints
 
 // Root endpoint redirects to Swagger UI
 app.MapGet("/", () => Results.Redirect("/swagger"))
