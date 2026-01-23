@@ -176,8 +176,8 @@ public class CommentService(
                 }
             }
 
-            // Validate content after trimming
-            var trimmedContent = request.Content.Trim();
+            // Validate content after trimming (handle null from explicit JSON null)
+            var trimmedContent = request.Content?.Trim() ?? string.Empty;
             if (string.IsNullOrEmpty(trimmedContent))
             {
                 throw new InvalidOperationException("Comment content cannot be empty or whitespace only");
@@ -255,8 +255,8 @@ public class CommentService(
                 return (false, "You can only edit your own comments");
             }
 
-            // Validate content after trimming
-            var trimmedContent = request.Content.Trim();
+            // Validate content after trimming (handle null from explicit JSON null)
+            var trimmedContent = request.Content?.Trim() ?? string.Empty;
             if (string.IsNullOrEmpty(trimmedContent))
             {
                 return (false, "Comment content cannot be empty or whitespace only");
@@ -332,6 +332,7 @@ public class CommentService(
 
     public async Task<(bool Success, string? Error)> VoteHelpfulAsync(Guid commentId, string supabaseUserId)
     {
+        await using var transaction = await context.Database.BeginTransactionAsync();
         try
         {
             var user = await context.UserProfiles
@@ -397,6 +398,8 @@ public class CommentService(
                 PointsForHelpfulVote,
                 "helpful_vote_received");
 
+            await transaction.CommitAsync();
+
             logger.LogInformation(
                 "User {UserId} voted comment {CommentId} as helpful",
                 user.Id, commentId);
@@ -406,10 +409,12 @@ public class CommentService(
         catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("unique") == true ||
                                            ex.InnerException?.Message.Contains("duplicate") == true)
         {
+            await transaction.RollbackAsync();
             return (false, "You have already voted on this comment");
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             logger.LogError(ex, "Error voting on comment: {CommentId}", commentId);
             throw;
         }
@@ -417,6 +422,7 @@ public class CommentService(
 
     public async Task<(bool Success, string? Error)> RemoveVoteAsync(Guid commentId, string supabaseUserId)
     {
+        await using var transaction = await context.Database.BeginTransactionAsync();
         try
         {
             var user = await context.UserProfiles
@@ -464,6 +470,8 @@ public class CommentService(
                 PointsForHelpfulVote,
                 "helpful_vote_removed");
 
+            await transaction.CommitAsync();
+
             logger.LogInformation(
                 "User {UserId} removed vote from comment {CommentId}, deducted {Points} points from author {AuthorId}",
                 user.Id, commentId, PointsForHelpfulVote, comment.UserId);
@@ -472,6 +480,7 @@ public class CommentService(
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             logger.LogError(ex, "Error removing vote from comment: {CommentId}", commentId);
             throw;
         }
