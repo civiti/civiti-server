@@ -71,8 +71,8 @@ public class GamificationService(
                 user.Level = newLevel;
                 logger.LogInformation("User {UserId} level decreased to {Level} after point deduction", userId, newLevel);
 
-                // Update level achievement progress (use absolute progress to set level directly)
-                await UpdateAchievementProgressAsync(userId, "level_up", newLevel, isAbsolute: true, saveChanges: false);
+                // Note: Achievement progress is intentionally NOT decreased when level drops.
+                // Achievements represent historical accomplishments and should not regress.
             }
 
             user.UpdatedAt = DateTime.UtcNow;

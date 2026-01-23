@@ -154,9 +154,12 @@ public static class CommentEndpoints
             var (success, error) = await commentService.UpdateCommentAsync(id, request, supabaseUserId);
             if (!success)
             {
-                return error == "Comment not found"
-                    ? Results.NotFound(new { error })
-                    : Results.BadRequest(new { error });
+                return error switch
+                {
+                    "Comment not found" => Results.NotFound(new { error }),
+                    "You can only edit your own comments" => Results.Forbid(),
+                    _ => Results.BadRequest(new { error })
+                };
             }
 
             return Results.NoContent();
@@ -168,6 +171,7 @@ public static class CommentEndpoints
         .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
         .WithOpenApi();
 

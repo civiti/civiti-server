@@ -14,12 +14,8 @@ public class CommentVoteConfiguration : IEntityTypeConfiguration<CommentVote>
         builder.HasIndex(v => new { v.CommentId, v.UserId })
             .IsUnique();
 
-        // Relationships
-        builder.HasOne(v => v.Comment)
-            .WithMany(c => c.Votes)
-            .HasForeignKey(v => v.CommentId)
-            .OnDelete(DeleteBehavior.Cascade);
-
+        // Note: Comment relationship is configured in CommentConfiguration.cs
+        // Only configure the User relationship here to avoid duplication
         builder.HasOne(v => v.User)
             .WithMany()
             .HasForeignKey(v => v.UserId)
