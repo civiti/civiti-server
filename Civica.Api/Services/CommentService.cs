@@ -393,6 +393,13 @@ public class CommentService(
             {
                 await using var transaction = await context.Database.BeginTransactionAsync();
 
+                // Fetch current HelpfulCount inside transaction to avoid stale data
+                // (votes could be added between the pre-validation fetch and here)
+                var currentHelpfulCount = await context.Comments
+                    .Where(c => c.Id == commentId && !c.IsDeleted)
+                    .Select(c => c.HelpfulCount)
+                    .FirstOrDefaultAsync();
+
                 // Atomically soft-delete the comment with optimistic concurrency
                 // This prevents double stat deduction if concurrent deletes occur
                 var rowsAffected = await context.Comments
@@ -430,17 +437,17 @@ public class CommentService(
                     PointsForComment, comment.UserId);
 
                 // Also adjust helpful vote stats if comment had votes
-                if (comment.HelpfulCount > 0)
+                if (currentHelpfulCount > 0)
                 {
                     // Deduct HelpfulComments stat from comment author
                     await context.UserProfiles
                         .Where(u => u.Id == comment.UserId)
                         .ExecuteUpdateAsync(u => u
-                            .SetProperty(x => x.HelpfulComments, x => Math.Max(0, x.HelpfulComments - comment.HelpfulCount))
+                            .SetProperty(x => x.HelpfulComments, x => Math.Max(0, x.HelpfulComments - currentHelpfulCount))
                             .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
 
                     // Deduct points for each helpful vote received
-                    var pointsToDeduct = comment.HelpfulCount * PointsForHelpfulVote;
+                    var pointsToDeduct = currentHelpfulCount * PointsForHelpfulVote;
                     await gamificationService.DeductPointsAsync(
                         comment.UserId,
                         pointsToDeduct,
@@ -448,7 +455,7 @@ public class CommentService(
 
                     logger.LogInformation(
                         "Deducted {Points} points and {VoteCount} helpful comments from user {UserId} due to comment deletion",
-                        pointsToDeduct, comment.HelpfulCount, comment.UserId);
+                        pointsToDeduct, currentHelpfulCount, comment.UserId);
                 }
 
                 // Recursively find all descendants (replies, nested replies, etc.)
