@@ -93,7 +93,7 @@ public static class CommentEndpoints
                 return ex.Message switch
                 {
                     "Issue not found" or "Parent comment not found" => Results.NotFound(new { error = ex.Message }),
-                    "Please wait before posting another comment" => Results.StatusCode(StatusCodes.Status429TooManyRequests),
+                    "Please wait before posting another comment" => Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status429TooManyRequests),
                     "You have already posted this comment" => Results.Conflict(new { error = ex.Message }),
                     _ => Results.BadRequest(new { error = ex.Message })
                 };
