@@ -203,6 +203,9 @@ public class CommentService(
 
             await strategy.ExecuteAsync(async () =>
             {
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
+
                 // Check if this comment was already created in a previous retry attempt
                 // (handles transient error after commit scenario)
                 var existingComment = await context.Comments
@@ -392,6 +395,9 @@ public class CommentService(
 
             var deletedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
+
                 await using var transaction = await context.Database.BeginTransactionAsync();
 
                 // Fetch current HelpfulCount inside transaction to avoid stale data
@@ -615,6 +621,9 @@ public class CommentService(
 
             var votedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
+
                 // Check if this vote was already created in a previous retry attempt
                 var existingVote = await context.CommentVotes
                     .FirstOrDefaultAsync(v => v.Id == voteId);
@@ -720,6 +729,9 @@ public class CommentService(
 
             var removedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
+
                 await using var transaction = await context.Database.BeginTransactionAsync();
 
                 // Use ExecuteDeleteAsync for atomic delete - avoids entity tracking issues on retry
