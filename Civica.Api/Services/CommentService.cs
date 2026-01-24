@@ -371,8 +371,9 @@ public class CommentService(
                 return (false, "User not found");
             }
 
+            // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
+            // which would return the tracked entity, causing double points on retry
             var comment = await context.Comments
-                .Include(c => c.User)
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
 
             if (comment == null)
@@ -580,8 +581,9 @@ public class CommentService(
                 return (false, "User not found");
             }
 
+            // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
+            // which would return the tracked entity, causing double points on retry
             var comment = await context.Comments
-                .Include(c => c.User)
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
 
             if (comment == null)
@@ -676,8 +678,9 @@ public class CommentService(
                 return (false, "User not found");
             }
 
+            // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
+            // which would return the tracked entity, causing double points on retry
             var comment = await context.Comments
-                .Include(c => c.User)
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
 
             if (comment == null)
@@ -685,10 +688,11 @@ public class CommentService(
                 return (false, "Comment not found");
             }
 
-            var vote = await context.CommentVotes
-                .FirstOrDefaultAsync(v => v.CommentId == commentId && v.UserId == user.Id);
+            // Check if vote exists (for user-friendly error message)
+            var voteExists = await context.CommentVotes
+                .AnyAsync(v => v.CommentId == commentId && v.UserId == user.Id);
 
-            if (vote == null)
+            if (!voteExists)
             {
                 return (false, "You have not voted on this comment");
             }
@@ -696,12 +700,21 @@ public class CommentService(
             // Use execution strategy to wrap the transaction
             var strategy = context.Database.CreateExecutionStrategy();
 
-            await strategy.ExecuteAsync(async () =>
+            var removedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
                 await using var transaction = await context.Database.BeginTransactionAsync();
 
-                context.CommentVotes.Remove(vote);
-                await context.SaveChangesAsync();
+                // Use ExecuteDeleteAsync for atomic delete - avoids entity tracking issues on retry
+                var rowsDeleted = await context.CommentVotes
+                    .Where(v => v.CommentId == commentId && v.UserId == user.Id)
+                    .ExecuteDeleteAsync();
+
+                // If no rows deleted, vote was already removed (concurrent request or retry after success)
+                if (rowsDeleted == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return false; // Idempotent success
+                }
 
                 // Use atomic database operations to prevent race conditions on helpful counts
                 await context.Comments
@@ -721,11 +734,15 @@ public class CommentService(
                     "helpful_vote_removed");
 
                 await transaction.CommitAsync();
+                return true;
             });
 
-            logger.LogInformation(
-                "User {UserId} removed vote from comment {CommentId}, deducted {Points} points from author {AuthorId}",
-                user.Id, commentId, PointsForHelpfulVote, comment.UserId);
+            if (removedByThisRequest)
+            {
+                logger.LogInformation(
+                    "User {UserId} removed vote from comment {CommentId}, deducted {Points} points from author {AuthorId}",
+                    user.Id, commentId, PointsForHelpfulVote, comment.UserId);
+            }
 
             return (true, null);
         }
