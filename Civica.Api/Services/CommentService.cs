@@ -197,8 +197,24 @@ public class CommentService(
             var strategy = context.Database.CreateExecutionStrategy();
             Comment? comment = null;
 
+            // Generate ID before retry block for idempotency - if retry occurs after commit,
+            // we can detect our already-created comment by this ID
+            var commentId = Guid.NewGuid();
+
             await strategy.ExecuteAsync(async () =>
             {
+                // Check if this comment was already created in a previous retry attempt
+                // (handles transient error after commit scenario)
+                var existingComment = await context.Comments
+                    .FirstOrDefaultAsync(c => c.Id == commentId);
+
+                if (existingComment != null)
+                {
+                    // Comment was created on a previous attempt - treat as success
+                    comment = existingComment;
+                    return;
+                }
+
                 // Use serializable transaction to prevent race conditions on rate limit/duplicate checks
                 // Transaction auto-rolls back on disposal if not committed
                 await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
@@ -233,7 +249,7 @@ public class CommentService(
                 // Create comment
                 comment = new Comment
                 {
-                    Id = Guid.NewGuid(),
+                    Id = commentId,
                     IssueId = issueId,
                     UserId = user.Id,
                     Content = trimmedContent,
@@ -243,12 +259,14 @@ public class CommentService(
                 };
 
                 context.Comments.Add(comment);
-
-                // Update user stats
-                user.CommentsGiven++;
-                user.UpdatedAt = DateTime.UtcNow;
-
                 await context.SaveChangesAsync();
+
+                // Update user stats atomically to avoid retry issues
+                await context.UserProfiles
+                    .Where(u => u.Id == user.Id)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.CommentsGiven, x => x.CommentsGiven + 1)
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
                 await transaction.CommitAsync();
             });
 
@@ -371,7 +389,7 @@ public class CommentService(
             // Use execution strategy to wrap the transaction
             var strategy = context.Database.CreateExecutionStrategy();
 
-            await strategy.ExecuteAsync(async () =>
+            var deletedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
                 await using var transaction = await context.Database.BeginTransactionAsync();
 
@@ -391,7 +409,7 @@ public class CommentService(
                         "Comment {CommentId} was already deleted by a concurrent request",
                         commentId);
                     await transaction.RollbackAsync();
-                    return; // Return success - delete is idempotent
+                    return false; // Already deleted by concurrent request - idempotent success
                 }
 
                 // Deduct comment creation points from the author
@@ -523,11 +541,15 @@ public class CommentService(
 
                 await context.SaveChangesAsync();
                 await transaction.CommitAsync();
+                return true; // Successfully deleted by this request
             });
 
-            logger.LogInformation(
-                "Comment {CommentId} deleted by user {UserId} (admin: {IsAdmin})",
-                commentId, user.Id, isAdmin);
+            if (deletedByThisRequest)
+            {
+                logger.LogInformation(
+                    "Comment {CommentId} deleted by user {UserId} (admin: {IsAdmin})",
+                    commentId, user.Id, isAdmin);
+            }
 
             return (true, null);
         }
