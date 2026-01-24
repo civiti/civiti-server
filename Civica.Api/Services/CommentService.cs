@@ -183,6 +183,33 @@ public class CommentService(
                 throw new InvalidOperationException("Comment content cannot be empty or whitespace only");
             }
 
+            // Rate limit: max 1 comment per 10 seconds per user per issue
+            var recentComment = await context.Comments
+                .Where(c => c.UserId == user.Id
+                    && c.IssueId == issueId
+                    && !c.IsDeleted
+                    && c.CreatedAt > DateTime.UtcNow.AddSeconds(-10))
+                .AnyAsync();
+
+            if (recentComment)
+            {
+                throw new InvalidOperationException("Please wait before posting another comment");
+            }
+
+            // Duplicate detection: block identical content within 5 minutes
+            var duplicateExists = await context.Comments
+                .Where(c => c.UserId == user.Id
+                    && c.IssueId == issueId
+                    && c.Content == trimmedContent
+                    && !c.IsDeleted
+                    && c.CreatedAt > DateTime.UtcNow.AddMinutes(-5))
+                .AnyAsync();
+
+            if (duplicateExists)
+            {
+                throw new InvalidOperationException("You have already posted this comment");
+            }
+
             // Create comment
             var comment = new Comment
             {

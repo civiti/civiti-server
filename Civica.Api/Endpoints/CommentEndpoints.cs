@@ -93,6 +93,8 @@ public static class CommentEndpoints
                 return ex.Message switch
                 {
                     "Issue not found" or "Parent comment not found" => Results.NotFound(new { error = ex.Message }),
+                    "Please wait before posting another comment" => Results.StatusCode(StatusCodes.Status429TooManyRequests),
+                    "You have already posted this comment" => Results.Conflict(new { error = ex.Message }),
                     _ => Results.BadRequest(new { error = ex.Message })
                 };
             }
@@ -105,6 +107,8 @@ public static class CommentEndpoints
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict)
+        .Produces(StatusCodes.Status429TooManyRequests)
         .WithOpenApi();
 
         // GET /api/comments/{id} - Get a single comment
