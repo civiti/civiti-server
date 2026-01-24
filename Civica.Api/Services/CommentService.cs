@@ -13,7 +13,8 @@ public class CommentService(
     ILogger<CommentService> logger,
     CivicaDbContext context,
     IGamificationService gamificationService,
-    IActivityService activityService) : ICommentService
+    IActivityService activityService,
+    IContentModerationService contentModerationService) : ICommentService
 {
     private const int PointsForComment = 5;
     private const int PointsForHelpfulVote = 2;
@@ -184,57 +185,93 @@ public class CommentService(
                 throw new InvalidOperationException("Comment content cannot be empty or whitespace only");
             }
 
-            // Use serializable transaction to prevent race conditions on rate limit/duplicate checks
-            // Transaction auto-rolls back on disposal if not committed
-            await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
-
-            // Rate limit: max 1 comment per 10 seconds per user per issue
-            var recentComment = await context.Comments
-                .Where(c => c.UserId == user.Id
-                    && c.IssueId == issueId
-                    && !c.IsDeleted
-                    && c.CreatedAt > DateTime.UtcNow.AddSeconds(-10))
-                .AnyAsync();
-
-            if (recentComment)
+            // Moderate content before saving
+            var moderationResult = await contentModerationService.ModerateContentAsync(trimmedContent);
+            if (!moderationResult.IsAllowed)
             {
-                throw new InvalidOperationException("Please wait before posting another comment");
+                throw new InvalidOperationException(
+                    moderationResult.BlockReason ?? "Content violates community guidelines");
             }
 
-            // Duplicate detection: block identical content within 5 minutes
-            var duplicateExists = await context.Comments
-                .Where(c => c.UserId == user.Id
-                    && c.IssueId == issueId
-                    && c.Content == trimmedContent
-                    && !c.IsDeleted
-                    && c.CreatedAt > DateTime.UtcNow.AddMinutes(-5))
-                .AnyAsync();
+            // Use execution strategy to wrap the transaction (required for retry-enabled DbContext)
+            var strategy = context.Database.CreateExecutionStrategy();
+            Comment? comment = null;
 
-            if (duplicateExists)
+            // Generate ID before retry block for idempotency - if retry occurs after commit,
+            // we can detect our already-created comment by this ID
+            var commentId = Guid.NewGuid();
+
+            await strategy.ExecuteAsync(async () =>
             {
-                throw new InvalidOperationException("You have already posted this comment");
-            }
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
 
-            // Create comment
-            var comment = new Comment
-            {
-                Id = Guid.NewGuid(),
-                IssueId = issueId,
-                UserId = user.Id,
-                Content = trimmedContent,
-                ParentCommentId = request.ParentCommentId,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
+                // Check if this comment was already created in a previous retry attempt
+                // (handles transient error after commit scenario)
+                var existingComment = await context.Comments
+                    .FirstOrDefaultAsync(c => c.Id == commentId);
 
-            context.Comments.Add(comment);
+                if (existingComment != null)
+                {
+                    // Comment was created on a previous attempt - treat as success
+                    comment = existingComment;
+                    return;
+                }
 
-            // Update user stats
-            user.CommentsGiven++;
-            user.UpdatedAt = DateTime.UtcNow;
+                // Use serializable transaction to prevent race conditions on rate limit/duplicate checks
+                // Transaction auto-rolls back on disposal if not committed
+                await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
-            await context.SaveChangesAsync();
-            await transaction.CommitAsync();
+                // Rate limit: max 1 comment per 10 seconds per user per issue
+                var recentComment = await context.Comments
+                    .Where(c => c.UserId == user.Id
+                        && c.IssueId == issueId
+                        && !c.IsDeleted
+                        && c.CreatedAt > DateTime.UtcNow.AddSeconds(-10))
+                    .AnyAsync();
+
+                if (recentComment)
+                {
+                    throw new InvalidOperationException("Please wait before posting another comment");
+                }
+
+                // Duplicate detection: block identical content within 5 minutes
+                var duplicateExists = await context.Comments
+                    .Where(c => c.UserId == user.Id
+                        && c.IssueId == issueId
+                        && c.Content == trimmedContent
+                        && !c.IsDeleted
+                        && c.CreatedAt > DateTime.UtcNow.AddMinutes(-5))
+                    .AnyAsync();
+
+                if (duplicateExists)
+                {
+                    throw new InvalidOperationException("You have already posted this comment");
+                }
+
+                // Create comment
+                comment = new Comment
+                {
+                    Id = commentId,
+                    IssueId = issueId,
+                    UserId = user.Id,
+                    Content = trimmedContent,
+                    ParentCommentId = request.ParentCommentId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                context.Comments.Add(comment);
+                await context.SaveChangesAsync();
+
+                // Update user stats atomically to avoid retry issues
+                await context.UserProfiles
+                    .Where(u => u.Id == user.Id)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.CommentsGiven, x => x.CommentsGiven + 1)
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+                await transaction.CommitAsync();
+            });
 
             // Award points (separate transaction)
             await gamificationService.AwardPointsAsync(user.Id, PointsForComment, "comment_created");
@@ -247,7 +284,7 @@ public class CommentService(
 
             logger.LogInformation(
                 "User {UserId} created comment {CommentId} on issue {IssueId}",
-                user.Id, comment.Id, issueId);
+                user.Id, comment!.Id, issueId);
 
             // Reload with user for response
             comment.User = user;
@@ -295,6 +332,13 @@ public class CommentService(
                 return (false, "Comment content cannot be empty or whitespace only");
             }
 
+            // Moderate content before saving
+            var moderationResult = await contentModerationService.ModerateContentAsync(trimmedContent);
+            if (!moderationResult.IsAllowed)
+            {
+                return (false, moderationResult.BlockReason ?? "Content violates community guidelines");
+            }
+
             comment.Content = trimmedContent;
             comment.IsEdited = true;
             comment.UpdatedAt = DateTime.UtcNow;
@@ -319,9 +363,9 @@ public class CommentService(
         string supabaseUserId,
         bool isAdmin)
     {
-        await using var transaction = await context.Database.BeginTransactionAsync();
         try
         {
+            // Pre-validate outside the transaction
             var user = await context.UserProfiles
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
@@ -330,8 +374,9 @@ public class CommentService(
                 return (false, "User not found");
             }
 
+            // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
+            // which would return the tracked entity, causing double points on retry
             var comment = await context.Comments
-                .Include(c => c.User)
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
 
             if (comment == null)
@@ -345,164 +390,185 @@ public class CommentService(
                 return (false, "You can only delete your own comments");
             }
 
-            // Atomically soft-delete the comment with optimistic concurrency
-            // This prevents double stat deduction if concurrent deletes occur
-            var rowsAffected = await context.Comments
-                .Where(c => c.Id == commentId && !c.IsDeleted)
-                .ExecuteUpdateAsync(c => c
-                    .SetProperty(x => x.IsDeleted, true)
-                    .SetProperty(x => x.DeletedByUserId, user.Id)
-                    .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+            // Use execution strategy to wrap the transaction
+            var strategy = context.Database.CreateExecutionStrategy();
 
-            // If no rows affected, another request already deleted this comment
-            if (rowsAffected == 0)
+            var deletedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
-                logger.LogInformation(
-                    "Comment {CommentId} was already deleted by a concurrent request",
-                    commentId);
-                await transaction.RollbackAsync();
-                return (true, null); // Return success - delete is idempotent
-            }
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
 
-            // Deduct comment creation points from the author
-            await gamificationService.DeductPointsAsync(
-                comment.UserId,
-                PointsForComment,
-                "comment_deleted");
+                await using var transaction = await context.Database.BeginTransactionAsync();
 
-            // Decrement the user's CommentsGiven stat
-            await context.UserProfiles
-                .Where(u => u.Id == comment.UserId)
-                .ExecuteUpdateAsync(u => u
-                    .SetProperty(x => x.CommentsGiven, x => Math.Max(0, x.CommentsGiven - 1))
-                    .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+                // Fetch current HelpfulCount inside transaction to avoid stale data
+                // (votes could be added between the pre-validation fetch and here)
+                var currentHelpfulCount = await context.Comments
+                    .Where(c => c.Id == commentId && !c.IsDeleted)
+                    .Select(c => c.HelpfulCount)
+                    .FirstOrDefaultAsync();
 
-            logger.LogInformation(
-                "Deducted {Points} creation points from user {UserId} due to comment deletion",
-                PointsForComment, comment.UserId);
-
-            // Also adjust helpful vote stats if comment had votes
-            if (comment.HelpfulCount > 0)
-            {
-                // Deduct HelpfulComments stat from comment author
-                await context.UserProfiles
-                    .Where(u => u.Id == comment.UserId)
-                    .ExecuteUpdateAsync(u => u
-                        .SetProperty(x => x.HelpfulComments, x => Math.Max(0, x.HelpfulComments - comment.HelpfulCount))
-                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
-
-                // Deduct points for each helpful vote received
-                var pointsToDeduct = comment.HelpfulCount * PointsForHelpfulVote;
-                await gamificationService.DeductPointsAsync(
-                    comment.UserId,
-                    pointsToDeduct,
-                    "comment_deleted_votes_removed");
-
-                logger.LogInformation(
-                    "Deducted {Points} points and {VoteCount} helpful comments from user {UserId} due to comment deletion",
-                    pointsToDeduct, comment.HelpfulCount, comment.UserId);
-            }
-
-            // Recursively find all descendants (replies, nested replies, etc.)
-            var allDescendants = new List<(Guid Id, Guid UserId, int HelpfulCount)>();
-            var parentIds = new List<Guid> { commentId };
-
-            while (parentIds.Count > 0)
-            {
-                var children = await context.Comments
-                    .Where(c => parentIds.Contains(c.ParentCommentId!.Value) && !c.IsDeleted)
-                    .Select(c => new { c.Id, c.UserId, c.HelpfulCount })
-                    .ToListAsync();
-
-                if (children.Count == 0)
-                    break;
-
-                allDescendants.AddRange(children.Select(c => (c.Id, c.UserId, c.HelpfulCount)));
-                parentIds = children.Select(c => c.Id).ToList();
-            }
-
-            if (allDescendants.Count > 0)
-            {
-                // Group all descendants by user for stat adjustments
-                var descendantsByUser = allDescendants
-                    .GroupBy(r => r.UserId)
-                    .Select(g => new
-                    {
-                        UserId = g.Key,
-                        CommentCount = g.Count(),
-                        TotalHelpfulCount = g.Sum(r => r.HelpfulCount)
-                    })
-                    .ToList();
-
-                foreach (var descendantStat in descendantsByUser)
-                {
-                    // Deduct creation points for each cascade-deleted comment
-                    var creationPointsToDeduct = descendantStat.CommentCount * PointsForComment;
-                    await gamificationService.DeductPointsAsync(
-                        descendantStat.UserId,
-                        creationPointsToDeduct,
-                        "reply_cascade_deleted");
-
-                    // Decrement the user's CommentsGiven stat
-                    await context.UserProfiles
-                        .Where(u => u.Id == descendantStat.UserId)
-                        .ExecuteUpdateAsync(u => u
-                            .SetProperty(x => x.CommentsGiven, x => Math.Max(0, x.CommentsGiven - descendantStat.CommentCount))
-                            .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
-
-                    logger.LogInformation(
-                        "Deducted {Points} creation points and {CommentCount} CommentsGiven from user {UserId} due to reply cascade deletion",
-                        creationPointsToDeduct, descendantStat.CommentCount, descendantStat.UserId);
-
-                    // Also deduct helpful vote stats if any descendants had votes
-                    if (descendantStat.TotalHelpfulCount > 0)
-                    {
-                        // Deduct HelpfulComments stat from descendant author
-                        await context.UserProfiles
-                            .Where(u => u.Id == descendantStat.UserId)
-                            .ExecuteUpdateAsync(u => u
-                                .SetProperty(x => x.HelpfulComments, x => Math.Max(0, x.HelpfulComments - descendantStat.TotalHelpfulCount))
-                                .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
-
-                        // Deduct points for each helpful vote received on descendants
-                        var votePointsToDeduct = descendantStat.TotalHelpfulCount * PointsForHelpfulVote;
-                        await gamificationService.DeductPointsAsync(
-                            descendantStat.UserId,
-                            votePointsToDeduct,
-                            "reply_cascade_deleted_votes_removed");
-
-                        logger.LogInformation(
-                            "Deducted {Points} points and {VoteCount} helpful comments from user {UserId} due to reply cascade deletion",
-                            votePointsToDeduct, descendantStat.TotalHelpfulCount, descendantStat.UserId);
-                    }
-                }
-
-                // Soft-delete all descendants (with !IsDeleted check for concurrent safety)
-                var descendantIds = allDescendants.Select(d => d.Id).ToList();
-                await context.Comments
-                    .Where(c => descendantIds.Contains(c.Id) && !c.IsDeleted)
+                // Atomically soft-delete the comment with optimistic concurrency
+                // This prevents double stat deduction if concurrent deletes occur
+                var rowsAffected = await context.Comments
+                    .Where(c => c.Id == commentId && !c.IsDeleted)
                     .ExecuteUpdateAsync(c => c
                         .SetProperty(x => x.IsDeleted, true)
                         .SetProperty(x => x.DeletedByUserId, user.Id)
                         .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
 
+                // If no rows affected, another request already deleted this comment
+                if (rowsAffected == 0)
+                {
+                    logger.LogInformation(
+                        "Comment {CommentId} was already deleted by a concurrent request",
+                        commentId);
+                    await transaction.RollbackAsync();
+                    return false; // Already deleted by concurrent request - idempotent success
+                }
+
+                // Deduct comment creation points from the author
+                await gamificationService.DeductPointsAsync(
+                    comment.UserId,
+                    PointsForComment,
+                    "comment_deleted");
+
+                // Decrement the user's CommentsGiven stat
+                await context.UserProfiles
+                    .Where(u => u.Id == comment.UserId)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.CommentsGiven, x => Math.Max(0, x.CommentsGiven - 1))
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
                 logger.LogInformation(
-                    "Soft-deleted {DescendantCount} descendants (replies and nested replies) along with parent comment {CommentId}",
-                    allDescendants.Count, commentId);
+                    "Deducted {Points} creation points from user {UserId} due to comment deletion",
+                    PointsForComment, comment.UserId);
+
+                // Also adjust helpful vote stats if comment had votes
+                if (currentHelpfulCount > 0)
+                {
+                    // Deduct HelpfulComments stat from comment author
+                    await context.UserProfiles
+                        .Where(u => u.Id == comment.UserId)
+                        .ExecuteUpdateAsync(u => u
+                            .SetProperty(x => x.HelpfulComments, x => Math.Max(0, x.HelpfulComments - currentHelpfulCount))
+                            .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                    // Deduct points for each helpful vote received
+                    var pointsToDeduct = currentHelpfulCount * PointsForHelpfulVote;
+                    await gamificationService.DeductPointsAsync(
+                        comment.UserId,
+                        pointsToDeduct,
+                        "comment_deleted_votes_removed");
+
+                    logger.LogInformation(
+                        "Deducted {Points} points and {VoteCount} helpful comments from user {UserId} due to comment deletion",
+                        pointsToDeduct, currentHelpfulCount, comment.UserId);
+                }
+
+                // Recursively find all descendants (replies, nested replies, etc.)
+                var allDescendants = new List<(Guid Id, Guid UserId, int HelpfulCount)>();
+                var parentIds = new List<Guid> { commentId };
+
+                while (parentIds.Count > 0)
+                {
+                    var children = await context.Comments
+                        .Where(c => parentIds.Contains(c.ParentCommentId!.Value) && !c.IsDeleted)
+                        .Select(c => new { c.Id, c.UserId, c.HelpfulCount })
+                        .ToListAsync();
+
+                    if (children.Count == 0)
+                        break;
+
+                    allDescendants.AddRange(children.Select(c => (c.Id, c.UserId, c.HelpfulCount)));
+                    parentIds = children.Select(c => c.Id).ToList();
+                }
+
+                if (allDescendants.Count > 0)
+                {
+                    // Group all descendants by user for stat adjustments
+                    var descendantsByUser = allDescendants
+                        .GroupBy(r => r.UserId)
+                        .Select(g => new
+                        {
+                            UserId = g.Key,
+                            CommentCount = g.Count(),
+                            TotalHelpfulCount = g.Sum(r => r.HelpfulCount)
+                        })
+                        .ToList();
+
+                    foreach (var descendantStat in descendantsByUser)
+                    {
+                        // Deduct creation points for each cascade-deleted comment
+                        var creationPointsToDeduct = descendantStat.CommentCount * PointsForComment;
+                        await gamificationService.DeductPointsAsync(
+                            descendantStat.UserId,
+                            creationPointsToDeduct,
+                            "reply_cascade_deleted");
+
+                        // Decrement the user's CommentsGiven stat
+                        await context.UserProfiles
+                            .Where(u => u.Id == descendantStat.UserId)
+                            .ExecuteUpdateAsync(u => u
+                                .SetProperty(x => x.CommentsGiven, x => Math.Max(0, x.CommentsGiven - descendantStat.CommentCount))
+                                .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                        logger.LogInformation(
+                            "Deducted {Points} creation points and {CommentCount} CommentsGiven from user {UserId} due to reply cascade deletion",
+                            creationPointsToDeduct, descendantStat.CommentCount, descendantStat.UserId);
+
+                        // Also deduct helpful vote stats if any descendants had votes
+                        if (descendantStat.TotalHelpfulCount > 0)
+                        {
+                            // Deduct HelpfulComments stat from descendant author
+                            await context.UserProfiles
+                                .Where(u => u.Id == descendantStat.UserId)
+                                .ExecuteUpdateAsync(u => u
+                                    .SetProperty(x => x.HelpfulComments, x => Math.Max(0, x.HelpfulComments - descendantStat.TotalHelpfulCount))
+                                    .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                            // Deduct points for each helpful vote received on descendants
+                            var votePointsToDeduct = descendantStat.TotalHelpfulCount * PointsForHelpfulVote;
+                            await gamificationService.DeductPointsAsync(
+                                descendantStat.UserId,
+                                votePointsToDeduct,
+                                "reply_cascade_deleted_votes_removed");
+
+                            logger.LogInformation(
+                                "Deducted {Points} points and {VoteCount} helpful comments from user {UserId} due to reply cascade deletion",
+                                votePointsToDeduct, descendantStat.TotalHelpfulCount, descendantStat.UserId);
+                        }
+                    }
+
+                    // Soft-delete all descendants (with !IsDeleted check for concurrent safety)
+                    var descendantIds = allDescendants.Select(d => d.Id).ToList();
+                    await context.Comments
+                        .Where(c => descendantIds.Contains(c.Id) && !c.IsDeleted)
+                        .ExecuteUpdateAsync(c => c
+                            .SetProperty(x => x.IsDeleted, true)
+                            .SetProperty(x => x.DeletedByUserId, user.Id)
+                            .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                    logger.LogInformation(
+                        "Soft-deleted {DescendantCount} descendants (replies and nested replies) along with parent comment {CommentId}",
+                        allDescendants.Count, commentId);
+                }
+
+                await context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return true; // Successfully deleted by this request
+            });
+
+            if (deletedByThisRequest)
+            {
+                logger.LogInformation(
+                    "Comment {CommentId} deleted by user {UserId} (admin: {IsAdmin})",
+                    commentId, user.Id, isAdmin);
             }
-
-            await context.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            logger.LogInformation(
-                "Comment {CommentId} deleted by user {UserId} (admin: {IsAdmin})",
-                commentId, user.Id, isAdmin);
 
             return (true, null);
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
             logger.LogError(ex, "Error deleting comment: {CommentId}", commentId);
             throw;
         }
@@ -510,9 +576,9 @@ public class CommentService(
 
     public async Task<(bool Success, string? Error)> VoteHelpfulAsync(Guid commentId, string supabaseUserId)
     {
-        await using var transaction = await context.Database.BeginTransactionAsync();
         try
         {
+            // Pre-validate outside the transaction
             var user = await context.UserProfiles
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
@@ -521,8 +587,9 @@ public class CommentService(
                 return (false, "User not found");
             }
 
+            // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
+            // which would return the tracked entity, causing double points on retry
             var comment = await context.Comments
-                .Include(c => c.User)
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
 
             if (comment == null)
@@ -536,63 +603,90 @@ public class CommentService(
                 return (false, "You cannot vote on your own comment");
             }
 
-            // Check if already voted
-            var existingVote = await context.CommentVotes
-                .FirstOrDefaultAsync(v => v.CommentId == commentId && v.UserId == user.Id);
+            // Check if already voted (for user-friendly error message)
+            var alreadyVoted = await context.CommentVotes
+                .AnyAsync(v => v.CommentId == commentId && v.UserId == user.Id);
 
-            if (existingVote != null)
+            if (alreadyVoted)
             {
                 return (false, "You have already voted on this comment");
             }
 
-            // Create vote
-            var vote = new CommentVote
+            // Use execution strategy to wrap the transaction
+            var strategy = context.Database.CreateExecutionStrategy();
+
+            // Generate ID before retry block for idempotency - if retry occurs after commit,
+            // we can detect our already-created vote by this ID
+            var voteId = Guid.NewGuid();
+
+            var votedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
-                Id = Guid.NewGuid(),
-                CommentId = commentId,
-                UserId = user.Id,
-                CreatedAt = DateTime.UtcNow
-            };
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
 
-            context.CommentVotes.Add(vote);
+                // Check if this vote was already created in a previous retry attempt
+                var existingVote = await context.CommentVotes
+                    .FirstOrDefaultAsync(v => v.Id == voteId);
 
-            // Save the vote first to let the unique constraint catch duplicates
-            await context.SaveChangesAsync();
+                if (existingVote != null)
+                {
+                    // Vote was created on a previous attempt - treat as success
+                    return true;
+                }
 
-            // Use atomic database operations to prevent race conditions on helpful counts
-            await context.Comments
-                .Where(c => c.Id == commentId)
-                .ExecuteUpdateAsync(c => c.SetProperty(x => x.HelpfulCount, x => x.HelpfulCount + 1));
+                await using var transaction = await context.Database.BeginTransactionAsync();
 
-            await context.UserProfiles
-                .Where(u => u.Id == comment.UserId)
-                .ExecuteUpdateAsync(u => u
-                    .SetProperty(x => x.HelpfulComments, x => x.HelpfulComments + 1)
-                    .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+                // Create vote
+                var vote = new CommentVote
+                {
+                    Id = voteId,
+                    CommentId = commentId,
+                    UserId = user.Id,
+                    CreatedAt = DateTime.UtcNow
+                };
 
-            // Award points to comment author
-            await gamificationService.AwardPointsAsync(
-                comment.UserId,
-                PointsForHelpfulVote,
-                "helpful_vote_received");
+                context.CommentVotes.Add(vote);
 
-            await transaction.CommitAsync();
+                // Save the vote first to let the unique constraint catch duplicates
+                await context.SaveChangesAsync();
 
-            logger.LogInformation(
-                "User {UserId} voted comment {CommentId} as helpful",
-                user.Id, commentId);
+                // Use atomic database operations to prevent race conditions on helpful counts
+                await context.Comments
+                    .Where(c => c.Id == commentId)
+                    .ExecuteUpdateAsync(c => c.SetProperty(x => x.HelpfulCount, x => x.HelpfulCount + 1));
+
+                await context.UserProfiles
+                    .Where(u => u.Id == comment.UserId)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.HelpfulComments, x => x.HelpfulComments + 1)
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                // Award points to comment author
+                await gamificationService.AwardPointsAsync(
+                    comment.UserId,
+                    PointsForHelpfulVote,
+                    "helpful_vote_received");
+
+                await transaction.CommitAsync();
+                return true;
+            });
+
+            if (votedByThisRequest)
+            {
+                logger.LogInformation(
+                    "User {UserId} voted comment {CommentId} as helpful",
+                    user.Id, commentId);
+            }
 
             return (true, null);
         }
         catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("unique") == true ||
                                            ex.InnerException?.Message.Contains("duplicate") == true)
         {
-            await transaction.RollbackAsync();
             return (false, "You have already voted on this comment");
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
             logger.LogError(ex, "Error voting on comment: {CommentId}", commentId);
             throw;
         }
@@ -600,9 +694,9 @@ public class CommentService(
 
     public async Task<(bool Success, string? Error)> RemoveVoteAsync(Guid commentId, string supabaseUserId)
     {
-        await using var transaction = await context.Database.BeginTransactionAsync();
         try
         {
+            // Pre-validate outside the transaction
             var user = await context.UserProfiles
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
@@ -611,8 +705,9 @@ public class CommentService(
                 return (false, "User not found");
             }
 
+            // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
+            // which would return the tracked entity, causing double points on retry
             var comment = await context.Comments
-                .Include(c => c.User)
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
 
             if (comment == null)
@@ -620,45 +715,69 @@ public class CommentService(
                 return (false, "Comment not found");
             }
 
-            var vote = await context.CommentVotes
-                .FirstOrDefaultAsync(v => v.CommentId == commentId && v.UserId == user.Id);
+            // Check if vote exists (for user-friendly error message)
+            var voteExists = await context.CommentVotes
+                .AnyAsync(v => v.CommentId == commentId && v.UserId == user.Id);
 
-            if (vote == null)
+            if (!voteExists)
             {
                 return (false, "You have not voted on this comment");
             }
 
-            context.CommentVotes.Remove(vote);
-            await context.SaveChangesAsync();
+            // Use execution strategy to wrap the transaction
+            var strategy = context.Database.CreateExecutionStrategy();
 
-            // Use atomic database operations to prevent race conditions on helpful counts
-            await context.Comments
-                .Where(c => c.Id == commentId)
-                .ExecuteUpdateAsync(c => c.SetProperty(x => x.HelpfulCount, x => Math.Max(0, x.HelpfulCount - 1)));
+            var removedByThisRequest = await strategy.ExecuteAsync(async () =>
+            {
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
 
-            await context.UserProfiles
-                .Where(u => u.Id == comment.UserId)
-                .ExecuteUpdateAsync(u => u
-                    .SetProperty(x => x.HelpfulComments, x => Math.Max(0, x.HelpfulComments - 1))
-                    .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+                await using var transaction = await context.Database.BeginTransactionAsync();
 
-            // Deduct points using gamification service (handles level recalculation)
-            await gamificationService.DeductPointsAsync(
-                comment.UserId,
-                PointsForHelpfulVote,
-                "helpful_vote_removed");
+                // Use ExecuteDeleteAsync for atomic delete - avoids entity tracking issues on retry
+                var rowsDeleted = await context.CommentVotes
+                    .Where(v => v.CommentId == commentId && v.UserId == user.Id)
+                    .ExecuteDeleteAsync();
 
-            await transaction.CommitAsync();
+                // If no rows deleted, vote was already removed (concurrent request or retry after success)
+                if (rowsDeleted == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return false; // Idempotent success
+                }
 
-            logger.LogInformation(
-                "User {UserId} removed vote from comment {CommentId}, deducted {Points} points from author {AuthorId}",
-                user.Id, commentId, PointsForHelpfulVote, comment.UserId);
+                // Use atomic database operations to prevent race conditions on helpful counts
+                await context.Comments
+                    .Where(c => c.Id == commentId)
+                    .ExecuteUpdateAsync(c => c.SetProperty(x => x.HelpfulCount, x => Math.Max(0, x.HelpfulCount - 1)));
+
+                await context.UserProfiles
+                    .Where(u => u.Id == comment.UserId)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.HelpfulComments, x => Math.Max(0, x.HelpfulComments - 1))
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                // Deduct points using gamification service (handles level recalculation)
+                await gamificationService.DeductPointsAsync(
+                    comment.UserId,
+                    PointsForHelpfulVote,
+                    "helpful_vote_removed");
+
+                await transaction.CommitAsync();
+                return true;
+            });
+
+            if (removedByThisRequest)
+            {
+                logger.LogInformation(
+                    "User {UserId} removed vote from comment {CommentId}, deducted {Points} points from author {AuthorId}",
+                    user.Id, commentId, PointsForHelpfulVote, comment.UserId);
+            }
 
             return (true, null);
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
             logger.LogError(ex, "Error removing vote from comment: {CommentId}", commentId);
             throw;
         }

@@ -321,6 +321,24 @@ else
     Log.Warning("Claude API key is not configured. AI text enhancement will return original text.");
 }
 
+// OpenAI Configuration (for content moderation)
+var openAIConfig = new OpenAIConfiguration
+{
+    ApiKey = GetEnvOrConfig("OPENAI_API_KEY", "OpenAI:ApiKey") ?? string.Empty,
+    ModerationModel = GetEnvOrConfig("OPENAI_MODERATION_MODEL", "OpenAI:ModerationModel") ?? OpenAIConfiguration.DefaultModerationModel,
+    TimeoutSeconds = GetEnvOrConfigInt("OPENAI_TIMEOUT_SECONDS", "OpenAI:TimeoutSeconds", OpenAIConfiguration.DefaultTimeoutSeconds)
+};
+builder.Services.AddSingleton(openAIConfig);
+
+if (openAIConfig.IsConfigured)
+{
+    Log.Information("OpenAI content moderation configured with model: {Model}", openAIConfig.ModerationModel);
+}
+else
+{
+    Log.Warning("OpenAI API key is not configured. Content moderation will be skipped.");
+}
+
 string? GetEnvOrConfig(string envVar, string configKey)
 {
     var value = Environment.GetEnvironmentVariable(envVar);
@@ -348,6 +366,7 @@ builder.Services.AddScoped<IAuthorityService, AuthorityService>();
 builder.Services.AddScoped<IClaudeEnhancementService, ClaudeEnhancementService>();
 builder.Services.AddScoped<IActivityService, ActivityService>();
 builder.Services.AddScoped<ICommentService, CommentService>();
+builder.Services.AddScoped<IContentModerationService, OpenAIModerationService>();
 
 // Validators
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
