@@ -1001,6 +1001,8 @@ public class IssueService(
                     Urgency = issue.Urgency,
                     Status = issue.Status,
                     EmailsSent = issue.EmailsSent,
+                    CommunityVotes = issue.CommunityVotes,
+                    HasVoted = false, // Owner cannot vote on their own issue
                     DesiredOutcome = issue.DesiredOutcome,
                     CommunityImpact = issue.CommunityImpact,
                     CreatedAt = issue.CreatedAt,
@@ -1126,11 +1128,18 @@ public class IssueService(
                 // Save the vote first to let the unique constraint catch duplicates
                 await context.SaveChangesAsync();
 
-                // Use atomic database operations to prevent race conditions on vote counts
-                // Increment CommunityVotes on the issue
-                await context.Issues
-                    .Where(i => i.Id == issueId)
+                // Atomic increment with status check to prevent TOCTOU race condition
+                // If issue was deactivated between our check and now, this will affect 0 rows
+                int rowsAffected = await context.Issues
+                    .Where(i => i.Id == issueId && i.Status == IssueStatus.Active)
                     .ExecuteUpdateAsync(i => i.SetProperty(x => x.CommunityVotes, x => x.CommunityVotes + 1));
+
+                if (rowsAffected == 0)
+                {
+                    // Issue was deactivated between check and update - rollback everything
+                    await transaction.RollbackAsync();
+                    return false;
+                }
 
                 // Increment CommunityVotes on the issue author's profile (votes received)
                 await context.UserProfiles
@@ -1160,12 +1169,15 @@ public class IssueService(
                 return true;
             });
 
-            if (votedByThisRequest)
+            if (!votedByThisRequest)
             {
-                logger.LogInformation(
-                    "User {UserId} voted for issue {IssueId}",
-                    user.Id, issueId);
+                // Issue was deactivated during the voting process
+                return (false, "Issue is no longer active");
             }
+
+            logger.LogInformation(
+                "User {UserId} voted for issue {IssueId}",
+                user.Id, issueId);
 
             return (true, null);
         }
