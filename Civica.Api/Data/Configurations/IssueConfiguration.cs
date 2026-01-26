@@ -38,6 +38,7 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
         builder.HasIndex(i => i.District);
         builder.HasIndex(i => i.CreatedAt).IsDescending();
         builder.HasIndex(i => i.EmailsSent).IsDescending();
+        builder.HasIndex(i => i.CommunityVotes).IsDescending();
         // Partial index for active public issues (Status = Active = 4)
         builder.HasIndex(i => new { i.Status, i.PublicVisibility })
             .HasFilter("\"Status\" = 4 AND \"PublicVisibility\" = true");
@@ -66,6 +67,11 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
         builder.HasMany(i => i.IssueAuthorities)
             .WithOne(ia => ia.Issue)
             .HasForeignKey(ia => ia.IssueId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(i => i.Votes)
+            .WithOne(v => v.Issue)
+            .HasForeignKey(v => v.IssueId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

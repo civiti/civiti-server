@@ -14,6 +14,7 @@ public class Issue
     public UrgencyLevel Urgency { get; set; }
     public IssueStatus Status { get; set; } = IssueStatus.Submitted;
     public int EmailsSent { get; set; } = 0;
+    public int CommunityVotes { get; set; } = 0;
     public string? DesiredOutcome { get; set; }
     public string? CommunityImpact { get; set; }
     public string? AdminNotes { get; set; }
@@ -31,6 +32,7 @@ public class Issue
     public List<IssueAuthority> IssueAuthorities { get; set; } = [];
     public List<Activity> Activities { get; set; } = [];
     public List<Comment> Comments { get; set; } = [];
+    public List<IssueVote> Votes { get; set; } = [];
 }
 
 /// <summary>

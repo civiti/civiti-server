@@ -11,6 +11,8 @@ public class IssueListResponse
     public string Address { get; set; } = string.Empty;
     public UrgencyLevel Urgency { get; set; }
     public int EmailsSent { get; set; }
+    public int CommunityVotes { get; set; }
+    public bool? HasVoted { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? MainPhotoUrl { get; set; }
     public string? District { get; set; }

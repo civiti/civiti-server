@@ -6,8 +6,8 @@ namespace Civica.Api.Services.Interfaces;
 
 public interface IIssueService
 {
-    Task<PagedResult<IssueListResponse>> GetAllIssuesAsync(GetIssuesRequest request);
-    Task<IssueDetailResponse?> GetIssueByIdAsync(Guid id);
+    Task<PagedResult<IssueListResponse>> GetAllIssuesAsync(GetIssuesRequest request, Guid? currentUserId = null);
+    Task<IssueDetailResponse?> GetIssueByIdAsync(Guid id, Guid? currentUserId = null);
     Task<CreateIssueResponse> CreateIssueAsync(CreateIssueRequest request, string supabaseUserId);
     Task<(bool Success, string? Error)> IncrementEmailCountAsync(Guid issueId, string? clientIp);
     Task<PagedResult<IssueListResponse>> GetUserIssuesAsync(string supabaseUserId, GetUserIssuesRequest request);
@@ -26,4 +26,16 @@ public interface IIssueService
         Guid issueId,
         UpdateIssueRequest request,
         string supabaseUserId);
+
+    /// <summary>
+    /// Vote for an issue to show community support.
+    /// Awards points to the issue author.
+    /// </summary>
+    Task<(bool Success, string? Error)> VoteForIssueAsync(Guid issueId, string supabaseUserId);
+
+    /// <summary>
+    /// Remove a vote from an issue.
+    /// Deducts points from the issue author.
+    /// </summary>
+    Task<(bool Success, string? Error)> RemoveVoteAsync(Guid issueId, string supabaseUserId);
 }

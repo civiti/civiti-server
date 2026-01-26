@@ -22,6 +22,7 @@ public class IssueService(
     : IIssueService
 {
     private static readonly TimeSpan EmailCooldownDuration = TimeSpan.FromHours(1);
+    private const int PointsForIssueVote = 2;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -33,7 +34,7 @@ public class IssueService(
     /// Error message returned when rate limited. Used by endpoint to detect 429 response.
     /// </summary>
     public const string RateLimitedError = "RATE_LIMITED";
-    public async Task<PagedResult<IssueListResponse>> GetAllIssuesAsync(GetIssuesRequest request)
+    public async Task<PagedResult<IssueListResponse>> GetAllIssuesAsync(GetIssuesRequest request, Guid? currentUserId = null)
     {
         try
         {
@@ -99,19 +100,39 @@ public class IssueService(
             // Apply sorting
             query = request.SortBy?.ToLower() switch
             {
-                "emails" => request.SortDescending ? 
-                    query.OrderByDescending(i => i.EmailsSent) : 
+                "emails" => request.SortDescending ?
+                    query.OrderByDescending(i => i.EmailsSent) :
                     query.OrderBy(i => i.EmailsSent),
+                "votes" => request.SortDescending ?
+                    query.OrderByDescending(i => i.CommunityVotes) :
+                    query.OrderBy(i => i.CommunityVotes),
                 "urgency" => request.SortDescending ?
                     query.OrderByDescending(i => i.Urgency) :
                     query.OrderBy(i => i.Urgency),
-                _ => request.SortDescending ? 
-                    query.OrderByDescending(i => i.CreatedAt) : 
+                _ => request.SortDescending ?
+                    query.OrderByDescending(i => i.CreatedAt) :
                     query.OrderBy(i => i.CreatedAt)
             };
 
             var totalItems = await query.CountAsync();
-            
+
+            var issueIds = await query
+                .Skip((request.Page - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .Select(i => i.Id)
+                .ToListAsync();
+
+            // Get user's votes for these issues if authenticated
+            HashSet<Guid> votedIssueIds = [];
+            if (currentUserId.HasValue)
+            {
+                votedIssueIds = (await context.IssueVotes
+                    .Where(v => v.UserId == currentUserId.Value && issueIds.Contains(v.IssueId))
+                    .Select(v => v.IssueId)
+                    .ToListAsync())
+                    .ToHashSet();
+            }
+
             List<IssueListResponse> items = await query
                 .Skip((request.Page - 1) * request.PageSize)
                 .Take(request.PageSize)
@@ -125,6 +146,7 @@ public class IssueService(
                     Address = i.Address,
                     Urgency = i.Urgency,
                     EmailsSent = i.EmailsSent,
+                    CommunityVotes = i.CommunityVotes,
                     CreatedAt = i.CreatedAt,
                     MainPhotoUrl = i.Photos
                         .Where(p => p.IsPrimary || i.Photos.Count == 1)
@@ -135,6 +157,12 @@ public class IssueService(
                     Status = i.Status
                 })
                 .ToListAsync();
+
+            // Set HasVoted for each item
+            foreach (var item in items)
+            {
+                item.HasVoted = currentUserId.HasValue ? votedIssueIds.Contains(item.Id) : null;
+            }
 
             return new PagedResult<IssueListResponse>
             {
@@ -152,7 +180,7 @@ public class IssueService(
         }
     }
 
-    public async Task<IssueDetailResponse?> GetIssueByIdAsync(Guid id)
+    public async Task<IssueDetailResponse?> GetIssueByIdAsync(Guid id, Guid? currentUserId = null)
     {
         try
         {
@@ -170,6 +198,14 @@ public class IssueService(
                 return null;
             }
 
+            // Check if current user has voted
+            bool? hasVoted = null;
+            if (currentUserId.HasValue)
+            {
+                hasVoted = await context.IssueVotes
+                    .AnyAsync(v => v.IssueId == id && v.UserId == currentUserId.Value);
+            }
+
             return new IssueDetailResponse
             {
                 Id = issue.Id,
@@ -183,6 +219,8 @@ public class IssueService(
                 Urgency = issue.Urgency,
                 Status = issue.Status,
                 EmailsSent = issue.EmailsSent,
+                CommunityVotes = issue.CommunityVotes,
+                HasVoted = hasVoted,
                 DesiredOutcome = issue.DesiredOutcome,
                 CommunityImpact = issue.CommunityImpact,
                 PublicVisibility = issue.PublicVisibility,
@@ -556,6 +594,8 @@ public class IssueService(
                     Address = i.Address,
                     Urgency = i.Urgency,
                     EmailsSent = i.EmailsSent,
+                    CommunityVotes = i.CommunityVotes,
+                    HasVoted = null, // User's own issues - voting not applicable
                     CreatedAt = i.CreatedAt,
                     MainPhotoUrl = i.Photos
                         .Where(p => p.IsPrimary || i.Photos.Count == 1)
@@ -1011,5 +1051,242 @@ public class IssueService(
                 throw;
             }
         });
+    }
+
+    public async Task<(bool Success, string? Error)> VoteForIssueAsync(Guid issueId, string supabaseUserId)
+    {
+        try
+        {
+            // Pre-validate outside the transaction
+            var user = await context.UserProfiles
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+
+            if (user == null)
+            {
+                return (false, "User not found");
+            }
+
+            // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
+            // which would return the tracked entity, causing double points on retry
+            var issue = await context.Issues
+                .FirstOrDefaultAsync(i => i.Id == issueId);
+
+            if (issue == null)
+            {
+                return (false, "Issue not found");
+            }
+
+            // Can only vote on active issues
+            if (issue.Status != IssueStatus.Active)
+            {
+                return (false, "Can only vote on active issues");
+            }
+
+            // Cannot vote on own issue
+            if (issue.UserId == user.Id)
+            {
+                return (false, "You cannot vote on your own issue");
+            }
+
+            // Check if already voted (for user-friendly error message)
+            var alreadyVoted = await context.IssueVotes
+                .AnyAsync(v => v.IssueId == issueId && v.UserId == user.Id);
+
+            if (alreadyVoted)
+            {
+                return (false, "You have already voted on this issue");
+            }
+
+            // Use execution strategy to wrap the transaction
+            var strategy = context.Database.CreateExecutionStrategy();
+
+            // Generate ID before retry block for idempotency - if retry occurs after commit,
+            // we can detect our already-created vote by this ID
+            var voteId = Guid.NewGuid();
+
+            var votedByThisRequest = await strategy.ExecuteAsync(async () =>
+            {
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
+
+                // Check if this vote was already created in a previous retry attempt
+                var existingVote = await context.IssueVotes
+                    .FirstOrDefaultAsync(v => v.Id == voteId);
+
+                if (existingVote != null)
+                {
+                    // Vote was created on a previous attempt - treat as success
+                    return true;
+                }
+
+                await using var transaction = await context.Database.BeginTransactionAsync();
+
+                // Create vote
+                var vote = new IssueVote
+                {
+                    Id = voteId,
+                    IssueId = issueId,
+                    UserId = user.Id,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                context.IssueVotes.Add(vote);
+
+                // Save the vote first to let the unique constraint catch duplicates
+                await context.SaveChangesAsync();
+
+                // Use atomic database operations to prevent race conditions on vote counts
+                // Increment CommunityVotes on the issue
+                await context.Issues
+                    .Where(i => i.Id == issueId)
+                    .ExecuteUpdateAsync(i => i.SetProperty(x => x.CommunityVotes, x => x.CommunityVotes + 1));
+
+                // Increment CommunityVotes on the issue author's profile (votes received)
+                await context.UserProfiles
+                    .Where(u => u.Id == issue.UserId)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.CommunityVotes, x => x.CommunityVotes + 1)
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                // Increment VotesGiven on the voter's profile
+                await context.UserProfiles
+                    .Where(u => u.Id == user.Id)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.VotesGiven, x => x.VotesGiven + 1)
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                // Award points to issue author
+                await gamificationService.AwardPointsAsync(
+                    issue.UserId,
+                    PointsForIssueVote,
+                    "issue_vote_received");
+
+                // Check badges for both users
+                await gamificationService.CheckAndAwardBadgesAsync(issue.UserId);
+                await gamificationService.CheckAndAwardBadgesAsync(user.Id);
+
+                await transaction.CommitAsync();
+                return true;
+            });
+
+            if (votedByThisRequest)
+            {
+                logger.LogInformation(
+                    "User {UserId} voted for issue {IssueId}",
+                    user.Id, issueId);
+            }
+
+            return (true, null);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("unique") == true ||
+                                           ex.InnerException?.Message.Contains("duplicate") == true)
+        {
+            return (false, "You have already voted on this issue");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error voting for issue: {IssueId}", issueId);
+            throw;
+        }
+    }
+
+    public async Task<(bool Success, string? Error)> RemoveVoteAsync(Guid issueId, string supabaseUserId)
+    {
+        try
+        {
+            // Pre-validate outside the transaction
+            var user = await context.UserProfiles
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+
+            if (user == null)
+            {
+                return (false, "User not found");
+            }
+
+            // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
+            // which would return the tracked entity, causing double points on retry
+            var issue = await context.Issues
+                .FirstOrDefaultAsync(i => i.Id == issueId);
+
+            if (issue == null)
+            {
+                return (false, "Issue not found");
+            }
+
+            // Check if vote exists (for user-friendly error message)
+            var voteExists = await context.IssueVotes
+                .AnyAsync(v => v.IssueId == issueId && v.UserId == user.Id);
+
+            if (!voteExists)
+            {
+                return (false, "You have not voted on this issue");
+            }
+
+            // Use execution strategy to wrap the transaction
+            var strategy = context.Database.CreateExecutionStrategy();
+
+            var removedByThisRequest = await strategy.ExecuteAsync(async () =>
+            {
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
+
+                await using var transaction = await context.Database.BeginTransactionAsync();
+
+                // Use ExecuteDeleteAsync for atomic delete - avoids entity tracking issues on retry
+                var rowsDeleted = await context.IssueVotes
+                    .Where(v => v.IssueId == issueId && v.UserId == user.Id)
+                    .ExecuteDeleteAsync();
+
+                // If no rows deleted, vote was already removed (concurrent request or retry after success)
+                if (rowsDeleted == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return false; // Idempotent success
+                }
+
+                // Use atomic database operations to prevent race conditions on vote counts
+                // Decrement CommunityVotes on the issue
+                await context.Issues
+                    .Where(i => i.Id == issueId)
+                    .ExecuteUpdateAsync(i => i.SetProperty(x => x.CommunityVotes, x => Math.Max(0, x.CommunityVotes - 1)));
+
+                // Decrement CommunityVotes on the issue author's profile (votes received)
+                await context.UserProfiles
+                    .Where(u => u.Id == issue.UserId)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.CommunityVotes, x => Math.Max(0, x.CommunityVotes - 1))
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                // Decrement VotesGiven on the voter's profile
+                await context.UserProfiles
+                    .Where(u => u.Id == user.Id)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.VotesGiven, x => Math.Max(0, x.VotesGiven - 1))
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                // Deduct points using gamification service (handles level recalculation)
+                await gamificationService.DeductPointsAsync(
+                    issue.UserId,
+                    PointsForIssueVote,
+                    "issue_vote_removed");
+
+                await transaction.CommitAsync();
+                return true;
+            });
+
+            if (removedByThisRequest)
+            {
+                logger.LogInformation(
+                    "User {UserId} removed vote from issue {IssueId}, deducted {Points} points from author {AuthorId}",
+                    user.Id, issueId, PointsForIssueVote, issue.UserId);
+            }
+
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error removing vote from issue: {IssueId}", issueId);
+            throw;
+        }
     }
 }

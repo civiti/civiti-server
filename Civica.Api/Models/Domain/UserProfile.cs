@@ -23,6 +23,7 @@ public class UserProfile
     public int CommunityVotes { get; set; } = 0;
     public int CommentsGiven { get; set; } = 0;
     public int HelpfulComments { get; set; } = 0;
+    public int VotesGiven { get; set; } = 0;
     public decimal QualityScore { get; set; } = 0;
     public decimal ApprovalRate { get; set; } = 0;
     public int CurrentLoginStreak { get; set; } = 0;

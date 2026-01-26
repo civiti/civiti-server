@@ -5,6 +5,7 @@ using Civica.Api.Infrastructure.Constants;
 using Civica.Api.Infrastructure.Extensions;
 using Civica.Api.Models.Domain;
 using Civica.Api.Models.Requests.Issues;
+using Civica.Api.Models.Responses.Auth;
 using Civica.Api.Models.Responses.Issues;
 using Civica.Api.Models.Responses.Common;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -29,6 +30,8 @@ public static class IssueEndpoints
         // GET /api/issues
         group.MapGet("/", async (
             IIssueService issueService,
+            IUserService userService,
+            HttpContext httpContext,
             int? page,
             int? pageSize,
             string? category,
@@ -69,7 +72,7 @@ public static class IssueEndpoints
             if (!string.IsNullOrEmpty(status))
             {
                 var statusParts = status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                var parsedStatuses = new List<IssueStatus>();
+                List<IssueStatus> parsedStatuses = new List<IssueStatus>();
 
                 foreach (var statusPart in statusParts)
                 {
@@ -85,12 +88,21 @@ public static class IssueEndpoints
                 }
             }
 
-            PagedResult<IssueListResponse> result = await issueService.GetAllIssuesAsync(request);
+            // Get current user ID if authenticated (for HasVoted field)
+            Guid? currentUserId = null;
+            var supabaseUserId = httpContext.User.GetSupabaseUserId();
+            if (!string.IsNullOrEmpty(supabaseUserId))
+            {
+                var userProfile = await userService.GetUserProfileAsync(supabaseUserId);
+                currentUserId = userProfile?.Id;
+            }
+
+            PagedResult<IssueListResponse> result = await issueService.GetAllIssuesAsync(request, currentUserId);
             return Results.Ok(result);
         })
         .WithName("GetIssues")
         .WithSummary("Get paginated list of approved issues")
-        .WithDescription("Retrieves a paginated list of civic issues. By default, returns only Active issues. Use the status filter to include Resolved issues. Supports filtering by category, urgency level, status, district, and address. Results can be sorted by date, popularity (email count), or urgency. Only publicly visible issues are returned.")
+        .WithDescription("Retrieves a paginated list of civic issues. By default, returns only Active issues. Use the status filter to include Resolved issues. Supports filtering by category, urgency level, status, district, and address. Results can be sorted by date, popularity (email count), votes, or urgency. Only publicly visible issues are returned. If authenticated, includes HasVoted field indicating if the current user has voted on each issue.")
         .Produces<PagedResult<IssueListResponse>>(200)
         .WithOpenApi(operation =>
         {
@@ -101,7 +113,7 @@ public static class IssueEndpoints
             operation.Parameters[4].Description = "Filter by status - comma-separated (e.g., 'Active,Resolved'). Default: Active only";
             operation.Parameters[5].Description = "Filter by district (e.g., Sector 1, Sector 2)";
             operation.Parameters[6].Description = "Filter by address (partial match, case-insensitive)";
-            operation.Parameters[7].Description = "Sort field (date, emails, urgency)";
+            operation.Parameters[7].Description = "Sort field (date, emails, votes, urgency)";
             operation.Parameters[8].Description = "Sort in descending order (default: true)";
             return operation;
         });
@@ -109,17 +121,28 @@ public static class IssueEndpoints
         // GET /api/issues/{id}
         group.MapGet("/{id:guid}", async Task<Results<Ok<IssueDetailResponse>, NotFound>> (
             IIssueService issueService,
+            IUserService userService,
+            HttpContext httpContext,
             Guid id) =>
         {
-            IssueDetailResponse? issue = await issueService.GetIssueByIdAsync(id);
-            
-            return issue == null 
-                ? TypedResults.NotFound() 
+            // Get current user ID if authenticated (for HasVoted field)
+            Guid? currentUserId = null;
+            var supabaseUserId = httpContext.User.GetSupabaseUserId();
+            if (!string.IsNullOrEmpty(supabaseUserId))
+            {
+                var userProfile = await userService.GetUserProfileAsync(supabaseUserId);
+                currentUserId = userProfile?.Id;
+            }
+
+            IssueDetailResponse? issue = await issueService.GetIssueByIdAsync(id, currentUserId);
+
+            return issue == null
+                ? TypedResults.NotFound()
                 : TypedResults.Ok(issue);
         })
         .WithName("GetIssueById")
         .WithSummary("Get issue details by ID")
-        .WithDescription("Retrieves detailed information about a specific issue including full description, location data, photos, email tracking statistics, and related user information. Returns 404 if the issue doesn't exist or hasn't been approved yet.")
+        .WithDescription("Retrieves detailed information about a specific issue including full description, location data, photos, email tracking statistics, community votes, and related user information. If authenticated, includes HasVoted field indicating if the current user has voted on this issue. Returns 404 if the issue doesn't exist or hasn't been approved yet.")
         .Produces<IssueDetailResponse>(200)
         .Produces(404)
         .WithOpenApi();
@@ -170,17 +193,12 @@ public static class IssueEndpoints
 
             if (!success)
             {
-                if (error == "Issue not found")
+                return error switch
                 {
-                    return TypedResults.NotFound();
-                }
-
-                if (error == IssueService.RateLimitedError)
-                {
-                    return TypedResults.StatusCode(429);
-                }
-
-                return TypedResults.BadRequest(error);
+                    "Issue not found" => TypedResults.NotFound(),
+                    IssueService.RateLimitedError => TypedResults.StatusCode(429),
+                    _ => TypedResults.BadRequest(error)
+                };
             }
 
             return TypedResults.Ok();
@@ -209,13 +227,13 @@ public static class IssueEndpoints
             }
 
             // Get internal user ID for rate limiting
-            var userProfile = await userService.GetUserProfileAsync(supabaseUserId);
+            UserProfileResponse? userProfile = await userService.GetUserProfileAsync(supabaseUserId);
             if (userProfile == null)
             {
                 return TypedResults.Unauthorized();
             }
 
-            var response = await enhancementService.EnhanceTextAsync(request, userProfile.Id);
+            EnhanceTextResponse response = await enhancementService.EnhanceTextAsync(request, userProfile.Id);
 
             // Return 429 if rate limited (handled atomically in service)
             if (response.IsRateLimited)
@@ -239,7 +257,7 @@ public static class IssueEndpoints
             IPosterService posterService,
             Guid id) =>
         {
-            var result = await posterService.GeneratePosterAsync(id);
+            (byte[] PdfBytes, string FileName)? result = await posterService.GeneratePosterAsync(id);
 
             if (result == null)
             {
@@ -255,6 +273,76 @@ public static class IssueEndpoints
         .WithSummary("Generate printable PDF poster with QR code")
         .WithDescription("Generates a printable A4 PDF poster featuring a QR code that links to the specified civic issue. The poster includes the Civica branding, a large QR code, a Romanian call-to-action, and the issue title. Only available for publicly visible, active issues. No authentication required.")
         .Produces(200, contentType: "application/pdf")
+        .Produces(404)
+        .WithOpenApi();
+
+        // POST /api/issues/{id}/vote
+        group.MapPost(ApiRoutes.Issues.Vote, [Authorize] async Task<Results<Ok, BadRequest<string>, NotFound, UnauthorizedHttpResult>> (
+            IIssueService issueService,
+            HttpContext httpContext,
+            Guid id) =>
+        {
+            var supabaseUserId = httpContext.User.GetSupabaseUserId();
+
+            if (string.IsNullOrEmpty(supabaseUserId))
+            {
+                return TypedResults.Unauthorized();
+            }
+
+            var (success, error) = await issueService.VoteForIssueAsync(id, supabaseUserId);
+
+            if (!success)
+            {
+                return error switch
+                {
+                    "Issue not found" => TypedResults.NotFound(),
+                    _ => TypedResults.BadRequest(error)
+                };
+            }
+
+            return TypedResults.Ok();
+        })
+        .WithName("VoteForIssue")
+        .WithSummary("Vote for an issue (requires authentication)")
+        .WithDescription("Registers a community upvote for the specified issue. Users can only vote once per issue and cannot vote on their own issues. Only active issues can be voted on. Awards points to the issue author.")
+        .Produces(200)
+        .Produces(400)
+        .Produces(401)
+        .Produces(404)
+        .WithOpenApi();
+
+        // DELETE /api/issues/{id}/vote
+        group.MapDelete(ApiRoutes.Issues.Vote, [Authorize] async Task<Results<Ok, BadRequest<string>, NotFound, UnauthorizedHttpResult>> (
+            IIssueService issueService,
+            HttpContext httpContext,
+            Guid id) =>
+        {
+            var supabaseUserId = httpContext.User.GetSupabaseUserId();
+
+            if (string.IsNullOrEmpty(supabaseUserId))
+            {
+                return TypedResults.Unauthorized();
+            }
+
+            var (success, error) = await issueService.RemoveVoteAsync(id, supabaseUserId);
+
+            if (!success)
+            {
+                return error switch
+                {
+                    "Issue not found" => TypedResults.NotFound(),
+                    _ => TypedResults.BadRequest(error)
+                };
+            }
+
+            return TypedResults.Ok();
+        })
+        .WithName("RemoveVoteFromIssue")
+        .WithSummary("Remove vote from an issue (requires authentication)")
+        .WithDescription("Removes a previously registered community upvote from the specified issue. Deducts points from the issue author.")
+        .Produces(200)
+        .Produces(400)
+        .Produces(401)
         .Produces(404)
         .WithOpenApi();
     }

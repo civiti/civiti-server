@@ -393,6 +393,9 @@ namespace Civica.Api.Migrations
                     b.Property<string>("CommunityImpact")
                         .HasColumnType("text");
 
+                    b.Property<int>("CommunityVotes")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -450,6 +453,9 @@ namespace Civica.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Category");
+
+                    b.HasIndex("CommunityVotes")
+                        .IsDescending();
 
                     b.HasIndex("CreatedAt")
                         .IsDescending();
@@ -572,6 +578,31 @@ namespace Civica.Api.Migrations
                     b.HasIndex("IssueId");
 
                     b.ToTable("IssuePhotos");
+                });
+
+            modelBuilder.Entity("Civica.Api.Models.Domain.IssueVote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("IssueId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("IssueId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("IssueVotes");
                 });
 
             modelBuilder.Entity("Civica.Api.Models.Domain.UserAchievement", b =>
@@ -768,6 +799,9 @@ namespace Civica.Api.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("VotesGiven")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("District");
@@ -932,6 +966,25 @@ namespace Civica.Api.Migrations
                     b.Navigation("Issue");
                 });
 
+            modelBuilder.Entity("Civica.Api.Models.Domain.IssueVote", b =>
+                {
+                    b.HasOne("Civica.Api.Models.Domain.Issue", "Issue")
+                        .WithMany("Votes")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Civica.Api.Models.Domain.UserProfile", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Issue");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Civica.Api.Models.Domain.UserAchievement", b =>
                 {
                     b.HasOne("Civica.Api.Models.Domain.Achievement", "Achievement")
@@ -1003,6 +1056,8 @@ namespace Civica.Api.Migrations
                     b.Navigation("IssueAuthorities");
 
                     b.Navigation("Photos");
+
+                    b.Navigation("Votes");
                 });
 
             modelBuilder.Entity("Civica.Api.Models.Domain.UserProfile", b =>

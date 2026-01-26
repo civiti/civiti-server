@@ -19,6 +19,7 @@ public class CivicaDbContext(DbContextOptions<CivicaDbContext> options) : DbCont
     public DbSet<Activity> Activities { get; set; } = null!;
     public DbSet<Comment> Comments { get; set; } = null!;
     public DbSet<CommentVote> CommentVotes { get; set; } = null!;
+    public DbSet<IssueVote> IssueVotes { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -41,6 +42,7 @@ public class CivicaDbContext(DbContextOptions<CivicaDbContext> options) : DbCont
         modelBuilder.ApplyConfiguration(new ActivityConfiguration());
         modelBuilder.ApplyConfiguration(new CommentConfiguration());
         modelBuilder.ApplyConfiguration(new CommentVoteConfiguration());
+        modelBuilder.ApplyConfiguration(new IssueVoteConfiguration());
 
         // Note: Seed data is handled by StaticDataSeeder at runtime
     }
