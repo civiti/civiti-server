@@ -486,12 +486,13 @@ public class IssueService(
             }
 
             // Atomic increment with status check to prevent TOCTOU race condition
+            // Note: UpdatedAt is intentionally NOT updated - engagement metrics (emails, votes)
+            // are not content changes; UpdatedAt reflects when issue content was last modified
             int rowsAffected = await context.Issues
                 .Where(i => i.Id == issueId
                          && i.Status == IssueStatus.Active)
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(i => i.EmailsSent, i => i.EmailsSent + 1)
-                    .SetProperty(i => i.UpdatedAt, DateTime.UtcNow));
+                    .SetProperty(i => i.EmailsSent, i => i.EmailsSent + 1));
 
             if (rowsAffected == 0)
             {
@@ -1002,7 +1003,7 @@ public class IssueService(
                     Status = issue.Status,
                     EmailsSent = issue.EmailsSent,
                     CommunityVotes = issue.CommunityVotes,
-                    HasVoted = false, // Owner cannot vote on their own issue
+                    HasVoted = null, // Owner's own issue - voting not applicable
                     DesiredOutcome = issue.DesiredOutcome,
                     CommunityImpact = issue.CommunityImpact,
                     CreatedAt = issue.CreatedAt,
@@ -1130,6 +1131,8 @@ public class IssueService(
 
                 // Atomic increment with status check to prevent TOCTOU race condition
                 // If issue was deactivated between our check and now, this will affect 0 rows
+                // Note: UpdatedAt is intentionally NOT updated - engagement metrics (emails, votes)
+                // are not content changes; UpdatedAt reflects when issue content was last modified
                 int rowsAffected = await context.Issues
                     .Where(i => i.Id == issueId && i.Status == IssueStatus.Active)
                     .ExecuteUpdateAsync(i => i.SetProperty(x => x.CommunityVotes, x => x.CommunityVotes + 1));
@@ -1249,6 +1252,7 @@ public class IssueService(
 
                 // Use atomic database operations to prevent race conditions on vote counts
                 // Decrement CommunityVotes on the issue
+                // Note: UpdatedAt is intentionally NOT updated - engagement metrics are not content changes
                 await context.Issues
                     .Where(i => i.Id == issueId)
                     .ExecuteUpdateAsync(i => i.SetProperty(x => x.CommunityVotes, x => Math.Max(0, x.CommunityVotes - 1)));
