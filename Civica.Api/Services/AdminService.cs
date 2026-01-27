@@ -143,7 +143,6 @@ public class AdminService(
                 CommunityImpact = issue.CommunityImpact,
                 AdminNotes = issue.AdminNotes,
                 RejectionReason = issue.RejectionReason,
-                PublicVisibility = issue.PublicVisibility,
                 ReviewedAt = issue.ReviewedAt,
                 ReviewedBy = issue.ReviewedBy,
                 CreatedAt = issue.CreatedAt,

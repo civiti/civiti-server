@@ -75,6 +75,7 @@ namespace Civica.Api.Migrations
                     CommunityVotes = table.Column<int>(type: "integer", nullable: false),
                     CommentsGiven = table.Column<int>(type: "integer", nullable: false),
                     HelpfulComments = table.Column<int>(type: "integer", nullable: false),
+                    VotesGiven = table.Column<int>(type: "integer", nullable: false),
                     QualityScore = table.Column<decimal>(type: "numeric(5,2)", precision: 5, scale: 2, nullable: false, defaultValue: 0m),
                     ApprovalRate = table.Column<decimal>(type: "numeric(5,2)", precision: 5, scale: 2, nullable: false, defaultValue: 0m),
                     CurrentLoginStreak = table.Column<int>(type: "integer", nullable: false),
@@ -133,11 +134,11 @@ namespace Civica.Api.Migrations
                     Urgency = table.Column<int>(type: "integer", nullable: false),
                     Status = table.Column<int>(type: "integer", nullable: false),
                     EmailsSent = table.Column<int>(type: "integer", nullable: false),
+                    CommunityVotes = table.Column<int>(type: "integer", nullable: false),
                     DesiredOutcome = table.Column<string>(type: "text", nullable: true),
                     CommunityImpact = table.Column<string>(type: "text", nullable: true),
                     AdminNotes = table.Column<string>(type: "text", nullable: true),
                     RejectionReason = table.Column<string>(type: "text", nullable: true),
-                    PublicVisibility = table.Column<bool>(type: "boolean", nullable: false),
                     ReviewedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     ReviewedBy = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
@@ -381,6 +382,32 @@ namespace Civica.Api.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "IssueVotes",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    IssueId = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_IssueVotes", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_IssueVotes_Issues_IssueId",
+                        column: x => x.IssueId,
+                        principalTable: "Issues",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_IssueVotes_UserProfiles_UserId",
+                        column: x => x.UserId,
+                        principalTable: "UserProfiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "CommentVotes",
                 columns: table => new
                 {
@@ -593,6 +620,12 @@ namespace Civica.Api.Migrations
                 column: "Category");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Issues_CommunityVotes",
+                table: "Issues",
+                column: "CommunityVotes",
+                descending: new bool[0]);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Issues_CreatedAt",
                 table: "Issues",
                 column: "CreatedAt",
@@ -615,17 +648,11 @@ namespace Civica.Api.Migrations
                 column: "Status");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Issues_Status_PublicVisibility",
+                name: "IX_Issues_Status_CreatedAt",
                 table: "Issues",
-                columns: new[] { "Status", "PublicVisibility" },
-                filter: "\"Status\" = 4 AND \"PublicVisibility\" = true");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Issues_Status_PublicVisibility_CreatedAt",
-                table: "Issues",
-                columns: new[] { "Status", "PublicVisibility", "CreatedAt" },
+                columns: new[] { "Status", "CreatedAt" },
                 descending: new bool[0],
-                filter: "\"Status\" = 4 AND \"PublicVisibility\" = true");
+                filter: "\"Status\" = 4");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Issues_Urgency",
@@ -635,6 +662,17 @@ namespace Civica.Api.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Issues_UserId",
                 table: "Issues",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IssueVotes_IssueId_UserId",
+                table: "IssueVotes",
+                columns: new[] { "IssueId", "UserId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IssueVotes_UserId",
+                table: "IssueVotes",
                 column: "UserId");
 
             migrationBuilder.CreateIndex(
@@ -726,6 +764,9 @@ namespace Civica.Api.Migrations
 
             migrationBuilder.DropTable(
                 name: "IssuePhotos");
+
+            migrationBuilder.DropTable(
+                name: "IssueVotes");
 
             migrationBuilder.DropTable(
                 name: "UserAchievements");

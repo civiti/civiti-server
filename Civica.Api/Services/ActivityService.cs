@@ -42,7 +42,7 @@ public class ActivityService(
         {
             var query = context.Activities
                 .Include(a => a.Issue)
-                .Where(a => a.Issue.Status == IssueStatus.Active && a.Issue.PublicVisibility);
+                .Where(a => a.Issue.Status == IssueStatus.Active);
             return await ExecutePagedQueryAsync(query, request);
         }
         catch (Exception ex)

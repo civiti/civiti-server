@@ -22,6 +22,7 @@ public class IssueService(
     : IIssueService
 {
     private static readonly TimeSpan EmailCooldownDuration = TimeSpan.FromHours(1);
+    private const int PointsForIssueVote = 2;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -33,7 +34,7 @@ public class IssueService(
     /// Error message returned when rate limited. Used by endpoint to detect 429 response.
     /// </summary>
     public const string RateLimitedError = "RATE_LIMITED";
-    public async Task<PagedResult<IssueListResponse>> GetAllIssuesAsync(GetIssuesRequest request)
+    public async Task<PagedResult<IssueListResponse>> GetAllIssuesAsync(GetIssuesRequest request, Guid? currentUserId = null)
     {
         try
         {
@@ -43,7 +44,6 @@ public class IssueService(
             IQueryable<Issue> query = context.Issues
                 .Include(i => i.Photos)
                 .Include(i => i.User)
-                .Where(i => i.PublicVisibility)
                 .AsQueryable();
 
             // Apply status filter - default to Active only if not specified
@@ -99,42 +99,84 @@ public class IssueService(
             // Apply sorting
             query = request.SortBy?.ToLower() switch
             {
-                "emails" => request.SortDescending ? 
-                    query.OrderByDescending(i => i.EmailsSent) : 
+                "emails" => request.SortDescending ?
+                    query.OrderByDescending(i => i.EmailsSent) :
                     query.OrderBy(i => i.EmailsSent),
+                "votes" => request.SortDescending ?
+                    query.OrderByDescending(i => i.CommunityVotes) :
+                    query.OrderBy(i => i.CommunityVotes),
                 "urgency" => request.SortDescending ?
                     query.OrderByDescending(i => i.Urgency) :
                     query.OrderBy(i => i.Urgency),
-                _ => request.SortDescending ? 
-                    query.OrderByDescending(i => i.CreatedAt) : 
+                _ => request.SortDescending ?
+                    query.OrderByDescending(i => i.CreatedAt) :
                     query.OrderBy(i => i.CreatedAt)
             };
 
             var totalItems = await query.CountAsync();
-            
-            List<IssueListResponse> items = await query
+
+            // Select issues with UserId to check ownership for HasVoted
+            var issueData = await query
                 .Skip((request.Page - 1) * request.PageSize)
                 .Take(request.PageSize)
-                .Select(i => new IssueListResponse
+                .Select(i => new
                 {
-                    Id = i.Id,
-                    Title = i.Title,
-                    Description = i.Description.Length > 200 ?
-                        i.Description.Substring(0, 197) + "..." : i.Description,
-                    Category = i.Category,
-                    Address = i.Address,
-                    Urgency = i.Urgency,
-                    EmailsSent = i.EmailsSent,
-                    CreatedAt = i.CreatedAt,
-                    MainPhotoUrl = i.Photos
-                        .Where(p => p.IsPrimary || i.Photos.Count == 1)
-                        .OrderBy(p => p.CreatedAt)
-                        .Select(p => p.Url)
-                        .FirstOrDefault(),
-                    District = i.District,
-                    Status = i.Status
+                    Issue = new IssueListResponse
+                    {
+                        Id = i.Id,
+                        Title = i.Title,
+                        Description = i.Description.Length > 200 ?
+                            i.Description.Substring(0, 197) + "..." : i.Description,
+                        Category = i.Category,
+                        Address = i.Address,
+                        Urgency = i.Urgency,
+                        EmailsSent = i.EmailsSent,
+                        CommunityVotes = i.CommunityVotes,
+                        CreatedAt = i.CreatedAt,
+                        MainPhotoUrl = i.Photos
+                            .Where(p => p.IsPrimary || i.Photos.Count == 1)
+                            .OrderBy(p => p.CreatedAt)
+                            .Select(p => p.Url)
+                            .FirstOrDefault(),
+                        District = i.District,
+                        Status = i.Status
+                    },
+                    i.UserId
                 })
                 .ToListAsync();
+
+            List<IssueListResponse> items = issueData.Select(d => d.Issue).ToList();
+
+            // Get user's votes for these issues if authenticated (excluding owned issues)
+            HashSet<Guid> votedIssueIds = [];
+            HashSet<Guid> ownedIssueIds = [];
+            if (currentUserId.HasValue)
+            {
+                ownedIssueIds = issueData
+                    .Where(d => d.UserId == currentUserId.Value)
+                    .Select(d => d.Issue.Id)
+                    .ToHashSet();
+
+                var issueIds = items.Select(i => i.Id).ToList();
+                votedIssueIds = (await context.IssueVotes
+                    .Where(v => v.UserId == currentUserId.Value && issueIds.Contains(v.IssueId))
+                    .Select(v => v.IssueId)
+                    .ToListAsync())
+                    .ToHashSet();
+            }
+
+            // Set HasVoted for each item (null if unauthenticated or owner - voting not applicable)
+            foreach (var item in items)
+            {
+                if (!currentUserId.HasValue || ownedIssueIds.Contains(item.Id))
+                {
+                    item.HasVoted = null;
+                }
+                else
+                {
+                    item.HasVoted = votedIssueIds.Contains(item.Id);
+                }
+            }
 
             return new PagedResult<IssueListResponse>
             {
@@ -152,7 +194,7 @@ public class IssueService(
         }
     }
 
-    public async Task<IssueDetailResponse?> GetIssueByIdAsync(Guid id)
+    public async Task<IssueDetailResponse?> GetIssueByIdAsync(Guid id, Guid? currentUserId = null)
     {
         try
         {
@@ -161,13 +203,21 @@ public class IssueService(
                 .Include(i => i.User)
                 .Include(i => i.IssueAuthorities)
                     .ThenInclude(ia => ia.Authority)
-                .Where(i => i.Id == id && i.PublicVisibility)
+                .Where(i => i.Id == id && (i.Status == IssueStatus.Active || i.Status == IssueStatus.Resolved))
                 .FirstOrDefaultAsync();
 
             if (issue == null)
             {
-                logger.LogWarning("Issue {IssueId} not found or not publicly visible", id);
+                logger.LogWarning("Issue {IssueId} not found or not in a publicly viewable status", id);
                 return null;
+            }
+
+            // Check if current user has voted (null if owner or unauthenticated - voting not applicable)
+            bool? hasVoted = null;
+            if (currentUserId.HasValue && issue.UserId != currentUserId.Value)
+            {
+                hasVoted = await context.IssueVotes
+                    .AnyAsync(v => v.IssueId == id && v.UserId == currentUserId.Value);
             }
 
             return new IssueDetailResponse
@@ -183,9 +233,10 @@ public class IssueService(
                 Urgency = issue.Urgency,
                 Status = issue.Status,
                 EmailsSent = issue.EmailsSent,
+                CommunityVotes = issue.CommunityVotes,
+                HasVoted = hasVoted,
                 DesiredOutcome = issue.DesiredOutcome,
                 CommunityImpact = issue.CommunityImpact,
-                PublicVisibility = issue.PublicVisibility,
                 CreatedAt = issue.CreatedAt,
                 UpdatedAt = issue.UpdatedAt,
                 Photos = issue.Photos.Select(p => new IssuePhotoResponse
@@ -436,38 +487,38 @@ public class IssueService(
             }
 
             // Check if issue exists and is valid for incrementing
-            var issueInfo = await context.Issues
+            var issueStatus = await context.Issues
                 .Where(i => i.Id == issueId)
-                .Select(i => new { i.Status, i.PublicVisibility })
+                .Select(i => (IssueStatus?)i.Status)
                 .FirstOrDefaultAsync();
 
-            if (issueInfo == null)
+            if (issueStatus == null)
             {
                 logger.LogWarning("Issue {IssueId} not found", issueId);
                 return (false, "Issue not found");
             }
 
-            // Only allow incrementing for active, publicly visible issues
-            if (issueInfo.Status != IssueStatus.Active || !issueInfo.PublicVisibility)
+            // Only allow incrementing for active issues
+            if (issueStatus != IssueStatus.Active)
             {
-                logger.LogWarning("Attempt to increment email count for non-public issue {IssueId}", issueId);
-                return (false, "Issue is not publicly available");
+                logger.LogWarning("Attempt to increment email count for non-active issue {IssueId}", issueId);
+                return (false, "Issue is not active");
             }
 
-            // Atomic increment with status/visibility check to prevent TOCTOU race condition
+            // Atomic increment with status check to prevent TOCTOU race condition
+            // Note: UpdatedAt is intentionally NOT updated - engagement metrics (emails, votes)
+            // are not content changes; UpdatedAt reflects when issue content was last modified
             int rowsAffected = await context.Issues
                 .Where(i => i.Id == issueId
-                         && i.Status == IssueStatus.Active
-                         && i.PublicVisibility)
+                         && i.Status == IssueStatus.Active)
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(i => i.EmailsSent, i => i.EmailsSent + 1)
-                    .SetProperty(i => i.UpdatedAt, DateTime.UtcNow));
+                    .SetProperty(i => i.EmailsSent, i => i.EmailsSent + 1));
 
             if (rowsAffected == 0)
             {
-                // Issue may have been unapproved/hidden between check and update
+                // Issue may have been deactivated between check and update
                 logger.LogWarning("Failed to increment email count for issue {IssueId} - may have been modified", issueId);
-                return (false, "Issue is no longer publicly available");
+                return (false, "Issue is no longer active");
             }
 
             // Set cooldown in cache
@@ -556,6 +607,8 @@ public class IssueService(
                     Address = i.Address,
                     Urgency = i.Urgency,
                     EmailsSent = i.EmailsSent,
+                    CommunityVotes = i.CommunityVotes,
+                    HasVoted = null, // User's own issues - voting not applicable
                     CreatedAt = i.CreatedAt,
                     MainPhotoUrl = i.Photos
                         .Where(p => p.IsPrimary || i.Photos.Count == 1)
@@ -969,9 +1022,10 @@ public class IssueService(
                     Urgency = issue.Urgency,
                     Status = issue.Status,
                     EmailsSent = issue.EmailsSent,
+                    CommunityVotes = issue.CommunityVotes,
+                    HasVoted = null, // Owner's own issue - voting not applicable
                     DesiredOutcome = issue.DesiredOutcome,
                     CommunityImpact = issue.CommunityImpact,
-                    PublicVisibility = issue.PublicVisibility,
                     CreatedAt = issue.CreatedAt,
                     UpdatedAt = issue.UpdatedAt,
                     Photos = issue.Photos.Select(p => new IssuePhotoResponse
@@ -1011,5 +1065,255 @@ public class IssueService(
                 throw;
             }
         });
+    }
+
+    public async Task<(bool Success, string? Error)> VoteForIssueAsync(Guid issueId, string supabaseUserId)
+    {
+        try
+        {
+            // Pre-validate outside the transaction
+            var user = await context.UserProfiles
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+
+            if (user == null)
+            {
+                return (false, "User not found");
+            }
+
+            // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
+            // which would return the tracked entity, causing double points on retry
+            var issue = await context.Issues
+                .FirstOrDefaultAsync(i => i.Id == issueId);
+
+            if (issue == null)
+            {
+                return (false, "Issue not found");
+            }
+
+            // Can only vote on active issues
+            if (issue.Status != IssueStatus.Active)
+            {
+                return (false, "Can only vote on active issues");
+            }
+
+            // Cannot vote on own issue
+            if (issue.UserId == user.Id)
+            {
+                return (false, "You cannot vote on your own issue");
+            }
+
+            // Check if already voted (for user-friendly error message)
+            var alreadyVoted = await context.IssueVotes
+                .AnyAsync(v => v.IssueId == issueId && v.UserId == user.Id);
+
+            if (alreadyVoted)
+            {
+                return (false, "You have already voted on this issue");
+            }
+
+            // Use execution strategy to wrap the transaction
+            var strategy = context.Database.CreateExecutionStrategy();
+
+            // Generate ID before retry block for idempotency - if retry occurs after commit,
+            // we can detect our already-created vote by this ID
+            var voteId = Guid.NewGuid();
+
+            var votedByThisRequest = await strategy.ExecuteAsync(async () =>
+            {
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
+
+                // Check if this vote was already created in a previous retry attempt
+                var existingVote = await context.IssueVotes
+                    .FirstOrDefaultAsync(v => v.Id == voteId);
+
+                if (existingVote != null)
+                {
+                    // Vote was created on a previous attempt - treat as success
+                    return true;
+                }
+
+                await using var transaction = await context.Database.BeginTransactionAsync();
+
+                // Create vote
+                var vote = new IssueVote
+                {
+                    Id = voteId,
+                    IssueId = issueId,
+                    UserId = user.Id,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                context.IssueVotes.Add(vote);
+
+                // Save the vote first to let the unique constraint catch duplicates
+                await context.SaveChangesAsync();
+
+                // Atomic increment with status check to prevent TOCTOU race condition
+                // If issue was deactivated between our check and now, this will affect 0 rows
+                // Note: UpdatedAt is intentionally NOT updated - engagement metrics (emails, votes)
+                // are not content changes; UpdatedAt reflects when issue content was last modified
+                int rowsAffected = await context.Issues
+                    .Where(i => i.Id == issueId && i.Status == IssueStatus.Active)
+                    .ExecuteUpdateAsync(i => i.SetProperty(x => x.CommunityVotes, x => x.CommunityVotes + 1));
+
+                if (rowsAffected == 0)
+                {
+                    // Issue was deactivated between check and update - rollback everything
+                    await transaction.RollbackAsync();
+                    return false;
+                }
+
+                // Increment CommunityVotes on the issue author's profile (votes received)
+                await context.UserProfiles
+                    .Where(u => u.Id == issue.UserId)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.CommunityVotes, x => x.CommunityVotes + 1)
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                // Increment VotesGiven on the voter's profile
+                await context.UserProfiles
+                    .Where(u => u.Id == user.Id)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.VotesGiven, x => x.VotesGiven + 1)
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                // Award points to issue author
+                await gamificationService.AwardPointsAsync(
+                    issue.UserId,
+                    PointsForIssueVote,
+                    "issue_vote_received");
+
+                // Check badges for both users
+                await gamificationService.CheckAndAwardBadgesAsync(issue.UserId);
+                await gamificationService.CheckAndAwardBadgesAsync(user.Id);
+
+                await transaction.CommitAsync();
+                return true;
+            });
+
+            if (!votedByThisRequest)
+            {
+                // Issue was deactivated during the voting process
+                return (false, "Issue is no longer active");
+            }
+
+            logger.LogInformation(
+                "User {UserId} voted for issue {IssueId}",
+                user.Id, issueId);
+
+            return (true, null);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("unique") == true ||
+                                           ex.InnerException?.Message.Contains("duplicate") == true)
+        {
+            return (false, "You have already voted on this issue");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error voting for issue: {IssueId}", issueId);
+            throw;
+        }
+    }
+
+    public async Task<(bool Success, string? Error)> RemoveVoteAsync(Guid issueId, string supabaseUserId)
+    {
+        try
+        {
+            // Pre-validate outside the transaction
+            var user = await context.UserProfiles
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+
+            if (user == null)
+            {
+                return (false, "User not found");
+            }
+
+            // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
+            // which would return the tracked entity, causing double points on retry
+            var issue = await context.Issues
+                .FirstOrDefaultAsync(i => i.Id == issueId);
+
+            if (issue == null)
+            {
+                return (false, "Issue not found");
+            }
+
+            // Check if vote exists (for user-friendly error message)
+            var voteExists = await context.IssueVotes
+                .AnyAsync(v => v.IssueId == issueId && v.UserId == user.Id);
+
+            if (!voteExists)
+            {
+                return (false, "You have not voted on this issue");
+            }
+
+            // Use execution strategy to wrap the transaction
+            var strategy = context.Database.CreateExecutionStrategy();
+
+            var removedByThisRequest = await strategy.ExecuteAsync(async () =>
+            {
+                // Clear change tracker to ensure clean state on retry
+                context.ChangeTracker.Clear();
+
+                await using var transaction = await context.Database.BeginTransactionAsync();
+
+                // Use ExecuteDeleteAsync for atomic delete - avoids entity tracking issues on retry
+                var rowsDeleted = await context.IssueVotes
+                    .Where(v => v.IssueId == issueId && v.UserId == user.Id)
+                    .ExecuteDeleteAsync();
+
+                // If no rows deleted, vote was already removed (concurrent request or retry after success)
+                if (rowsDeleted == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return false; // Idempotent success
+                }
+
+                // Use atomic database operations to prevent race conditions on vote counts
+                // Decrement CommunityVotes on the issue
+                // Note: UpdatedAt is intentionally NOT updated - engagement metrics are not content changes
+                await context.Issues
+                    .Where(i => i.Id == issueId)
+                    .ExecuteUpdateAsync(i => i.SetProperty(x => x.CommunityVotes, x => Math.Max(0, x.CommunityVotes - 1)));
+
+                // Decrement CommunityVotes on the issue author's profile (votes received)
+                await context.UserProfiles
+                    .Where(u => u.Id == issue.UserId)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.CommunityVotes, x => Math.Max(0, x.CommunityVotes - 1))
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                // Decrement VotesGiven on the voter's profile
+                await context.UserProfiles
+                    .Where(u => u.Id == user.Id)
+                    .ExecuteUpdateAsync(u => u
+                        .SetProperty(x => x.VotesGiven, x => Math.Max(0, x.VotesGiven - 1))
+                        .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
+
+                // Deduct points using gamification service (handles level recalculation)
+                await gamificationService.DeductPointsAsync(
+                    issue.UserId,
+                    PointsForIssueVote,
+                    "issue_vote_removed");
+
+                await transaction.CommitAsync();
+                return true;
+            });
+
+            if (removedByThisRequest)
+            {
+                logger.LogInformation(
+                    "User {UserId} removed vote from issue {IssueId}, deducted {Points} points from author {AuthorId}",
+                    user.Id, issueId, PointsForIssueVote, issue.UserId);
+            }
+
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error removing vote from issue: {IssueId}", issueId);
+            throw;
+        }
     }
 }

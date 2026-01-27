@@ -25,8 +25,7 @@ public class AdminIssueDetailResponse
     // Admin details
     public string? AdminNotes { get; set; }
     public string? RejectionReason { get; set; }
-    public bool PublicVisibility { get; set; }
-    
+
     // Review info
     public DateTime? ReviewedAt { get; set; }
     public string? ReviewedBy { get; set; }

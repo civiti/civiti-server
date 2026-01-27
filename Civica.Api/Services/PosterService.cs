@@ -51,15 +51,15 @@ public class PosterService(
 
     private async Task<(byte[] PdfBytes, string FileName)?> GeneratePosterInternalAsync(Guid issueId)
     {
-        // Get issue details - only allow Active issues with public visibility
+        // Get issue details - only allow Active issues
         var issue = await context.Issues
-            .Where(i => i.Id == issueId && i.Status == IssueStatus.Active && i.PublicVisibility)
+            .Where(i => i.Id == issueId && i.Status == IssueStatus.Active)
             .Select(i => new { i.Id, i.Title })
             .FirstOrDefaultAsync();
 
         if (issue == null)
         {
-            logger.LogWarning("Issue {IssueId} not found or not publicly visible for poster generation", issueId);
+            logger.LogWarning("Issue {IssueId} not found or not active for poster generation", issueId);
             return null;
         }
 

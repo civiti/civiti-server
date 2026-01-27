@@ -16,9 +16,10 @@ public class IssueDetailResponse
     public UrgencyLevel Urgency { get; set; }
     public IssueStatus Status { get; set; }
     public int EmailsSent { get; set; }
+    public int CommunityVotes { get; set; }
+    public bool? HasVoted { get; set; }
     public string? DesiredOutcome { get; set; }
     public string? CommunityImpact { get; set; }
-    public bool PublicVisibility { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     
