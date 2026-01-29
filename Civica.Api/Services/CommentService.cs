@@ -4,8 +4,10 @@ using Civica.Api.Models.Domain;
 using Civica.Api.Models.Requests.Comments;
 using Civica.Api.Models.Responses.Comments;
 using Civica.Api.Models.Responses.Common;
+using Civica.Api.Models.Responses.Moderation;
 using Civica.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Civica.Api.Services;
 
@@ -33,7 +35,7 @@ public class CommentService(
                 return null;
             }
 
-            var query = context.Comments
+            IQueryable<Comment> query = context.Comments
                 .Include(c => c.User)
                 .Where(c => c.IssueId == issueId && !c.IsDeleted);
 
@@ -53,15 +55,15 @@ public class CommentService(
 
             var totalCount = await query.CountAsync();
 
-            var comments = await query
+            List<Comment> comments = await query
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
 
-            var commentIds = comments.Select(c => c.Id).ToList();
+            List<Guid> commentIds = comments.Select(c => c.Id).ToList();
 
             // Get reply counts for these comments
-            var replyCounts = await context.Comments
+            Dictionary<Guid, int> replyCounts = await context.Comments
                 .Where(c => c.ParentCommentId != null &&
                            commentIds.Contains(c.ParentCommentId.Value) &&
                            !c.IsDeleted)
@@ -103,7 +105,7 @@ public class CommentService(
     {
         try
         {
-            var comment = await context.Comments
+            Comment? comment = await context.Comments
                 .Include(c => c.User)
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
 
@@ -139,7 +141,7 @@ public class CommentService(
         try
         {
             // Get user profile
-            var user = await context.UserProfiles
+            UserProfile? user = await context.UserProfiles
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
@@ -148,7 +150,7 @@ public class CommentService(
             }
 
             // Verify issue exists and is active
-            var issue = await context.Issues
+            Issue? issue = await context.Issues
                 .FirstOrDefaultAsync(i => i.Id == issueId);
 
             if (issue == null)
@@ -164,7 +166,7 @@ public class CommentService(
             // Validate parent comment if provided
             if (request.ParentCommentId.HasValue)
             {
-                var parentComment = await context.Comments
+                Comment? parentComment = await context.Comments
                     .FirstOrDefaultAsync(c => c.Id == request.ParentCommentId.Value && !c.IsDeleted);
 
                 if (parentComment == null)
@@ -186,7 +188,7 @@ public class CommentService(
             }
 
             // Moderate content before saving
-            var moderationResult = await contentModerationService.ModerateContentAsync(trimmedContent);
+            ContentModerationResponse moderationResult = await contentModerationService.ModerateContentAsync(trimmedContent);
             if (!moderationResult.IsAllowed)
             {
                 throw new InvalidOperationException(
@@ -194,12 +196,12 @@ public class CommentService(
             }
 
             // Use execution strategy to wrap the transaction (required for retry-enabled DbContext)
-            var strategy = context.Database.CreateExecutionStrategy();
+            IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
             Comment? comment = null;
 
             // Generate ID before retry block for idempotency - if retry occurs after commit,
             // we can detect our already-created comment by this ID
-            var commentId = Guid.NewGuid();
+            Guid commentId = Guid.NewGuid();
 
             await strategy.ExecuteAsync(async () =>
             {
@@ -208,7 +210,7 @@ public class CommentService(
 
                 // Check if this comment was already created in a previous retry attempt
                 // (handles transient error after commit scenario)
-                var existingComment = await context.Comments
+                Comment? existingComment = await context.Comments
                     .FirstOrDefaultAsync(c => c.Id == commentId);
 
                 if (existingComment != null)
@@ -220,7 +222,7 @@ public class CommentService(
 
                 // Use serializable transaction to prevent race conditions on rate limit/duplicate checks
                 // Transaction auto-rolls back on disposal if not committed
-                await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+                await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
                 // Rate limit: max 1 comment per 10 seconds per user per issue
                 var recentComment = await context.Comments
@@ -304,7 +306,7 @@ public class CommentService(
     {
         try
         {
-            var user = await context.UserProfiles
+            UserProfile? user = await context.UserProfiles
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
@@ -312,7 +314,7 @@ public class CommentService(
                 return (false, "User not found");
             }
 
-            var comment = await context.Comments
+            Comment? comment = await context.Comments
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
 
             if (comment == null)
@@ -333,7 +335,7 @@ public class CommentService(
             }
 
             // Moderate content before saving
-            var moderationResult = await contentModerationService.ModerateContentAsync(trimmedContent);
+            ContentModerationResponse moderationResult = await contentModerationService.ModerateContentAsync(trimmedContent);
             if (!moderationResult.IsAllowed)
             {
                 return (false, moderationResult.BlockReason ?? "Content violates community guidelines");
@@ -366,7 +368,7 @@ public class CommentService(
         try
         {
             // Pre-validate outside the transaction
-            var user = await context.UserProfiles
+            UserProfile? user = await context.UserProfiles
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
@@ -376,7 +378,7 @@ public class CommentService(
 
             // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
             // which would return the tracked entity, causing double points on retry
-            var comment = await context.Comments
+            Comment? comment = await context.Comments
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
 
             if (comment == null)
@@ -391,14 +393,14 @@ public class CommentService(
             }
 
             // Use execution strategy to wrap the transaction
-            var strategy = context.Database.CreateExecutionStrategy();
+            IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
             var deletedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
                 // Clear change tracker to ensure clean state on retry
                 context.ChangeTracker.Clear();
 
-                await using var transaction = await context.Database.BeginTransactionAsync();
+                await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
                 // Fetch current HelpfulCount inside transaction to avoid stale data
                 // (votes could be added between the pre-validation fetch and here)
@@ -466,8 +468,8 @@ public class CommentService(
                 }
 
                 // Recursively find all descendants (replies, nested replies, etc.)
-                var allDescendants = new List<(Guid Id, Guid UserId, int HelpfulCount)>();
-                var parentIds = new List<Guid> { commentId };
+                List<(Guid Id, Guid UserId, int HelpfulCount)> allDescendants = [];
+                List<Guid> parentIds = [commentId];
 
                 while (parentIds.Count > 0)
                 {
@@ -540,7 +542,7 @@ public class CommentService(
                     }
 
                     // Soft-delete all descendants (with !IsDeleted check for concurrent safety)
-                    var descendantIds = allDescendants.Select(d => d.Id).ToList();
+                    List<Guid> descendantIds = allDescendants.Select(d => d.Id).ToList();
                     await context.Comments
                         .Where(c => descendantIds.Contains(c.Id) && !c.IsDeleted)
                         .ExecuteUpdateAsync(c => c
@@ -579,7 +581,7 @@ public class CommentService(
         try
         {
             // Pre-validate outside the transaction
-            var user = await context.UserProfiles
+            UserProfile? user = await context.UserProfiles
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
@@ -589,7 +591,7 @@ public class CommentService(
 
             // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
             // which would return the tracked entity, causing double points on retry
-            var comment = await context.Comments
+            Comment? comment = await context.Comments
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
 
             if (comment == null)
@@ -613,11 +615,11 @@ public class CommentService(
             }
 
             // Use execution strategy to wrap the transaction
-            var strategy = context.Database.CreateExecutionStrategy();
+            IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
             // Generate ID before retry block for idempotency - if retry occurs after commit,
             // we can detect our already-created vote by this ID
-            var voteId = Guid.NewGuid();
+            Guid voteId = Guid.NewGuid();
 
             var votedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
@@ -625,7 +627,7 @@ public class CommentService(
                 context.ChangeTracker.Clear();
 
                 // Check if this vote was already created in a previous retry attempt
-                var existingVote = await context.CommentVotes
+                CommentVote? existingVote = await context.CommentVotes
                     .FirstOrDefaultAsync(v => v.Id == voteId);
 
                 if (existingVote != null)
@@ -634,10 +636,10 @@ public class CommentService(
                     return true;
                 }
 
-                await using var transaction = await context.Database.BeginTransactionAsync();
+                await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
                 // Create vote
-                var vote = new CommentVote
+                CommentVote vote = new()
                 {
                     Id = voteId,
                     CommentId = commentId,
@@ -697,7 +699,7 @@ public class CommentService(
         try
         {
             // Pre-validate outside the transaction
-            var user = await context.UserProfiles
+            UserProfile? user = await context.UserProfiles
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
@@ -707,7 +709,7 @@ public class CommentService(
 
             // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
             // which would return the tracked entity, causing double points on retry
-            var comment = await context.Comments
+            Comment? comment = await context.Comments
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
 
             if (comment == null)
@@ -725,14 +727,14 @@ public class CommentService(
             }
 
             // Use execution strategy to wrap the transaction
-            var strategy = context.Database.CreateExecutionStrategy();
+            IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
             var removedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
                 // Clear change tracker to ensure clean state on retry
                 context.ChangeTracker.Clear();
 
-                await using var transaction = await context.Database.BeginTransactionAsync();
+                await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
                 // Use ExecuteDeleteAsync for atomic delete - avoids entity tracking issues on retry
                 var rowsDeleted = await context.CommentVotes

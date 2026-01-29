@@ -8,37 +8,28 @@ namespace Civica.Api.Services;
 /// Seeds static reference data (badges, achievements, authorities) at application startup.
 /// Idempotent (checks for existing data before inserting).
 /// </summary>
-public class StaticDataSeeder : IHostedService
+public class StaticDataSeeder(
+    IServiceProvider serviceProvider,
+    ILogger<StaticDataSeeder> logger) : IHostedService
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<StaticDataSeeder> _logger;
-
-    public StaticDataSeeder(
-        IServiceProvider serviceProvider,
-        ILogger<StaticDataSeeder> logger)
-    {
-        _serviceProvider = serviceProvider;
-        _logger = logger;
-    }
-
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting static data seeding");
+        logger.LogInformation("Starting static data seeding");
 
         try
         {
-            using var scope = _serviceProvider.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<CivicaDbContext>();
+            using IServiceScope scope = serviceProvider.CreateScope();
+            CivicaDbContext context = scope.ServiceProvider.GetRequiredService<CivicaDbContext>();
 
             await SeedBadgesAsync(context, cancellationToken);
             await SeedAchievementsAsync(context, cancellationToken);
             await SeedAuthoritiesAsync(context, cancellationToken);
 
-            _logger.LogInformation("Static data seeding completed successfully");
+            logger.LogInformation("Static data seeding completed successfully");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error seeding static data");
+            logger.LogError(ex, "Error seeding static data");
             throw; // Static data is required - fail startup if seeding fails
         }
     }
@@ -49,15 +40,14 @@ public class StaticDataSeeder : IHostedService
     {
         if (await context.Badges.AnyAsync(cancellationToken))
         {
-            _logger.LogDebug("Badges already seeded - skipping");
+            logger.LogDebug("Badges already seeded - skipping");
             return;
         }
 
-        var seedDate = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime seedDate = new(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var badges = new List<Badge>
-        {
-            // === ISSUES REPORTED PROGRESSION ===
+        List<Badge> badges =
+        [
             new()
             {
                 Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -71,6 +61,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementDescription = "Report your first issue",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("11111111-1111-1111-1111-111111111112"),
@@ -84,6 +75,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementDescription = "Report 5 issues",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("11111111-1111-1111-1111-111111111113"),
@@ -97,6 +89,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementDescription = "Report 15 issues",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("11111111-1111-1111-1111-111111111114"),
@@ -112,6 +105,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === ISSUES RESOLVED PROGRESSION ===
+
             new()
             {
                 Id = Guid.Parse("55555555-5555-5555-5555-555555555555"),
@@ -125,6 +119,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementDescription = "1 issue resolved",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("55555555-5555-5555-5555-555555555556"),
@@ -138,6 +133,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementDescription = "5 issues resolved",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("55555555-5555-5555-5555-555555555557"),
@@ -153,6 +149,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === QUALITY PHOTOS PROGRESSION ===
+
             new()
             {
                 Id = Guid.Parse("22222222-2222-2222-2222-222222222222"),
@@ -166,6 +163,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementDescription = "Upload 3 issues with quality photos",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("22222222-2222-2222-2222-222222222223"),
@@ -181,6 +179,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === COMMUNITY VOTES ===
+
             new()
             {
                 Id = Guid.Parse("44444444-4444-4444-4444-444444444444"),
@@ -196,6 +195,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === LOGIN STREAK PROGRESSION ===
+
             new()
             {
                 Id = Guid.Parse("66666666-6666-6666-6666-666666666666"),
@@ -209,6 +209,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementDescription = "7-day login streak",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("66666666-6666-6666-6666-666666666667"),
@@ -224,6 +225,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === LEVEL PROGRESSION ===
+
             new()
             {
                 Id = Guid.Parse("77777777-7777-7777-7777-777777777777"),
@@ -237,6 +239,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementDescription = "Reach level 5",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("77777777-7777-7777-7777-777777777778"),
@@ -250,6 +253,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementDescription = "Reach level 10",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("77777777-7777-7777-7777-777777777779"),
@@ -263,26 +267,25 @@ public class StaticDataSeeder : IHostedService
                 RequirementDescription = "Reach level 20",
                 CreatedAt = seedDate
             }
-        };
+        ];
 
         context.Badges.AddRange(badges);
         await context.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("Seeded {Count} badges", badges.Count);
+        logger.LogInformation("Seeded {Count} badges", badges.Count);
     }
 
     private async Task SeedAchievementsAsync(CivicaDbContext context, CancellationToken cancellationToken)
     {
         if (await context.Achievements.AnyAsync(cancellationToken))
         {
-            _logger.LogDebug("Achievements already seeded - skipping");
+            logger.LogDebug("Achievements already seeded - skipping");
             return;
         }
 
-        var seedDate = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime seedDate = new(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var achievements = new List<Achievement>
-        {
-            // === ISSUES REPORTED ACHIEVEMENTS ===
+        List<Achievement> achievements =
+        [
             new()
             {
                 Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
@@ -295,6 +298,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementData = "{\"target\": 1}",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaab"),
@@ -307,6 +311,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementData = "{\"target\": 5}",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaac"),
@@ -319,6 +324,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementData = "{\"target\": 15}",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaad"),
@@ -333,6 +339,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === ISSUES RESOLVED ACHIEVEMENTS ===
+
             new()
             {
                 Id = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
@@ -345,6 +352,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementData = "{\"target\": 1}",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc"),
@@ -359,6 +367,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === LOGIN STREAK ACHIEVEMENTS ===
+
             new()
             {
                 Id = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
@@ -371,6 +380,7 @@ public class StaticDataSeeder : IHostedService
                 RequirementData = "{\"target\": 7}",
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccd"),
@@ -385,6 +395,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === QUALITY PHOTOS ACHIEVEMENT ===
+
             new()
             {
                 Id = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"),
@@ -399,6 +410,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === LEVEL ACHIEVEMENTS ===
+
             new()
             {
                 Id = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"),
@@ -411,26 +423,25 @@ public class StaticDataSeeder : IHostedService
                 RequirementData = "{\"target\": 5}",
                 CreatedAt = seedDate
             }
-        };
+        ];
 
         context.Achievements.AddRange(achievements);
         await context.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("Seeded {Count} achievements", achievements.Count);
+        logger.LogInformation("Seeded {Count} achievements", achievements.Count);
     }
 
     private async Task SeedAuthoritiesAsync(CivicaDbContext context, CancellationToken cancellationToken)
     {
         if (await context.Authorities.AnyAsync(cancellationToken))
         {
-            _logger.LogDebug("Authorities already seeded - skipping");
+            logger.LogDebug("Authorities already seeded - skipping");
             return;
         }
 
-        var seedDate = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        DateTime seedDate = new(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var authorities = new List<Authority>
-        {
-            // === PMB (city-wide) ===
+        List<Authority> authorities =
+        [
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000000001"),
@@ -442,6 +453,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000000002"),
@@ -453,6 +465,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000000003"),
@@ -464,6 +477,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000000004"),
@@ -475,6 +489,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000000005"),
@@ -488,6 +503,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === Sector 1 ===
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000001001"),
@@ -499,6 +515,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000001002"),
@@ -510,6 +527,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000001003"),
@@ -521,6 +539,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000001004"),
@@ -532,6 +551,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000001005"),
@@ -543,6 +563,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000001006"),
@@ -556,6 +577,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === Sector 2 ===
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000002001"),
@@ -567,6 +589,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000002002"),
@@ -578,6 +601,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000002003"),
@@ -589,6 +613,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000002004"),
@@ -602,6 +627,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === Sector 3 ===
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000003001"),
@@ -613,6 +639,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000003002"),
@@ -624,6 +651,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000003003"),
@@ -635,6 +663,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000003004"),
@@ -646,6 +675,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000003005"),
@@ -657,6 +687,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000003006"),
@@ -668,6 +699,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000003007"),
@@ -679,6 +711,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000003008"),
@@ -692,6 +725,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === Sector 4 ===
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000004001"),
@@ -703,6 +737,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000004002"),
@@ -714,6 +749,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000004003"),
@@ -727,6 +763,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === Sector 5 ===
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000005001"),
@@ -738,6 +775,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000005002"),
@@ -749,6 +787,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000005003"),
@@ -760,6 +799,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000005004"),
@@ -771,6 +811,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000005005"),
@@ -782,6 +823,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000005006"),
@@ -793,6 +835,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000005007"),
@@ -806,6 +849,7 @@ public class StaticDataSeeder : IHostedService
             },
 
             // === Sector 6 ===
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000006001"),
@@ -817,6 +861,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000006002"),
@@ -828,6 +873,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000006003"),
@@ -839,6 +885,7 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             },
+
             new()
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000006004"),
@@ -850,10 +897,10 @@ public class StaticDataSeeder : IHostedService
                 IsActive = true,
                 CreatedAt = seedDate
             }
-        };
+        ];
 
         context.Authorities.AddRange(authorities);
         await context.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("Seeded {Count} authorities", authorities.Count);
+        logger.LogInformation("Seeded {Count} authorities", authorities.Count);
     }
 }

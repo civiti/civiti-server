@@ -6,6 +6,7 @@ using Civica.Api.Models.Responses.Authority;
 using Civica.Api.Models.Domain;
 using Civica.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Civica.Api.Services;
 
@@ -198,7 +199,7 @@ public class AdminService(
     public async Task<IssueActionResponse> ApproveIssueAsync(Guid issueId, ApproveIssueRequest request, string adminUserId)
     {
         // Use execution strategy to handle transient failures with proper transaction support
-        var strategy = context.Database.CreateExecutionStrategy();
+        IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync(async () =>
         {
@@ -239,7 +240,7 @@ public class AdminService(
                 };
             }
 
-            await using var transaction = await context.Database.BeginTransactionAsync();
+            await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
             try
             {
@@ -311,7 +312,7 @@ public class AdminService(
     public async Task<IssueActionResponse> RejectIssueAsync(Guid issueId, RejectIssueRequest request, string adminUserId)
     {
         // Use execution strategy to handle transient failures with proper transaction support
-        var strategy = context.Database.CreateExecutionStrategy();
+        IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync(async () =>
         {
@@ -351,7 +352,7 @@ public class AdminService(
                 };
             }
 
-            await using var transaction = await context.Database.BeginTransactionAsync();
+            await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
             try
             {
@@ -407,7 +408,7 @@ public class AdminService(
     public async Task<IssueActionResponse> RequestChangesAsync(Guid issueId, RequestChangesRequest request, string adminUserId)
     {
         // Use execution strategy to handle transient failures with proper transaction support
-        var strategy = context.Database.CreateExecutionStrategy();
+        IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync(async () =>
         {
@@ -438,7 +439,7 @@ public class AdminService(
                 };
             }
 
-            await using var transaction = await context.Database.BeginTransactionAsync();
+            await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
             try
             {

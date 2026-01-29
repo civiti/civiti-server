@@ -46,7 +46,7 @@ public class ClaudeEnhancementService(
         }
 
         // Use built-in rate limiter with sliding window algorithm
-        using var lease = rateLimiter.AttemptAcquire(userId);
+        using RateLimitLease lease = rateLimiter.AttemptAcquire(userId);
         if (!lease.IsAcquired)
         {
             logger.LogWarning("User {UserId} exceeded rate limit", userId);
@@ -55,11 +55,11 @@ public class ClaudeEnhancementService(
 
         try
         {
-            using var client = new AnthropicClient(configuration.ApiKey);
+            using AnthropicClient client = new(configuration.ApiKey);
 
             var userPrompt = BuildUserPrompt(request);
 
-            var messageRequest = new MessageParameters
+            MessageParameters messageRequest = new()
             {
                 Model = configuration.Model,
                 MaxTokens = configuration.MaxTokens,
@@ -67,8 +67,8 @@ public class ClaudeEnhancementService(
                 Messages = [new Message(RoleType.User, userPrompt)]
             };
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(configuration.TimeoutSeconds));
-            var response = await client.Messages.GetClaudeMessageAsync(messageRequest, cts.Token);
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(configuration.TimeoutSeconds));
+            MessageResponse? response = await client.Messages.GetClaudeMessageAsync(messageRequest, cts.Token);
 
             if (response?.Content == null || response.Content.Count == 0)
             {
@@ -104,7 +104,7 @@ public class ClaudeEnhancementService(
     /// <inheritdoc />
     public bool IsRateLimited(Guid userId)
     {
-        var statistics = rateLimiter.GetStatistics(userId);
+        RateLimiterStatistics? statistics = rateLimiter.GetStatistics(userId);
         return statistics?.CurrentAvailablePermits == 0;
     }
 
@@ -114,10 +114,7 @@ public class ClaudeEnhancementService(
         var hasDesiredOutcome = !string.IsNullOrWhiteSpace(request.DesiredOutcome);
         var hasCommunityImpact = !string.IsNullOrWhiteSpace(request.CommunityImpact);
 
-        var sections = new List<string>
-        {
-            $"Categorie problemă: {categoryName}"
-        };
+        List<string> sections = [$"Categorie problemă: {categoryName}"];
 
         if (!string.IsNullOrWhiteSpace(request.Location))
         {
@@ -149,7 +146,7 @@ public class ClaudeEnhancementService(
         sections.Add("Îmbunătățește textul/textele de mai sus păstrând toate informațiile originale.");
 
         // Build JSON format specification
-        var jsonFields = new List<string> { "\"enhancedDescription\": \"descrierea îmbunătățită aici\"" };
+        List<string> jsonFields = ["\"enhancedDescription\": \"descrierea îmbunătățită aici\""];
         if (hasDesiredOutcome)
         {
             jsonFields.Add("\"enhancedDesiredOutcome\": \"rezultatul dorit îmbunătățit aici\"");
@@ -185,8 +182,8 @@ public class ClaudeEnhancementService(
                 .Replace("```", "")
                 .Trim();
 
-            using var jsonDoc = JsonDocument.Parse(cleanedResponse);
-            var root = jsonDoc.RootElement;
+            using JsonDocument jsonDoc = JsonDocument.Parse(cleanedResponse);
+            JsonElement root = jsonDoc.RootElement;
 
             var enhancedDescription = GetJsonProperty(root, "enhancedDescription");
             if (string.IsNullOrEmpty(enhancedDescription))
@@ -228,7 +225,7 @@ public class ClaudeEnhancementService(
 
     private static string? GetJsonProperty(JsonElement element, string propertyName)
     {
-        return element.TryGetProperty(propertyName, out var prop) ? prop.GetString() : null;
+        return element.TryGetProperty(propertyName, out JsonElement prop) ? prop.GetString() : null;
     }
 
     private static EnhanceTextResponse CreateFallbackResponse(EnhanceTextRequest request, string warning)

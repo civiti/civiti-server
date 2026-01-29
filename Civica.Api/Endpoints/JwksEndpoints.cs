@@ -1,6 +1,6 @@
-using Microsoft.AspNetCore.Authorization;
 using Civica.Api.Services.Interfaces;
 using Civica.Api.Infrastructure.Constants;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Civica.Api.Endpoints;
 
@@ -15,7 +15,7 @@ public static class JwksEndpoints
     /// <param name="app">The web application</param>
     public static void MapJwksEndpoints(this WebApplication app)
     {
-        var jwksGroup = app.MapGroup("/api/jwks")
+        RouteGroupBuilder jwksGroup = app.MapGroup("/api/jwks")
             .WithTags("JWKS")
             .WithOpenApi();
 
@@ -67,10 +67,10 @@ public static class JwksEndpoints
         try
         {
             // Test JWKS connectivity with a quick fetch
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var jwks = await jwksManager.GetJwksAsync(false, cts.Token);
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+            JsonWebKeySet jwks = await jwksManager.GetJwksAsync(false, cts.Token);
 
-            var (hitRate, lastRefresh, totalRequests) = jwksManager.GetCacheStats();
+            (var hitRate, DateTime? lastRefresh, var totalRequests) = jwksManager.GetCacheStats();
 
             var health = new
             {
@@ -120,10 +120,10 @@ public static class JwksEndpoints
     {
         try
         {
-            var (hitRate, lastRefresh, totalRequests) = jwksManager.GetCacheStats();
+            (var hitRate, DateTime? lastRefresh, var totalRequests) = jwksManager.GetCacheStats();
 
             // Get current JWKS without forcing refresh to see cached data
-            var jwks = await jwksManager.GetJwksAsync(false, CancellationToken.None);
+            JsonWebKeySet jwks = await jwksManager.GetJwksAsync(false, CancellationToken.None);
 
             var stats = new
             {
@@ -200,8 +200,8 @@ public static class JwksEndpoints
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var jwks = await jwksManager.GetJwksAsync(true, cts.Token);
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+            JsonWebKeySet jwks = await jwksManager.GetJwksAsync(true, cts.Token);
 
             logger.LogInformation("JWKS cache refreshed by admin - {KeyCount} keys loaded", jwks.Keys.Count);
 

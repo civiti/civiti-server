@@ -22,49 +22,46 @@ public static class SwaggerConfiguration
             Title = "Civica API",
             Version = "v1",
             Description = """
-                ## Overview
-                The Civica API powers a civic engagement platform that enables Romanian citizens to report local issues and coordinate email campaigns to pressure authorities for resolution.
-                
-                ## Features
-                - **User Authentication**: Secure registration and login via Supabase Auth
-                - **Issue Reporting**: Create and track civic issues with photo uploads
-                - **Email Campaigns**: Coordinate community pressure through email tracking
-                - **Gamification**: Earn points, badges, and achievements for civic participation
-                - **Admin Moderation**: Review and approve reported issues
-                
-                ## Authentication
-                This API uses JWT Bearer authentication. Obtain a token through Supabase Auth and include it in the `Authorization` header:
-                ```
-                Authorization: Bearer YOUR_JWT_TOKEN
-                ```
-                
-                ## Rate Limiting
-                - Standard endpoints: 100 requests per minute
-                - Issue creation: 10 requests per hour
-                - File uploads: 5MB maximum file size
-                
-                ## Response Codes
-                - `200 OK`: Successful request
-                - `201 Created`: Resource created successfully
-                - `400 Bad Request`: Invalid request parameters
-                - `401 Unauthorized`: Missing or invalid authentication
-                - `403 Forbidden`: Insufficient permissions
-                - `404 Not Found`: Resource not found
-                - `429 Too Many Requests`: Rate limit exceeded
-                - `500 Internal Server Error`: Server error
-                """,
+                          ## Overview
+                          The Civica API powers a civic engagement platform that enables Romanian citizens to report local issues and coordinate email campaigns to pressure authorities for resolution.
+
+                          ## Features
+                          - **User Authentication**: Secure registration and login via Supabase Auth
+                          - **Issue Reporting**: Create and track civic issues with photo uploads
+                          - **Email Campaigns**: Coordinate community pressure through email tracking
+                          - **Gamification**: Earn points, badges, and achievements for civic participation
+                          - **Admin Moderation**: Review and approve reported issues
+
+                          ## Authentication
+                          This API uses JWT Bearer authentication. Obtain a token through Supabase Auth and include it in the `Authorization` header:
+                          ```
+                          Authorization: Bearer YOUR_JWT_TOKEN
+                          ```
+
+                          ## Rate Limiting
+                          - Standard endpoints: 100 requests per minute
+                          - Issue creation: 10 requests per hour
+                          - File uploads: 5MB maximum file size
+
+                          ## Response Codes
+                          - `200 OK`: Successful request
+                          - `201 Created`: Resource created successfully
+                          - `400 Bad Request`: Invalid request parameters
+                          - `401 Unauthorized`: Missing or invalid authentication
+                          - `403 Forbidden`: Insufficient permissions
+                          - `404 Not Found`: Resource not found
+                          - `429 Too Many Requests`: Rate limit exceeded
+                          - `500 Internal Server Error`: Server error
+                          """,
             Contact = new OpenApiContact
             {
                 Name = "Civica Support",
-                Email = "support@civica.ro",
-                Url = new Uri("https://civica.ro/support")
+                Email = "support@civica.ro"
             },
             License = new OpenApiLicense
             {
-                Name = "MIT License",
-                Url = new Uri("https://opensource.org/licenses/MIT")
-            },
-            TermsOfService = new Uri("https://civica.ro/terms")
+                Name = "MIT License"
+            }
         });
 
         // Security Definition for JWT Bearer
@@ -76,12 +73,12 @@ public static class SwaggerConfiguration
             BearerFormat = "JWT",
             In = ParameterLocation.Header,
             Description = """
-                JWT Authorization header using the Bearer scheme.
-                
-                Enter your token in the text input below.
-                
-                Example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                """
+                          JWT Authorization header using the Bearer scheme.
+
+                          Enter your token in the text input below.
+
+                          Example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                          """
         });
 
         // Security Requirement
@@ -113,7 +110,7 @@ public static class SwaggerConfiguration
 
         // Custom operation filter for better documentation
         options.OperationFilter<SwaggerOperationFilter>();
-        
+
         // Custom schema filter for enhanced model documentation
         options.SchemaFilter<SwaggerSchemaFilter>();
 
@@ -122,12 +119,12 @@ public static class SwaggerConfiguration
         {
             // Use the tag from the endpoint if available
             if (api.ActionDescriptor.EndpointMetadata
-                .OfType<ITagsMetadata>()
-                .FirstOrDefault()?.Tags?.FirstOrDefault() is string tag)
+                    .OfType<ITagsMetadata>()
+                    .FirstOrDefault()?.Tags?.FirstOrDefault() is { } tag)
             {
                 return [tag];
             }
-            
+
             // Fallback to controller name
             return ["General"];
         });
@@ -158,11 +155,12 @@ public static class SwaggerConfiguration
         {
             // Remove generic type parameters from schema names
             var typeName = type.Name;
-            if (type.IsGenericType)
-            {
-                var genericArgs = string.Join("", type.GetGenericArguments().Select(t => t.Name));
-                typeName = $"{type.Name.Split('`')[0]}Of{genericArgs}";
-            }
+            
+            if (!type.IsGenericType) return typeName;
+            
+            var genericArgs = string.Join("", type.GetGenericArguments().Select(t => t.Name));
+            typeName = $"{type.Name.Split('`')[0]}Of{genericArgs}";
+
             return typeName;
         });
     }
@@ -191,7 +189,7 @@ public class SwaggerOperationFilter : IOperationFilter
                             Properties = new Dictionary<string, OpenApiSchema>
                             {
                                 ["error"] = new()
-                                { 
+                                {
                                     Type = "string",
                                     Example = new Microsoft.OpenApi.Any.OpenApiString("Invalid authentication token")
                                 }
@@ -217,12 +215,12 @@ public class SwaggerOperationFilter : IOperationFilter
                             Properties = new Dictionary<string, OpenApiSchema>
                             {
                                 ["error"] = new()
-                                { 
+                                {
                                     Type = "string",
                                     Example = new Microsoft.OpenApi.Any.OpenApiString("An unexpected error occurred")
                                 },
                                 ["requestId"] = new()
-                                { 
+                                {
                                     Type = "string",
                                     Example = new Microsoft.OpenApi.Any.OpenApiString("abc123-def456")
                                 }
@@ -262,7 +260,7 @@ public class SwaggerOperationFilter : IOperationFilter
         }
 
         // Add rate limiting information to summary
-        if (operation.Tags?.Any(t => t.Name == "Issues") == true && 
+        if (operation.Tags?.Any(t => t.Name == "Issues") == true &&
             context.ApiDescription.HttpMethod == "POST")
         {
             operation.Summary += " (Rate limited: 10 requests per hour)";
@@ -313,7 +311,7 @@ public class SwaggerSchemaFilter : ISchemaFilter
             .Cast<object>()
             .Select(e => new Microsoft.OpenApi.Any.OpenApiString(e.ToString()))
             .ToList<Microsoft.OpenApi.Any.IOpenApiAny>();
-            
+
         schema.Type = "string";
         schema.Description = $"Possible values: {string.Join(", ", Enum.GetNames(context.Type))}";
     }

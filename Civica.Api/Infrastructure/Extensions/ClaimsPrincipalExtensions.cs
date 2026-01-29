@@ -41,26 +41,26 @@ public static class ClaimsPrincipalExtensions
     /// Returns "user" if no custom role is set.
     /// Note: The top-level "role" claim in Supabase is "authenticated"/"anon" (system use).
     /// </summary>
-    public static string GetRole(this ClaimsPrincipal user)
+    private static string GetRole(this ClaimsPrincipal user)
     {
         var appMetadata = user.FindFirst("app_metadata")?.Value;
-        if (!string.IsNullOrEmpty(appMetadata))
+        
+        if (string.IsNullOrEmpty(appMetadata)) return "user";
+        
+        try
         {
-            try
+            using JsonDocument metadata = JsonDocument.Parse(appMetadata);
+            // Verify root is an object before calling TryGetProperty
+            if (metadata.RootElement.ValueKind == JsonValueKind.Object
+                && metadata.RootElement.TryGetProperty("role", out JsonElement roleElement)
+                && roleElement.ValueKind == JsonValueKind.String)
             {
-                using var metadata = JsonDocument.Parse(appMetadata);
-                // Verify root is an object before calling TryGetProperty
-                if (metadata.RootElement.ValueKind == JsonValueKind.Object
-                    && metadata.RootElement.TryGetProperty("role", out var roleElement)
-                    && roleElement.ValueKind == JsonValueKind.String)
-                {
-                    return roleElement.GetString() ?? "user";
-                }
+                return roleElement.GetString() ?? "user";
             }
-            catch (JsonException)
-            {
-                // Invalid JSON, fall through to default
-            }
+        }
+        catch (JsonException)
+        {
+            // Invalid JSON, fall through to default
         }
 
         return "user";
@@ -77,18 +77,18 @@ public static class ClaimsPrincipalExtensions
         {
             try
             {
-                using var metadata = JsonDocument.Parse(userMetadata);
+                using JsonDocument metadata = JsonDocument.Parse(userMetadata);
                 if (metadata.RootElement.ValueKind == JsonValueKind.Object)
                 {
                     // Try full_name first, then name
-                    if (metadata.RootElement.TryGetProperty("full_name", out var fullName)
+                    if (metadata.RootElement.TryGetProperty("full_name", out JsonElement fullName)
                         && fullName.ValueKind == JsonValueKind.String)
                     {
                         var value = fullName.GetString();
                         if (!string.IsNullOrWhiteSpace(value)) return value;
                     }
 
-                    if (metadata.RootElement.TryGetProperty("name", out var name)
+                    if (metadata.RootElement.TryGetProperty("name", out JsonElement name)
                         && name.ValueKind == JsonValueKind.String)
                     {
                         var value = name.GetString();
@@ -118,17 +118,17 @@ public static class ClaimsPrincipalExtensions
         {
             try
             {
-                using var metadata = JsonDocument.Parse(userMetadata);
+                using JsonDocument metadata = JsonDocument.Parse(userMetadata);
                 if (metadata.RootElement.ValueKind == JsonValueKind.Object)
                 {
-                    if (metadata.RootElement.TryGetProperty("avatar_url", out var avatarUrl)
+                    if (metadata.RootElement.TryGetProperty("avatar_url", out JsonElement avatarUrl)
                         && avatarUrl.ValueKind == JsonValueKind.String)
                     {
                         var value = avatarUrl.GetString();
                         if (!string.IsNullOrWhiteSpace(value)) return value;
                     }
 
-                    if (metadata.RootElement.TryGetProperty("picture", out var picture)
+                    if (metadata.RootElement.TryGetProperty("picture", out JsonElement picture)
                         && picture.ValueKind == JsonValueKind.String)
                     {
                         var value = picture.GetString();

@@ -191,7 +191,7 @@ public class UserService(
     {
         // Use execution strategy to handle transient failures
         // Re-fetch user inside callback to ensure fresh data on retry
-        var strategy = context.Database.CreateExecutionStrategy();
+        IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync(async () =>
         {
@@ -210,8 +210,8 @@ public class UserService(
                     return null;
                 }
 
-                var today = DateTime.UtcNow.Date;
-                var lastActivityDate = user.LastActivityDate.Date;
+                DateTime today = DateTime.UtcNow.Date;
+                DateTime lastActivityDate = user.LastActivityDate.Date;
 
                 // Skip if already updated today - return current user data
                 if (lastActivityDate == today)

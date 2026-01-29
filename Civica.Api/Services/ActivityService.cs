@@ -26,7 +26,7 @@ public class ActivityService(
     {
         try
         {
-            var query = context.Activities.Where(a => a.IssueOwnerUserId == userId);
+            IQueryable<Activity> query = context.Activities.Where(a => a.IssueOwnerUserId == userId);
             return await ExecutePagedQueryAsync(query, request);
         }
         catch (Exception ex)
@@ -40,7 +40,7 @@ public class ActivityService(
     {
         try
         {
-            var query = context.Activities
+            IQueryable<Activity> query = context.Activities
                 .Include(a => a.Issue)
                 .Where(a => a.Issue.Status == IssueStatus.Active);
             return await ExecutePagedQueryAsync(query, request);
@@ -72,7 +72,7 @@ public class ActivityService(
                 actor = await context.UserProfiles.FindAsync(actorUserId.Value);
             }
 
-            var activity = new Activity
+            Activity activity = new()
             {
                 Id = Guid.NewGuid(),
                 Type = type,
@@ -112,8 +112,8 @@ public class ActivityService(
                 return;
             }
 
-            var windowStart = DateTime.UtcNow.Subtract(SupporterAggregationWindow);
-            var now = DateTime.UtcNow;
+            DateTime windowStart = DateTime.UtcNow.Subtract(SupporterAggregationWindow);
+            DateTime now = DateTime.UtcNow;
 
             // Use atomic update for count increment to prevent race conditions
             // Metadata is updated separately (eventual consistency is acceptable for activity feed)
@@ -151,7 +151,7 @@ public class ActivityService(
     {
         try
         {
-            var activity = await context.Activities
+            Activity? activity = await context.Activities
                 .Where(a => a.IssueId == issueId
                          && a.Type == ActivityType.NewSupporters
                          && a.CreatedAt >= windowStart)
@@ -175,7 +175,7 @@ public class ActivityService(
     {
         for (var attempt = 1; attempt <= MaxRetryAttempts; attempt++)
         {
-            var activity = new Activity
+            Activity activity = new()
             {
                 Id = Guid.NewGuid(),
                 Type = ActivityType.NewSupporters,
@@ -258,7 +258,7 @@ public class ActivityService(
 
         var totalCount = await query.CountAsync();
 
-        var activities = await query
+        List<Activity> activities = await query
             .OrderByDescending(a => a.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)

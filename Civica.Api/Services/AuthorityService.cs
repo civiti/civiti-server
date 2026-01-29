@@ -20,23 +20,20 @@ public class AuthorityService(
         {
             IQueryable<Authority> query = context.Authorities.Where(a => a.IsActive);
 
-            // Text search by name (searches all authorities)
             if (!string.IsNullOrWhiteSpace(search))
             {
-                string searchLower = search.ToLower();
+                var searchLower = search.ToLower();
                 query = query.Where(a => a.Name.ToLower().Contains(searchLower));
             }
 
-            // City filter (case-insensitive, typically from issue creation step 1)
             if (!string.IsNullOrWhiteSpace(city))
             {
-                string cityLower = city.ToLower();
+                var cityLower = city.ToLower();
                 query = query.Where(a => a.City.ToLower() == cityLower);
 
-                // District filter: include both specific district AND city-wide (case-insensitive)
                 if (!string.IsNullOrWhiteSpace(district))
                 {
-                    string districtLower = district.ToLower();
+                    var districtLower = district.ToLower();
                     query = query.Where(a =>
                         (a.District != null && a.District.ToLower() == districtLower) ||
                         a.District == null);
@@ -71,22 +68,7 @@ public class AuthorityService(
             Authority? authority = await context.Authorities
                 .FirstOrDefaultAsync(a => a.Id == id);
 
-            if (authority == null)
-            {
-                return null;
-            }
-
-            return new AuthorityResponse
-            {
-                Id = authority.Id,
-                Name = authority.Name,
-                Email = authority.Email,
-                County = authority.County,
-                City = authority.City,
-                District = authority.District,
-                IsActive = authority.IsActive,
-                CreatedAt = authority.CreatedAt
-            };
+            return authority == null ? null : MapToResponse(authority);
         }
         catch (Exception ex)
         {
@@ -99,18 +81,16 @@ public class AuthorityService(
     {
         try
         {
-            List<IssueAuthority> issueAuthorities = await context.IssueAuthorities
-                .Include(ia => ia.Authority)
+            return await context.IssueAuthorities
                 .Where(ia => ia.IssueId == issueId)
+                .Select(ia => new IssueAuthorityResponse
+                {
+                    AuthorityId = ia.AuthorityId,
+                    Name = ia.Authority != null ? ia.Authority.Name : (ia.CustomName ?? string.Empty),
+                    Email = ia.Authority != null ? ia.Authority.Email : (ia.CustomEmail ?? string.Empty),
+                    IsPredefined = ia.AuthorityId != null
+                })
                 .ToListAsync();
-
-            return issueAuthorities.Select(ia => new IssueAuthorityResponse
-            {
-                AuthorityId = ia.AuthorityId,
-                Name = ia.Authority?.Name ?? ia.CustomName ?? string.Empty,
-                Email = ia.Authority?.Email ?? ia.CustomEmail ?? string.Empty,
-                IsPredefined = ia.AuthorityId.HasValue
-            }).ToList();
         }
         catch (Exception ex)
         {
@@ -129,11 +109,9 @@ public class AuthorityService(
         try
         {
             // Check if email already exists
-            bool emailExists = await context.Authorities.AnyAsync(a => a.Email == email);
+            var emailExists = await context.Authorities.AnyAsync(a => a.Email == email);
             if (emailExists)
-            {
                 throw new InvalidOperationException($"Authority with email {email} already exists");
-            }
 
             Authority authority = new()
             {
@@ -152,17 +130,7 @@ public class AuthorityService(
 
             logger.LogInformation("Authority {AuthorityId} created: {Name} in {City}", authority.Id, name, city);
 
-            return new AuthorityResponse
-            {
-                Id = authority.Id,
-                Name = authority.Name,
-                Email = authority.Email,
-                County = authority.County,
-                City = authority.City,
-                District = authority.District,
-                IsActive = authority.IsActive,
-                CreatedAt = authority.CreatedAt
-            };
+            return MapToResponse(authority);
         }
         catch (Exception ex)
         {
@@ -182,20 +150,13 @@ public class AuthorityService(
         try
         {
             Authority? authority = await context.Authorities.FindAsync(id);
-
             if (authority == null)
-            {
                 return null;
-            }
 
-            // Check if new email conflicts with another authority
-            bool emailConflict = await context.Authorities
+            var emailConflict = await context.Authorities
                 .AnyAsync(a => a.Email == email && a.Id != id);
-
             if (emailConflict)
-            {
                 throw new InvalidOperationException($"Another authority with email {email} already exists");
-            }
 
             authority.Name = name;
             authority.Email = email;
@@ -207,17 +168,7 @@ public class AuthorityService(
 
             logger.LogInformation("Authority {AuthorityId} updated", id);
 
-            return new AuthorityResponse
-            {
-                Id = authority.Id,
-                Name = authority.Name,
-                Email = authority.Email,
-                County = authority.County,
-                City = authority.City,
-                District = authority.District,
-                IsActive = authority.IsActive,
-                CreatedAt = authority.CreatedAt
-            };
+            return MapToResponse(authority);
         }
         catch (Exception ex)
         {
@@ -231,11 +182,8 @@ public class AuthorityService(
         try
         {
             Authority? authority = await context.Authorities.FindAsync(id);
-
             if (authority == null)
-            {
                 return false;
-            }
 
             authority.IsActive = false;
             await context.SaveChangesAsync();
@@ -250,4 +198,16 @@ public class AuthorityService(
             throw;
         }
     }
+
+    private static AuthorityResponse MapToResponse(Authority authority) => new()
+    {
+        Id = authority.Id,
+        Name = authority.Name,
+        Email = authority.Email,
+        County = authority.County,
+        City = authority.City,
+        District = authority.District,
+        IsActive = authority.IsActive,
+        CreatedAt = authority.CreatedAt
+    };
 }

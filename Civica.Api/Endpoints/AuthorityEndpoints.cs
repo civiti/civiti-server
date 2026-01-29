@@ -42,10 +42,10 @@ public static class AuthorityEndpoints
 
             This is a public endpoint, no authentication required.
             """)
-        .Produces<List<AuthorityListResponse>>(200);
+        .Produces<List<AuthorityListResponse>>();
 
         // GET /api/authorities/{id} - Get authority details (public)
-        group.MapGet("/{id:guid}", async Task<Results<Ok<AuthorityResponse>, NotFound>> (
+        group.MapGet(ApiRoutes.Authorities.ById, async Task<Results<Ok<AuthorityResponse>, NotFound>> (
             IAuthorityService authorityService,
             Guid id) =>
         {
@@ -58,7 +58,7 @@ public static class AuthorityEndpoints
         .WithName("GetAuthorityById")
         .WithSummary("Get authority details by ID")
         .WithDescription("Retrieves detailed information about a specific authority.")
-        .Produces<AuthorityResponse>(200)
+        .Produces<AuthorityResponse>()
         .Produces(404);
     }
 }

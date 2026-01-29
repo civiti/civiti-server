@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Civica.Api.Infrastructure.Configuration;
 using Civica.Api.Services.Interfaces;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Civica.Api.Services;
 
@@ -75,7 +76,7 @@ public class JwksBackgroundService : BackgroundService
                 attempt++;
                 _logger.LogDebug("Loading JWKS (attempt {Attempt}/{MaxAttempts})", attempt, maxAttempts);
 
-                var jwks = await _jwksManager.GetJwksAsync(forceRefresh: true, cancellationToken);
+                JsonWebKeySet jwks = await _jwksManager.GetJwksAsync(forceRefresh: true, cancellationToken);
 
                 _logger.LogInformation("JWKS refreshed successfully with {KeyCount} keys",
                     jwks.Keys.Count);
@@ -93,7 +94,7 @@ public class JwksBackgroundService : BackgroundService
 
                 if (attempt < maxAttempts)
                 {
-                    var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // Exponential backoff
+                    TimeSpan delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // Exponential backoff
                     await Task.Delay(delay, cancellationToken);
                 }
             }

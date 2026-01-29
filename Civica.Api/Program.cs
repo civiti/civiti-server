@@ -159,7 +159,7 @@ if (string.IsNullOrWhiteSpace(supabaseAnonKey))
 var environmentName = builder.Environment.EnvironmentName;
 
 // Configure JWT validation options for JWKS support
-JwtValidationOptions jwtValidationOptions = new JwtValidationOptions
+JwtValidationOptions jwtValidationOptions = new()
 {
     JwksUrl = $"{supabaseUrl}/auth/v1/.well-known/jwks.json",
     ValidIssuer = $"{supabaseUrl}/auth/v1",
@@ -287,7 +287,7 @@ builder.Services.AddSingleton(new SupabaseConfiguration
 });
 
 // Claude AI Configuration
-var claudeConfig = new ClaudeConfiguration
+ClaudeConfiguration claudeConfig = new()
 {
     ApiKey = GetEnvOrConfig("CLAUDE_API_KEY", "Claude:ApiKey") ?? string.Empty,
     Model = GetEnvOrConfig("CLAUDE_MODEL", "Claude:Model") ?? ClaudeConfiguration.DefaultModel,
@@ -300,7 +300,7 @@ builder.Services.AddSingleton(claudeConfig);
 // Configure rate limiter for Claude AI requests using sliding window algorithm
 builder.Services.AddSingleton<PartitionedRateLimiter<Guid>>(sp =>
 {
-    var config = sp.GetRequiredService<ClaudeConfiguration>();
+    ClaudeConfiguration config = sp.GetRequiredService<ClaudeConfiguration>();
     return PartitionedRateLimiter.Create<Guid, Guid>(userId =>
         RateLimitPartition.GetSlidingWindowLimiter(
             partitionKey: userId,
@@ -324,7 +324,7 @@ else
 }
 
 // OpenAI Configuration (for content moderation)
-var openAIConfig = new OpenAIConfiguration
+OpenAIConfiguration openAIConfig = new()
 {
     ApiKey = GetEnvOrConfig("OPENAI_API_KEY", "OpenAI:ApiKey") ?? string.Empty,
     ModerationModel = GetEnvOrConfig("OPENAI_MODERATION_MODEL", "OpenAI:ModerationModel") ?? OpenAIConfiguration.DefaultModerationModel,
@@ -342,7 +342,7 @@ else
 }
 
 // Poster Configuration
-var posterConfig = new PosterConfiguration
+PosterConfiguration posterConfig = new()
 {
     FrontendBaseUrl = GetEnvOrConfig("POSTER_FRONTEND_BASE_URL", "Poster:FrontendBaseUrl") ?? "http://localhost:4200",
     QrSizePixels = GetEnvOrConfigInt("POSTER_QR_SIZE_PIXELS", "Poster:QrSizePixels", 300),
@@ -391,7 +391,7 @@ WebApplication app = builder.Build();
 
 // Configure forwarded headers for reverse proxy (Railway, etc.)
 // This must be first in the pipeline to correctly set RemoteIpAddress
-var forwardedHeadersOptions = new ForwardedHeadersOptions
+ForwardedHeadersOptions forwardedHeadersOptions = new()
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
     ForwardLimit = 1 // Only trust the first proxy hop to prevent spoofing
@@ -483,7 +483,7 @@ app.MapGet("/api/health", async (CivicaDbContext context, ISupabaseService supab
         try
         {
             // Test database connectivity with timeout
-            using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
             await context.Database.CanConnectAsync(cts.Token);
             health = health with { Database = "connected" };
         }
@@ -540,7 +540,7 @@ if (!skipMigration)
             CivicaDbContext context = scope.ServiceProvider.GetRequiredService<CivicaDbContext>();
 
             // Test connection first with shorter timeout
-            using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
             var canConnect = await context.Database.CanConnectAsync(cts.Token);
 
             if (!canConnect)

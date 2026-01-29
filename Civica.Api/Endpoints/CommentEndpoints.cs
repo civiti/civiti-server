@@ -1,6 +1,7 @@
 using Civica.Api.Infrastructure.Constants;
 using Civica.Api.Infrastructure.Extensions;
 using Civica.Api.Models.Requests.Comments;
+using Civica.Api.Models.Responses.Auth;
 using Civica.Api.Models.Responses.Comments;
 using Civica.Api.Models.Responses.Common;
 using Civica.Api.Services.Interfaces;
@@ -18,12 +19,12 @@ public static class CommentEndpoints
     public static void MapCommentEndpoints(this WebApplication app)
     {
         // Issue comments group
-        var issueCommentsGroup = app.MapGroup(ApiRoutes.Comments.IssueComments)
+        RouteGroupBuilder issueCommentsGroup = app.MapGroup(ApiRoutes.Comments.IssueComments)
             .WithTags("Comments")
             .WithOpenApi();
 
         // Comments group for direct comment operations
-        var commentsGroup = app.MapGroup(ApiRoutes.Comments.Base)
+        RouteGroupBuilder commentsGroup = app.MapGroup(ApiRoutes.Comments.Base)
             .WithTags("Comments")
             .WithOpenApi();
 
@@ -38,7 +39,7 @@ public static class CommentEndpoints
             ICommentService commentService,
             IUserService userService) =>
         {
-            var request = new GetCommentsRequest
+            GetCommentsRequest request = new()
             {
                 Page = page ?? 1,
                 PageSize = Math.Min(pageSize ?? 20, 100),
@@ -51,22 +52,17 @@ public static class CommentEndpoints
             var supabaseUserId = context.User.GetSupabaseUserId();
             if (!string.IsNullOrEmpty(supabaseUserId))
             {
-                var profile = await userService.GetUserProfileAsync(supabaseUserId);
+                UserProfileResponse? profile = await userService.GetUserProfileAsync(supabaseUserId);
                 currentUserId = profile?.Id;
             }
 
-            var result = await commentService.GetIssueCommentsAsync(issueId, request, currentUserId);
-            if (result == null)
-            {
-                return Results.NotFound(new { error = "Issue not found" });
-            }
-
-            return Results.Ok(result);
+            PagedResult<CommentResponse>? result = await commentService.GetIssueCommentsAsync(issueId, request, currentUserId);
+            return result == null ? Results.NotFound(new { error = "Issue not found" }) : Results.Ok(result);
         })
         .WithName("GetIssueComments")
         .WithSummary("Get comments for an issue")
         .WithDescription("Retrieves paginated comments for a specific issue. Supports sorting by date or helpful count.")
-        .Produces<PagedResult<CommentResponse>>(StatusCodes.Status200OK)
+        .Produces<PagedResult<CommentResponse>>()
         .Produces(StatusCodes.Status404NotFound)
         .WithOpenApi();
 
@@ -85,7 +81,7 @@ public static class CommentEndpoints
 
             try
             {
-                var comment = await commentService.CreateCommentAsync(issueId, request, supabaseUserId);
+                CommentResponse comment = await commentService.CreateCommentAsync(issueId, request, supabaseUserId);
                 return Results.Created($"/api/comments/{comment.Id}", comment);
             }
             catch (InvalidOperationException ex)
@@ -123,11 +119,11 @@ public static class CommentEndpoints
             var supabaseUserId = context.User.GetSupabaseUserId();
             if (!string.IsNullOrEmpty(supabaseUserId))
             {
-                var profile = await userService.GetUserProfileAsync(supabaseUserId);
+                UserProfileResponse? profile = await userService.GetUserProfileAsync(supabaseUserId);
                 currentUserId = profile?.Id;
             }
 
-            var comment = await commentService.GetCommentByIdAsync(id, currentUserId);
+            CommentResponse? comment = await commentService.GetCommentByIdAsync(id, currentUserId);
             if (comment == null)
             {
                 return Results.NotFound(new { error = "Comment not found" });
@@ -138,7 +134,7 @@ public static class CommentEndpoints
         .WithName("GetComment")
         .WithSummary("Get a single comment")
         .WithDescription("Retrieves a comment by its ID.")
-        .Produces<CommentResponse>(StatusCodes.Status200OK)
+        .Produces<CommentResponse>()
         .Produces(StatusCodes.Status404NotFound)
         .WithOpenApi();
 

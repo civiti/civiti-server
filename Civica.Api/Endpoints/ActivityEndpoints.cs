@@ -32,7 +32,7 @@ public static class ActivityEndpoints
             DateTime? since,
             IActivityService activityService) =>
         {
-            var request = new GetActivitiesRequest
+            GetActivitiesRequest request = new()
             {
                 Page = page ?? 1,
                 PageSize = Math.Min(pageSize ?? 20, 100),
@@ -46,7 +46,7 @@ public static class ActivityEndpoints
         .WithName("GetRecentActivities")
         .WithSummary("Get public recent activity feed")
         .WithDescription("Retrieves recent activity events for active, publicly visible issues. Includes new supporters, status changes, and approvals.")
-        .Produces<PagedResult<ActivityResponse>>(StatusCodes.Status200OK)
+        .Produces<PagedResult<ActivityResponse>>()
         .WithOpenApi();
 
         // GET /api/activity/my - User's issue activities
@@ -71,7 +71,7 @@ public static class ActivityEndpoints
                 return Results.NotFound(new { error = "User not found" });
             }
 
-            var request = new GetActivitiesRequest
+            GetActivitiesRequest request = new()
             {
                 Page = page ?? 1,
                 PageSize = Math.Min(pageSize ?? 20, 100),
@@ -86,7 +86,7 @@ public static class ActivityEndpoints
         .WithName("GetUserActivities")
         .WithSummary("Get activities for user's issues")
         .WithDescription("Retrieves activity events for issues owned by the authenticated user. Useful for tracking engagement on your reported issues.")
-        .Produces<PagedResult<ActivityResponse>>(StatusCodes.Status200OK)
+        .Produces<PagedResult<ActivityResponse>>()
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
         .WithOpenApi();

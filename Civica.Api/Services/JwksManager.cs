@@ -47,7 +47,7 @@ public class JwksManager : IJwksManager
             throw new ArgumentException("JwksUrl is required in JwtValidationOptions", nameof(options));
         }
 
-        if (!Uri.TryCreate(_options.JwksUrl, UriKind.Absolute, out var jwksUri) ||
+        if (!Uri.TryCreate(_options.JwksUrl, UriKind.Absolute, out Uri? jwksUri) ||
             (jwksUri.Scheme != Uri.UriSchemeHttp && jwksUri.Scheme != Uri.UriSchemeHttps))
         {
             throw new ArgumentException($"JwksUrl must be a valid absolute HTTP/HTTPS URL: {_options.JwksUrl}", nameof(options));
@@ -82,10 +82,10 @@ public class JwksManager : IJwksManager
         _logger.LogInformation("Fetching JWKS from {JwksUrl} (forceRefresh: {ForceRefresh})", _options.JwksUrl, forceRefresh);
 
         // Fetch from remote endpoint with retry logic
-        var jwks = await FetchJwksWithRetryAsync(cancellationToken);
+        JsonWebKeySet jwks = await FetchJwksWithRetryAsync(cancellationToken);
 
         // Cache the result
-        var cacheOptions = new MemoryCacheEntryOptions
+        MemoryCacheEntryOptions cacheOptions = new()
         {
             AbsoluteExpirationRelativeToNow = TimeSpan.FromMilliseconds(_options.JwksCacheTtlMs),
             Priority = CacheItemPriority.High,
@@ -110,8 +110,8 @@ public class JwksManager : IJwksManager
         }
 
         // First attempt: get from cache
-        var jwks = await GetJwksAsync(false, cancellationToken);
-        var key = jwks.Keys.FirstOrDefault(k => k.Kid == kid);
+        JsonWebKeySet jwks = await GetJwksAsync(false, cancellationToken);
+        JsonWebKey? key = jwks.Keys.FirstOrDefault(k => k.Kid == kid);
 
         if (key != null)
         {
@@ -140,10 +140,10 @@ public class JwksManager : IJwksManager
     /// <inheritdoc />
     public async Task<IEnumerable<SecurityKey>> GetSigningKeysAsync(CancellationToken cancellationToken = default)
     {
-        var jwks = await GetJwksAsync(false, cancellationToken);
+        JsonWebKeySet jwks = await GetJwksAsync(false, cancellationToken);
 
         // Filter to only signing keys (exclude encryption keys)
-        var signingKeys = jwks.Keys
+        List<SecurityKey> signingKeys = jwks.Keys
             .Where(k => k.Use == null || k.Use == "sig") // null use means both signing and encryption
             .Where(k => k.KeyOps == null || k.KeyOps.Contains("verify")) // null keyOps means all operations
             .Cast<SecurityKey>()
@@ -172,7 +172,7 @@ public class JwksManager : IJwksManager
     /// </summary>
     private async Task<JsonWebKeySet> FetchJwksWithRetryAsync(CancellationToken cancellationToken)
     {
-        var client = _httpClientFactory.CreateClient("JwksClient");
+        HttpClient client = _httpClientFactory.CreateClient("JwksClient");
         client.Timeout = TimeSpan.FromSeconds(_options.HttpTimeoutSeconds);
 
         Exception? lastException = null;
@@ -183,7 +183,7 @@ public class JwksManager : IJwksManager
             {
                 _logger.LogDebug("JWKS fetch attempt {Attempt}/{MaxRetries}", attempt, _options.MaxRetries);
 
-                using var response = await client.GetAsync(_options.JwksUrl, cancellationToken);
+                using HttpResponseMessage response = await client.GetAsync(_options.JwksUrl, cancellationToken);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -197,14 +197,14 @@ public class JwksManager : IJwksManager
                     try
                     {
                         // Validate JSON structure before creating JsonWebKeySet
-                        using var jsonDoc = JsonDocument.Parse(content);
-                        if (!jsonDoc.RootElement.TryGetProperty("keys", out var keysElement) ||
+                        using JsonDocument jsonDoc = JsonDocument.Parse(content);
+                        if (!jsonDoc.RootElement.TryGetProperty("keys", out JsonElement keysElement) ||
                             keysElement.ValueKind != JsonValueKind.Array)
                         {
                             throw new InvalidOperationException("JWKS response does not contain a valid 'keys' array");
                         }
 
-                        var jwks = new JsonWebKeySet(content);
+                        JsonWebKeySet jwks = new(content);
 
                         if (jwks.Keys.Count == 0)
                         {
@@ -235,7 +235,7 @@ public class JwksManager : IJwksManager
                 // If this wasn't the last attempt, wait before retrying
                 if (attempt < _options.MaxRetries)
                 {
-                    var delay = TimeSpan.FromMilliseconds(_options.RetryDelayMs * attempt); // Linear backoff
+                    TimeSpan delay = TimeSpan.FromMilliseconds(_options.RetryDelayMs * attempt); // Linear backoff
                     _logger.LogDebug("Waiting {Delay}ms before retry attempt {NextAttempt}",
                         delay.TotalMilliseconds, attempt + 1);
                     await Task.Delay(delay, cancellationToken);
@@ -261,7 +261,7 @@ public class JwksManager : IJwksManager
     /// </summary>
     private void UpdateCacheStats()
     {
-        var stats = new CacheStats(_totalRequests, _cacheHits, _lastRefresh);
+        CacheStats stats = new(_totalRequests, _cacheHits, _lastRefresh);
         _cache.Set(StatsCacheKey, stats, TimeSpan.FromHours(24)); // Keep stats for 24 hours
     }
 
@@ -288,12 +288,12 @@ public class JwksManager : IJwksManager
     public IEnumerable<SecurityKey> GetCachedSigningKeys()
     {
         // Synchronous cache lookup only - no async operations
-        var cachedJwks = GetCachedJwks();
+        JsonWebKeySet? cachedJwks = GetCachedJwks();
 
         if (cachedJwks != null)
         {
             // Filter to only signing keys (exclude encryption keys)
-            var signingKeys = cachedJwks.Keys
+            List<SecurityKey> signingKeys = cachedJwks.Keys
                 .Where(k => k.Use == null || k.Use == "sig") // null use means both signing and encryption
                 .Where(k => k.KeyOps == null || k.KeyOps.Contains("verify")) // null keyOps means all operations
                 .Cast<SecurityKey>()
@@ -304,6 +304,6 @@ public class JwksManager : IJwksManager
         }
 
         _logger.LogDebug("No cached signing keys available (synchronous)");
-        return Enumerable.Empty<SecurityKey>();
+        return [];
     }
 }

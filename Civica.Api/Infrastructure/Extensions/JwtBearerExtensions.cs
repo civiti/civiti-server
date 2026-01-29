@@ -53,22 +53,22 @@ public static class JwtBearerExtensions
                     // Try to get the key by kid from JWKS
                     if (!string.IsNullOrEmpty(kid))
                     {
-                        var jwkTask = jwksManager.GetKeyForKidAsync(kid, CancellationToken.None);
-                        var jwk = jwkTask.GetAwaiter().GetResult();
+                        Task<JsonWebKey?> jwkTask = jwksManager.GetKeyForKidAsync(kid, CancellationToken.None);
+                        JsonWebKey? jwk = jwkTask.GetAwaiter().GetResult();
 
                         if (jwk != null)
                         {
                             logger.LogDebug("Found JWKS key for kid: {Kid}", kid);
-                            return new[] { jwk };
+                            return [jwk];
                         }
                     }
 
                     // Fallback: get all signing keys
                     logger.LogDebug("Kid not found or empty, trying all signing keys");
-                    var allKeysTask = jwksManager.GetSigningKeysAsync(CancellationToken.None);
-                    var allKeys = allKeysTask.GetAwaiter().GetResult();
+                    Task<IEnumerable<SecurityKey>> allKeysTask = jwksManager.GetSigningKeysAsync(CancellationToken.None);
+                    IEnumerable<SecurityKey> allKeys = allKeysTask.GetAwaiter().GetResult();
 
-                    var keysList = allKeys.ToList();
+                    List<SecurityKey> keysList = allKeys.ToList();
                     if (keysList.Count > 0)
                     {
                         logger.LogDebug("Returning {Count} signing keys for validation", keysList.Count);
@@ -76,12 +76,12 @@ public static class JwtBearerExtensions
                     }
 
                     logger.LogWarning("No JWKS keys available for validation");
-                    return Enumerable.Empty<SecurityKey>();
+                    return [];
                 }
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "Error resolving JWKS signing key for kid: {Kid}", kid);
-                    return Enumerable.Empty<SecurityKey>();
+                    return [];
                 }
             }
         };

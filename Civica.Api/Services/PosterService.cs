@@ -37,11 +37,11 @@ public class PosterService(
             return cached;
         }
 
-        var result = await GeneratePosterInternalAsync(issueId);
+        (byte[] PdfBytes, string FileName)? result = await GeneratePosterInternalAsync(issueId);
 
         if (result != null)
         {
-            var cacheOptions = new MemoryCacheEntryOptions()
+            MemoryCacheEntryOptions cacheOptions = new MemoryCacheEntryOptions()
                 .SetAbsoluteExpiration(TimeSpan.FromMinutes(config.CacheDurationMinutes));
             cache.Set(cacheKey, result.Value, cacheOptions);
         }
@@ -81,9 +81,9 @@ public class PosterService(
 
     private byte[] GenerateQrCode(string url)
     {
-        using var qrGenerator = new QRCodeGenerator();
-        var qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.M);
-        using var qrCode = new PngByteQRCode(qrCodeData);
+        using QRCodeGenerator qrGenerator = new();
+        QRCodeData qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.M);
+        using PngByteQRCode qrCode = new(qrCodeData);
         return qrCode.GetGraphic(config.QrSizePixels / 33); // pixels per module
     }
 
@@ -92,7 +92,7 @@ public class PosterService(
         // Configure QuestPDF license (Community license for < $1M revenue)
         QuestPDF.Settings.License = LicenseType.Community;
 
-        var document = Document.Create(container =>
+        Document document = Document.Create(container =>
         {
             container.Page(page =>
             {

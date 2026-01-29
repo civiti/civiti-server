@@ -177,8 +177,8 @@ public class GamificationService(
                 .ToListAsync();
 
             // Also check change tracker for newly added achievements not yet saved
-            var achievementIdsInDb = userAchievements.Select(ua => ua.AchievementId).ToHashSet();
-            var newAchievementsFromTracker = context.ChangeTracker
+            HashSet<Guid> achievementIdsInDb = userAchievements.Select(ua => ua.AchievementId).ToHashSet();
+            List<UserAchievement> newAchievementsFromTracker = context.ChangeTracker
                 .Entries<UserAchievement>()
                 .Where(e => e.Entity.UserId == userId &&
                             !e.Entity.Completed &&
@@ -188,7 +188,7 @@ public class GamificationService(
                 .ToList();
 
             // Eagerly load Achievement for new entries from tracker
-            foreach (var ua in newAchievementsFromTracker)
+            foreach (UserAchievement ua in newAchievementsFromTracker)
             {
                 if (ua.Achievement == null)
                 {
@@ -218,7 +218,7 @@ public class GamificationService(
                     // Award badge if associated
                     if (userAchievement.Achievement.RewardBadgeId.HasValue)
                     {
-                        var rewardBadgeId = userAchievement.Achievement.RewardBadgeId.Value;
+                        Guid rewardBadgeId = userAchievement.Achievement.RewardBadgeId.Value;
 
                         // Check both database AND change tracker for existing badge
                         // (change tracker may have badges added but not yet committed)

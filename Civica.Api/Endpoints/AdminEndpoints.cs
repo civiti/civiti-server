@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Civica.Api.Services.Interfaces;
 using Civica.Api.Infrastructure.Constants;
 using Civica.Api.Infrastructure.Extensions;
@@ -58,12 +57,12 @@ public static class AdminEndpoints
                 SortDescending = sortDescending
             };
 
-            if (!string.IsNullOrEmpty(category) && Enum.TryParse<IssueCategory>(category, out IssueCategory categoryEnum))
+            if (!string.IsNullOrEmpty(category) && Enum.TryParse(category, out IssueCategory categoryEnum))
             {
                 request.Category = categoryEnum;
             }
 
-            if (!string.IsNullOrEmpty(urgency) && Enum.TryParse<UrgencyLevel>(urgency, out UrgencyLevel urgencyEnum))
+            if (!string.IsNullOrEmpty(urgency) && Enum.TryParse(urgency, out UrgencyLevel urgencyEnum))
             {
                 request.Urgency = urgencyEnum;
             }
@@ -74,7 +73,7 @@ public static class AdminEndpoints
         .WithName("GetPendingIssues")
         .WithSummary("Get issues pending admin review")
         .WithDescription("Retrieves a paginated list of issues awaiting admin approval. Supports advanced filtering by category, urgency, date range, and search terms. This endpoint is critical for the moderation workflow and only accessible to administrators.")
-        .Produces<PagedResult<AdminIssueResponse>>(StatusCodes.Status200OK)
+        .Produces<PagedResult<AdminIssueResponse>>()
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
         .WithOpenApi(operation =>
@@ -104,7 +103,7 @@ public static class AdminEndpoints
         .WithName("GetIssueDetailsForAdmin")
         .WithSummary("Get detailed issue information for admin review")
         .WithDescription("Retrieves comprehensive issue details including user information, full content, photos, and moderation history. This provides all information needed for admins to make informed moderation decisions.")
-        .Produces<AdminIssueDetailResponse>(StatusCodes.Status200OK)
+        .Produces<AdminIssueDetailResponse>()
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
@@ -127,7 +126,7 @@ public static class AdminEndpoints
         })
         .WithName("ApproveIssue")
         .WithSummary("Approve an issue")
-        .Produces<IssueActionResponse>(StatusCodes.Status200OK)
+        .Produces<IssueActionResponse>()
         .Produces<IssueActionResponse>(StatusCodes.Status400BadRequest);
 
         // PUT /api/admin/issues/{id}/reject
@@ -147,7 +146,7 @@ public static class AdminEndpoints
         })
         .WithName("RejectIssue")
         .WithSummary("Reject an issue with reason")
-        .Produces<IssueActionResponse>(StatusCodes.Status200OK)
+        .Produces<IssueActionResponse>()
         .Produces<IssueActionResponse>(StatusCodes.Status400BadRequest);
 
         // PUT /api/admin/issues/{id}/request-changes
@@ -167,7 +166,7 @@ public static class AdminEndpoints
         })
         .WithName("RequestChanges")
         .WithSummary("Request changes on an issue")
-        .Produces<IssueActionResponse>(StatusCodes.Status200OK)
+        .Produces<IssueActionResponse>()
         .Produces<IssueActionResponse>(StatusCodes.Status400BadRequest);
 
         // GET /api/admin/statistics
@@ -180,7 +179,7 @@ public static class AdminEndpoints
         })
         .WithName("GetAdminStatistics")
         .WithSummary("Get admin dashboard statistics")
-        .Produces<AdminStatisticsResponse>(StatusCodes.Status200OK);
+        .Produces<AdminStatisticsResponse>();
 
         // POST /api/admin/bulk-approve
         group.MapPost(ApiRoutes.Admin.BulkApprove, async (
@@ -196,10 +195,10 @@ public static class AdminEndpoints
         })
         .WithName("BulkApproveIssues")
         .WithSummary("Bulk approve multiple issues")
-        .Produces<BulkApproveResponse>(StatusCodes.Status200OK);
+        .Produces<BulkApproveResponse>();
 
         // GET /api/admin/moderation-stats
-        group.MapGet("/moderation-stats", async (
+        group.MapGet(ApiRoutes.Admin.ModerationStats, async (
             IAdminService adminService,
             ClaimsPrincipal user) =>
         {
@@ -211,10 +210,10 @@ public static class AdminEndpoints
         })
         .WithName("GetModerationStats")
         .WithSummary("Get moderation statistics for the current admin")
-        .Produces<GetModerationStatsResponse>(StatusCodes.Status200OK);
+        .Produces<GetModerationStatsResponse>();
 
         // GET /api/admin/actions
-        group.MapGet("/actions", async (
+        group.MapGet(ApiRoutes.Admin.Actions, async (
             IAdminService adminService,
             int page = 1,
             int pageSize = 50,
@@ -242,7 +241,7 @@ public static class AdminEndpoints
                 SortDescending = sortDescending
             };
 
-            if (!string.IsNullOrEmpty(actionType) && Enum.TryParse<AdminActionType>(actionType, out AdminActionType actionTypeEnum))
+            if (!string.IsNullOrEmpty(actionType) && Enum.TryParse(actionType, out AdminActionType actionTypeEnum))
             {
                 request.ActionType = actionTypeEnum;
             }
@@ -252,6 +251,6 @@ public static class AdminEndpoints
         })
         .WithName("GetAdminActions")
         .WithSummary("Get admin action audit log")
-        .Produces<PagedResult<AdminActionResponse>>(StatusCodes.Status200OK);
+        .Produces<PagedResult<AdminActionResponse>>();
     }
 }

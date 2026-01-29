@@ -34,6 +34,6 @@ public static class UtilityEndpoints
 
             This is a public endpoint, no authentication required.
             """)
-        .Produces<List<CategoryResponse>>(200);
+        .Produces<List<CategoryResponse>>();
     }
 }

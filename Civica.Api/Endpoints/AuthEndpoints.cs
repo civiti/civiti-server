@@ -21,7 +21,7 @@ public static class AuthEndpoints
             .WithOpenApi();
 
         // GET /api/auth/status - Check if user is authenticated and has a valid token
-        group.MapGet("/status", [Authorize] (HttpContext context) =>
+        group.MapGet(ApiRoutes.Auth.Status, [Authorize] (HttpContext context) =>
             {
                 var supabaseUserId = context.User.GetSupabaseUserId();
                 var email = context.User.GetEmail();

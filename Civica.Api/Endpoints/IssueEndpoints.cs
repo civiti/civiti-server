@@ -57,13 +57,13 @@ public static class IssueEndpoints
             };
 
             // Parse category enum
-            if (!string.IsNullOrEmpty(category) && Enum.TryParse<Civica.Api.Models.Domain.IssueCategory>(category, true, out IssueCategory parsedCategory))
+            if (!string.IsNullOrEmpty(category) && Enum.TryParse(category, true, out IssueCategory parsedCategory))
             {
                 request.Category = parsedCategory;
             }
 
             // Parse urgency enum
-            if (!string.IsNullOrEmpty(urgency) && Enum.TryParse<Civica.Api.Models.Domain.UrgencyLevel>(urgency, true, out UrgencyLevel parsedUrgency))
+            if (!string.IsNullOrEmpty(urgency) && Enum.TryParse(urgency, true, out UrgencyLevel parsedUrgency))
             {
                 request.Urgency = parsedUrgency;
             }
@@ -72,11 +72,11 @@ public static class IssueEndpoints
             if (!string.IsNullOrEmpty(status))
             {
                 var statusParts = status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                List<IssueStatus> parsedStatuses = new List<IssueStatus>();
+                List<IssueStatus> parsedStatuses = [];
 
                 foreach (var statusPart in statusParts)
                 {
-                    if (Enum.TryParse<Civica.Api.Models.Domain.IssueStatus>(statusPart, true, out IssueStatus parsedStatus))
+                    if (Enum.TryParse(statusPart, true, out IssueStatus parsedStatus))
                     {
                         parsedStatuses.Add(parsedStatus);
                     }
@@ -93,7 +93,7 @@ public static class IssueEndpoints
             var supabaseUserId = httpContext.User.GetSupabaseUserId();
             if (!string.IsNullOrEmpty(supabaseUserId))
             {
-                var userProfile = await userService.GetUserProfileAsync(supabaseUserId);
+                UserProfileResponse? userProfile = await userService.GetUserProfileAsync(supabaseUserId);
                 currentUserId = userProfile?.Id;
             }
 
@@ -103,7 +103,7 @@ public static class IssueEndpoints
         .WithName("GetIssues")
         .WithSummary("Get paginated list of approved issues")
         .WithDescription("Retrieves a paginated list of civic issues. By default, returns only Active issues. Use the status filter to include Resolved issues. Supports filtering by category, urgency level, status, district, and address. Results can be sorted by date, popularity (email count), votes, or urgency. Only publicly visible issues are returned. If authenticated, includes HasVoted field indicating if the current user has voted on each issue.")
-        .Produces<PagedResult<IssueListResponse>>(200)
+        .Produces<PagedResult<IssueListResponse>>()
         .WithOpenApi(operation =>
         {
             operation.Parameters[0].Description = "Page number (default: 1)";
@@ -119,7 +119,7 @@ public static class IssueEndpoints
         });
 
         // GET /api/issues/{id}
-        group.MapGet("/{id:guid}", async Task<Results<Ok<IssueDetailResponse>, NotFound>> (
+        group.MapGet(ApiRoutes.Issues.ById, async Task<Results<Ok<IssueDetailResponse>, NotFound>> (
             IIssueService issueService,
             IUserService userService,
             HttpContext httpContext,
@@ -130,7 +130,7 @@ public static class IssueEndpoints
             var supabaseUserId = httpContext.User.GetSupabaseUserId();
             if (!string.IsNullOrEmpty(supabaseUserId))
             {
-                var userProfile = await userService.GetUserProfileAsync(supabaseUserId);
+                UserProfileResponse? userProfile = await userService.GetUserProfileAsync(supabaseUserId);
                 currentUserId = userProfile?.Id;
             }
 
@@ -143,7 +143,7 @@ public static class IssueEndpoints
         .WithName("GetIssueById")
         .WithSummary("Get issue details by ID")
         .WithDescription("Retrieves detailed information about a specific issue including full description, location data, photos, email tracking statistics, community votes, and related user information. If authenticated, includes HasVoted field indicating if the current user has voted on this issue. Returns 404 if the issue doesn't exist or hasn't been approved yet.")
-        .Produces<IssueDetailResponse>(200)
+        .Produces<IssueDetailResponse>()
         .Produces(404)
         .WithOpenApi();
 
@@ -180,7 +180,7 @@ public static class IssueEndpoints
         .WithOpenApi();
 
         // POST /api/issues/{id}/email-sent
-        group.MapPost("/{id:guid}/email-sent", async Task<Results<Ok, BadRequest<string>, NotFound, StatusCodeHttpResult>> (
+        group.MapPost(ApiRoutes.Issues.EmailSent, async Task<Results<Ok, BadRequest<string>, NotFound, StatusCodeHttpResult>> (
             IIssueService issueService,
             Guid id,
             HttpContext httpContext) =>
@@ -246,7 +246,7 @@ public static class IssueEndpoints
         .WithName("EnhanceText")
         .WithSummary("Enhance civic issue text using AI (requires authentication)")
         .WithDescription("Uses Claude AI to improve the quality, clarity, and professionalism of civic issue descriptions while preserving all original information. Returns enhanced text in Romanian. If AI enhancement fails, returns the original text with a warning. Rate limited to 10 requests per user per minute.")
-        .Produces<EnhanceTextResponse>(200)
+        .Produces<EnhanceTextResponse>()
         .Produces(400)
         .Produces(401)
         .Produces(429)

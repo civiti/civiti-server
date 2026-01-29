@@ -31,7 +31,7 @@ public static class UserEndpoints
             .RequireAuthorization();
 
         // GET /api/user/profile
-        group.MapGet("/profile", async (
+        group.MapGet(ApiRoutes.User.Profile, async (
             HttpContext context,
             IUserService userService) =>
         {
@@ -60,13 +60,13 @@ public static class UserEndpoints
         .WithName("GetUserProfile")
         .WithSummary("Get user's complete profile")
         .WithDescription("Retrieves the complete profile for the authenticated user including personal information, gamification data (points, level, badges, achievements), and notification preferences. If no profile exists, one will be automatically created using data from the JWT token.")
-        .Produces<UserProfileResponse>(StatusCodes.Status200OK)
+        .Produces<UserProfileResponse>()
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .WithOpenApi();
 
         // POST /api/user/profile - Create or update profile
-        group.MapPost("/profile", async (
+        group.MapPost(ApiRoutes.User.Profile, async (
             CreateUserProfileRequest request,
             HttpContext context,
             IUserService userService) =>
@@ -150,14 +150,14 @@ public static class UserEndpoints
         .WithSummary("Create or update user profile")
         .WithDescription("Creates a new user profile in the Civica system after successful Supabase OAuth authentication, or updates an existing profile if one already exists. This endpoint is idempotent - calling it multiple times with the same data will not cause errors.")
         .Produces<UserProfileResponse>(StatusCodes.Status201Created)
-        .Produces<UserProfileResponse>(StatusCodes.Status200OK)
+        .Produces<UserProfileResponse>()
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
         .WithOpenApi();
 
         // PUT /api/user/profile
-        group.MapPut("/profile", async (
+        group.MapPut(ApiRoutes.User.Profile, async (
             UpdateUserProfileRequest request,
             HttpContext context,
             IUserService userService) =>
@@ -181,13 +181,13 @@ public static class UserEndpoints
         .WithName("UpdateUserProfile")
         .WithSummary("Update user's profile")
         .WithDescription("Updates the authenticated user's profile information. Only provided fields will be updated; null fields are ignored. Returns the complete updated profile with gamification data.")
-        .Produces<UserProfileResponse>(StatusCodes.Status200OK)
+        .Produces<UserProfileResponse>()
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
         .WithOpenApi();
 
         // GET /api/user/gamification
-        group.MapGet(ApiRoutes.User.Gamification, async (
+        group.MapGet(ApiRoutes.User.MyGamification, async (
             HttpContext context,
             IUserService userService) =>
         {
@@ -202,11 +202,11 @@ public static class UserEndpoints
         })
         .WithName("GetUserGamification")
         .WithSummary("Get user's gamification data")
-        .Produces<UserGamificationResponse>(StatusCodes.Status200OK)
+        .Produces<UserGamificationResponse>()
         .Produces(StatusCodes.Status401Unauthorized);
 
         // DELETE /api/user/account
-        group.MapDelete("/account", async (
+        group.MapDelete(ApiRoutes.User.Account, async (
             HttpContext context,
             IUserService userService) =>
         {
@@ -227,7 +227,7 @@ public static class UserEndpoints
         .Produces(StatusCodes.Status404NotFound);
 
         // GET /api/user/issues
-        group.MapGet("/issues", async (
+        group.MapGet(ApiRoutes.User.MyIssues, async (
             HttpContext context,
             IIssueService issueService,
             int? page,
@@ -255,7 +255,7 @@ public static class UserEndpoints
             };
 
             // Parse status enum
-            if (!string.IsNullOrEmpty(status) && Enum.TryParse<Civica.Api.Models.Domain.IssueStatus>(status, true, out IssueStatus parsedStatus))
+            if (!string.IsNullOrEmpty(status) && Enum.TryParse(status, true, out IssueStatus parsedStatus))
             {
                 request.Status = parsedStatus;
             }
@@ -265,11 +265,11 @@ public static class UserEndpoints
         })
         .WithName("GetUserIssues")
         .WithSummary("Get issues created by the authenticated user")
-        .Produces<PagedResult<IssueListResponse>>(StatusCodes.Status200OK)
+        .Produces<PagedResult<IssueListResponse>>()
         .Produces(StatusCodes.Status401Unauthorized);
 
         // GET /api/user/leaderboard
-        group.MapGet("/leaderboard", async (
+        group.MapGet(ApiRoutes.User.Leaderboard, async (
             int? page,
             int? pageSize,
             string? period,
@@ -285,10 +285,10 @@ public static class UserEndpoints
         .AllowAnonymous() // Leaderboard is public
         .WithName("GetLeaderboard")
         .WithSummary("Get user leaderboard")
-        .Produces<LeaderboardResponse>(StatusCodes.Status200OK);
+        .Produces<LeaderboardResponse>();
 
         // PUT /api/user/issues/{id}/status
-        group.MapPut("/issues/{id:guid}/status", async (
+        group.MapPut(ApiRoutes.User.IssueStatus, async (
             Guid id,
             UpdateIssueStatusRequest request,
             HttpContext context,
@@ -326,7 +326,7 @@ public static class UserEndpoints
         .Produces(StatusCodes.Status404NotFound);
 
         // PUT /api/user/issues/{id}
-        group.MapPut("/issues/{id:guid}", async (
+        group.MapPut(ApiRoutes.User.IssueById, async (
             Guid id,
             UpdateIssueRequest request,
             HttpContext context,
@@ -338,7 +338,7 @@ public static class UserEndpoints
                 return Results.Unauthorized();
             }
 
-            var (success, issue, error) = await issueService.UpdateIssueAsync(id, request, supabaseUserId);
+            (var success, IssueDetailResponse? issue, var error) = await issueService.UpdateIssueAsync(id, request, supabaseUserId);
 
             if (!success)
             {
@@ -356,7 +356,7 @@ public static class UserEndpoints
         .WithName("UpdateUserIssue")
         .WithSummary("Update and resubmit an issue")
         .WithDescription("Allows the authenticated user to edit their own issue. Cannot edit Cancelled or Resolved issues. After editing, the issue status is set to 'UnderReview' for admin re-approval.")
-        .Produces<IssueDetailResponse>(StatusCodes.Status200OK)
+        .Produces<IssueDetailResponse>()
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)

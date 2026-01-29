@@ -39,7 +39,7 @@ public class IssueService(
         try
         {
             // Only these statuses are allowed for public viewing
-            var allowedPublicStatuses = new[] { IssueStatus.Active, IssueStatus.Resolved };
+            IssueStatus[] allowedPublicStatuses = [IssueStatus.Active, IssueStatus.Resolved];
 
             IQueryable<Issue> query = context.Issues
                 .Include(i => i.Photos)
@@ -50,7 +50,7 @@ public class IssueService(
             if (request.Statuses != null && request.Statuses.Count > 0)
             {
                 // Filter to only allowed public statuses
-                var validStatuses = request.Statuses
+                List<IssueStatus> validStatuses = request.Statuses
                     .Where(s => allowedPublicStatuses.Contains(s))
                     .ToList();
 
@@ -157,7 +157,7 @@ public class IssueService(
                     .Select(d => d.Issue.Id)
                     .ToHashSet();
 
-                var issueIds = items.Select(i => i.Id).ToList();
+                List<Guid> issueIds = items.Select(i => i.Id).ToList();
                 votedIssueIds = (await context.IssueVotes
                     .Where(v => v.UserId == currentUserId.Value && issueIds.Contains(v.IssueId))
                     .Select(v => v.IssueId)
@@ -166,7 +166,7 @@ public class IssueService(
             }
 
             // Set HasVoted for each item (null if unauthenticated or owner - voting not applicable)
-            foreach (var item in items)
+            foreach (IssueListResponse item in items)
             {
                 if (!currentUserId.HasValue || ownedIssueIds.Contains(item.Id))
                 {
@@ -271,7 +271,7 @@ public class IssueService(
 
     public async Task<CreateIssueResponse> CreateIssueAsync(CreateIssueRequest request, string supabaseUserId)
     {
-        var strategy = context.Database.CreateExecutionStrategy();
+        IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync(async () =>
         {
@@ -316,7 +316,7 @@ public class IssueService(
             // Add photos if provided
             if (request.PhotoUrls != null && request.PhotoUrls.Any())
             {
-                var validPhotoUrls = request.PhotoUrls
+                List<string> validPhotoUrls = request.PhotoUrls
                     .Where(url => !string.IsNullOrWhiteSpace(url))
                     .ToList();
 
@@ -336,10 +336,10 @@ public class IssueService(
             if (request.Authorities != null && request.Authorities.Any())
             {
                 // Filter out null elements from the list
-                var authorities = request.Authorities.Where(a => a != null).ToList();
+                List<IssueAuthorityInput> authorities = request.Authorities.Where(a => a != null).ToList();
 
                 // Check for duplicate AuthorityIds
-                var predefinedIds = authorities
+                List<Guid> predefinedIds = authorities
                     .Where(a => a.AuthorityId.HasValue)
                     .Select(a => a.AuthorityId!.Value)
                     .ToList();
@@ -350,7 +350,7 @@ public class IssueService(
                 }
 
                 // Check for duplicate custom emails (only for custom authorities, not predefined)
-                var customEmails = authorities
+                List<string> customEmails = authorities
                     .Where(a => !a.AuthorityId.HasValue && !string.IsNullOrWhiteSpace(a.CustomEmail))
                     .Select(a => a.CustomEmail!.ToLowerInvariant())
                     .ToList();
@@ -360,7 +360,7 @@ public class IssueService(
                     throw new InvalidOperationException("Duplicate custom authority emails are not allowed");
                 }
 
-                foreach (var authorityInput in authorities)
+                foreach (IssueAuthorityInput authorityInput in authorities)
                 {
                     // Validate: either AuthorityId OR (CustomName AND CustomEmail) must be provided
                     bool hasPredefined = authorityInput.AuthorityId.HasValue;
@@ -421,8 +421,7 @@ public class IssueService(
             // Update achievement progress for issues_reported
             await gamificationService.UpdateAchievementProgressAsync(
                 userProfile.Id,
-                "issues_reported",
-                1);
+                "issues_reported");
 
             // Update quality_photos achievement if issue has 3+ photos
             // Use incremental progress (not absolute) to avoid race conditions with concurrent issue creations
@@ -431,8 +430,7 @@ public class IssueService(
             {
                 await gamificationService.UpdateAchievementProgressAsync(
                     userProfile.Id,
-                    "quality_photos",
-                    1);
+                    "quality_photos");
             }
 
             // Check for badge eligibility based on new stats
@@ -487,7 +485,7 @@ public class IssueService(
             }
 
             // Check if issue exists and is valid for incrementing
-            var issueStatus = await context.Issues
+            IssueStatus? issueStatus = await context.Issues
                 .Where(i => i.Id == issueId)
                 .Select(i => (IssueStatus?)i.Status)
                 .FirstOrDefaultAsync();
@@ -642,7 +640,7 @@ public class IssueService(
         string supabaseUserId,
         bool isAdmin = false)
     {
-        var strategy = context.Database.CreateExecutionStrategy();
+        IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync(async () =>
         {
@@ -685,7 +683,7 @@ public class IssueService(
                 }
 
                 // Update the status
-                var previousStatus = issue.Status;
+                IssueStatus previousStatus = issue.Status;
                 issue.Status = request.Status;
                 issue.UpdatedAt = DateTime.UtcNow;
 
@@ -718,8 +716,7 @@ public class IssueService(
                     // Update achievement progress for issues_resolved
                     await gamificationService.UpdateAchievementProgressAsync(
                         issue.UserId,
-                        "issues_resolved",
-                        1);
+                        "issues_resolved");
 
                     // Check for badge eligibility
                     await gamificationService.CheckAndAwardBadgesAsync(issue.UserId);
@@ -730,7 +727,7 @@ public class IssueService(
                 // Record activity (outside transaction)
                 try
                 {
-                    var activityType = request.Status == IssueStatus.Resolved
+                    ActivityType activityType = request.Status == IssueStatus.Resolved
                         ? Models.Domain.ActivityType.IssueResolved
                         : Models.Domain.ActivityType.StatusChange;
 
@@ -768,7 +765,7 @@ public class IssueService(
     private static string? ValidateStatusTransition(IssueStatus currentStatus, IssueStatus newStatus)
     {
         // Users can only set these statuses
-        var allowedUserStatuses = new[] { IssueStatus.Cancelled, IssueStatus.Resolved };
+        IssueStatus[] allowedUserStatuses = [IssueStatus.Cancelled, IssueStatus.Resolved];
 
         if (!allowedUserStatuses.Contains(newStatus))
         {
@@ -800,7 +797,7 @@ public class IssueService(
         UpdateIssueRequest request,
         string supabaseUserId)
     {
-        var strategy = context.Database.CreateExecutionStrategy();
+        IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync<(bool Success, IssueDetailResponse? Issue, string? Error)>(async () =>
         {
@@ -879,7 +876,7 @@ public class IssueService(
                 {
                     context.IssuePhotos.RemoveRange(issue.Photos);
 
-                    var validPhotoUrls = request.PhotoUrls
+                    List<string> validPhotoUrls = request.PhotoUrls
                         .Where(url => !string.IsNullOrWhiteSpace(url))
                         .ToList();
 
@@ -908,10 +905,10 @@ public class IssueService(
                     // Add new authorities
                     if (request.Authorities.Any())
                     {
-                        var authorities = request.Authorities.Where(a => a != null).ToList();
+                        List<IssueAuthorityInput> authorities = request.Authorities.Where(a => a != null).ToList();
 
                         // Check for duplicate AuthorityIds
-                        var predefinedIds = authorities
+                        List<Guid> predefinedIds = authorities
                             .Where(a => a.AuthorityId.HasValue)
                             .Select(a => a.AuthorityId!.Value)
                             .ToList();
@@ -923,7 +920,7 @@ public class IssueService(
                         }
 
                         // Check for duplicate custom emails
-                        var customEmails = authorities
+                        List<string> customEmails = authorities
                             .Where(a => !a.AuthorityId.HasValue && !string.IsNullOrWhiteSpace(a.CustomEmail))
                             .Select(a => a.CustomEmail!.ToLowerInvariant())
                             .ToList();
@@ -934,7 +931,7 @@ public class IssueService(
                             return (false, null, "Duplicate custom authority emails are not allowed");
                         }
 
-                        foreach (var authorityInput in authorities)
+                        foreach (IssueAuthorityInput authorityInput in authorities)
                         {
                             bool hasPredefined = authorityInput.AuthorityId.HasValue;
                             bool hasCustom = !string.IsNullOrWhiteSpace(authorityInput.CustomName) &&
@@ -1003,13 +1000,13 @@ public class IssueService(
                 await context.Entry(issue).Collection(i => i.IssueAuthorities).LoadAsync();
 
                 // Load Authority for each IssueAuthority
-                foreach (var ia in issue.IssueAuthorities.Where(ia => ia.AuthorityId.HasValue))
+                foreach (IssueAuthority ia in issue.IssueAuthorities.Where(ia => ia.AuthorityId.HasValue))
                 {
                     await context.Entry(ia).Reference(x => x.Authority).LoadAsync();
                 }
 
                 // Build response before committing
-                var response = new IssueDetailResponse
+                IssueDetailResponse response = new()
                 {
                     Id = issue.Id,
                     Title = issue.Title,
@@ -1072,7 +1069,7 @@ public class IssueService(
         try
         {
             // Pre-validate outside the transaction
-            var user = await context.UserProfiles
+            UserProfile? user = await context.UserProfiles
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
@@ -1082,7 +1079,7 @@ public class IssueService(
 
             // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
             // which would return the tracked entity, causing double points on retry
-            var issue = await context.Issues
+            Issue? issue = await context.Issues
                 .FirstOrDefaultAsync(i => i.Id == issueId);
 
             if (issue == null)
@@ -1112,11 +1109,11 @@ public class IssueService(
             }
 
             // Use execution strategy to wrap the transaction
-            var strategy = context.Database.CreateExecutionStrategy();
+            IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
             // Generate ID before retry block for idempotency - if retry occurs after commit,
             // we can detect our already-created vote by this ID
-            var voteId = Guid.NewGuid();
+            Guid voteId = Guid.NewGuid();
 
             var votedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
@@ -1124,7 +1121,7 @@ public class IssueService(
                 context.ChangeTracker.Clear();
 
                 // Check if this vote was already created in a previous retry attempt
-                var existingVote = await context.IssueVotes
+                IssueVote? existingVote = await context.IssueVotes
                     .FirstOrDefaultAsync(v => v.Id == voteId);
 
                 if (existingVote != null)
@@ -1133,10 +1130,10 @@ public class IssueService(
                     return true;
                 }
 
-                await using var transaction = await context.Database.BeginTransactionAsync();
+                await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
                 // Create vote
-                var vote = new IssueVote
+                IssueVote vote = new()
                 {
                     Id = voteId,
                     IssueId = issueId,
@@ -1221,7 +1218,7 @@ public class IssueService(
         try
         {
             // Pre-validate outside the transaction
-            var user = await context.UserProfiles
+            UserProfile? user = await context.UserProfiles
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
@@ -1231,7 +1228,7 @@ public class IssueService(
 
             // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
             // which would return the tracked entity, causing double points on retry
-            var issue = await context.Issues
+            Issue? issue = await context.Issues
                 .FirstOrDefaultAsync(i => i.Id == issueId);
 
             if (issue == null)
@@ -1249,14 +1246,14 @@ public class IssueService(
             }
 
             // Use execution strategy to wrap the transaction
-            var strategy = context.Database.CreateExecutionStrategy();
+            IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
             var removedByThisRequest = await strategy.ExecuteAsync(async () =>
             {
                 // Clear change tracker to ensure clean state on retry
                 context.ChangeTracker.Clear();
 
-                await using var transaction = await context.Database.BeginTransactionAsync();
+                await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
                 // Use ExecuteDeleteAsync for atomic delete - avoids entity tracking issues on retry
                 var rowsDeleted = await context.IssueVotes

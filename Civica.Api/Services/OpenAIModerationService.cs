@@ -1,3 +1,4 @@
+using System.ClientModel;
 using Civica.Api.Infrastructure.Configuration;
 using Civica.Api.Models.Responses.Moderation;
 using Civica.Api.Services.Interfaces;
@@ -33,10 +34,10 @@ public class OpenAIModerationService(
 
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(configuration.TimeoutSeconds));
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(configuration.TimeoutSeconds));
 
-            var client = new ModerationClient(model: configuration.ModerationModel, apiKey: configuration.ApiKey);
-            var result = await client.ClassifyTextAsync(content, cts.Token);
+            ModerationClient client = new(model: configuration.ModerationModel, apiKey: configuration.ApiKey);
+            ClientResult<ModerationResult>? result = await client.ClassifyTextAsync(content, cts.Token);
 
             if (result?.Value == null)
             {
@@ -44,8 +45,8 @@ public class OpenAIModerationService(
                 return new ContentModerationResponse { IsAllowed = true };
             }
 
-            var moderationResult = result.Value;
-            var flaggedBlockedCategories = new List<string>();
+            ModerationResult moderationResult = result.Value;
+            List<string> flaggedBlockedCategories = [];
 
             // Check each blocked category
             if (moderationResult.Hate.Flagged && BlockedCategories.Contains("hate"))
@@ -89,7 +90,7 @@ public class OpenAIModerationService(
             // Log if content was flagged but in allowed categories (for monitoring)
             if (moderationResult.Flagged)
             {
-                var allowedFlaggedCategories = new List<string>();
+                List<string> allowedFlaggedCategories = [];
 
                 if (moderationResult.Violence.Flagged) allowedFlaggedCategories.Add("violence");
                 if (moderationResult.SelfHarm.Flagged) allowedFlaggedCategories.Add("self-harm");

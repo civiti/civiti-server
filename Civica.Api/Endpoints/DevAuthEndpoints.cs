@@ -12,7 +12,7 @@ public static class DevAuthEndpoints
         if (app is WebApplication webApp && !webApp.Environment.IsDevelopment())
             return;
 
-        var devAuth = app.MapGroup("/api/dev")
+        RouteGroupBuilder devAuth = app.MapGroup("/api/dev")
             .WithTags("Development Auth")
             .WithOpenApi();
 
@@ -41,27 +41,27 @@ public static class DevAuthEndpoints
                     password = request.Password
                 };
 
-                var jsonContent = new StringContent(
+                StringContent jsonContent = new(
                     JsonSerializer.Serialize(requestBody),
                     Encoding.UTF8,
                     "application/json");
 
                 // Create a new HttpClient instance to avoid header persistence
-                using var httpClient = httpClientFactory.CreateClient();
+                using HttpClient httpClient = httpClientFactory.CreateClient();
                 
                 // Use HttpRequestMessage for request-scoped headers
-                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, authUrl)
+                using HttpRequestMessage httpRequest = new(HttpMethod.Post, authUrl)
                 {
                     Content = jsonContent
                 };
                 httpRequest.Headers.Add("apikey", supabaseAnonKey);
                 
-                var response = await httpClient.SendAsync(httpRequest);
+                HttpResponseMessage response = await httpClient.SendAsync(httpRequest);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var authResponse = JsonSerializer.Deserialize<SupabaseAuthResponse>(responseContent);
+                    SupabaseAuthResponse? authResponse = JsonSerializer.Deserialize<SupabaseAuthResponse>(responseContent);
                     
                     if (authResponse?.access_token != null)
                     {
@@ -85,7 +85,7 @@ public static class DevAuthEndpoints
                     }
                 }
 
-                var errorResponse = JsonSerializer.Deserialize<SupabaseErrorResponse>(responseContent);
+                SupabaseErrorResponse? errorResponse = JsonSerializer.Deserialize<SupabaseErrorResponse>(responseContent);
                 return Results.BadRequest(new { 
                     Error = errorResponse?.error ?? errorResponse?.msg ?? "Authentication failed",
                     Details = responseContent
@@ -119,19 +119,19 @@ public static class DevAuthEndpoints
                 var userUrl = $"{supabaseUrl}/auth/v1/user";
                 
                 // Create a new HttpClient instance to avoid header persistence
-                using var httpClient = httpClientFactory.CreateClient();
+                using HttpClient httpClient = httpClientFactory.CreateClient();
                 
                 // Use HttpRequestMessage for request-scoped headers
-                using var httpRequest = new HttpRequestMessage(HttpMethod.Get, userUrl);
+                using HttpRequestMessage httpRequest = new(HttpMethod.Get, userUrl);
                 httpRequest.Headers.Add("apikey", supabaseServiceKey);
                 httpRequest.Headers.Add("Authorization", $"Bearer {request.Token}");
                 
-                var response = await httpClient.SendAsync(httpRequest);
+                HttpResponseMessage response = await httpClient.SendAsync(httpRequest);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var user = JsonSerializer.Deserialize<JsonElement>(responseContent);
+                    JsonElement user = JsonSerializer.Deserialize<JsonElement>(responseContent);
                     return Results.Ok(new
                     {
                         Valid = true,

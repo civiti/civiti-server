@@ -32,11 +32,11 @@ public static class GamificationEndpoints
         .WithName("GetAllBadges")
         .WithSummary("Get all available badges")
         .WithDescription("Retrieves a list of all badges available in the gamification system, including their requirements and point values.")
-        .Produces<List<BadgeResponse>>(StatusCodes.Status200OK)
+        .Produces<List<BadgeResponse>>()
         .WithOpenApi();
 
         // GET /api/gamification/badges/user
-        group.MapGet("/badges/user", async (
+        group.MapGet(ApiRoutes.Gamification.BadgesUser, async (
             HttpContext context,
             IGamificationService gamificationService,
             IUserService userService) =>
@@ -59,12 +59,12 @@ public static class GamificationEndpoints
         .RequireAuthorization()
         .WithName("GetUserBadges")
         .WithSummary("Get all badges with user's earned status")
-        .Produces<List<BadgeResponse>>(StatusCodes.Status200OK)
+        .Produces<List<BadgeResponse>>()
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound);
 
         // GET /api/gamification/achievements
-        group.MapGet("/achievements", async (
+        group.MapGet(ApiRoutes.Gamification.Achievements, async (
             IGamificationService gamificationService) =>
         {
             List<AchievementResponse> achievements = await gamificationService.GetAllAchievementsAsync();
@@ -72,10 +72,10 @@ public static class GamificationEndpoints
         })
         .WithName("GetAllAchievements")
         .WithSummary("Get all available achievements")
-        .Produces<List<AchievementResponse>>(StatusCodes.Status200OK);
+        .Produces<List<AchievementResponse>>();
 
         // GET /api/gamification/achievements/user
-        group.MapGet("/achievements/user", async (
+        group.MapGet(ApiRoutes.Gamification.AchievementsUser, async (
             HttpContext context,
             IGamificationService gamificationService,
             IUserService userService) =>
@@ -98,12 +98,12 @@ public static class GamificationEndpoints
         .RequireAuthorization()
         .WithName("GetUserAchievements")
         .WithSummary("Get user's achievement progress")
-        .Produces<List<AchievementProgressResponse>>(StatusCodes.Status200OK)
+        .Produces<List<AchievementProgressResponse>>()
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound);
 
         // GET /api/gamification/leaderboard
-        group.MapGet("/leaderboard", async (
+        group.MapGet(ApiRoutes.Gamification.Leaderboard, async (
             string? period,
             string? category,
             int? limit,
@@ -118,6 +118,6 @@ public static class GamificationEndpoints
         })
         .WithName("GetGamificationLeaderboard")
         .WithSummary("Get gamification leaderboard")
-        .Produces<LeaderboardResponse>(StatusCodes.Status200OK);
+        .Produces<LeaderboardResponse>();
     }
 }
