@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Civica.Api.Services;
 
 /// <summary>
-/// Seeds static reference data (badges, achievements) at application startup.
+/// Seeds static reference data (badges, achievements, authorities) at application startup.
 /// Idempotent (checks for existing data before inserting).
 /// </summary>
 public class StaticDataSeeder : IHostedService
@@ -32,6 +32,7 @@ public class StaticDataSeeder : IHostedService
 
             await SeedBadgesAsync(context, cancellationToken);
             await SeedAchievementsAsync(context, cancellationToken);
+            await SeedAuthoritiesAsync(context, cancellationToken);
 
             _logger.LogInformation("Static data seeding completed successfully");
         }
@@ -415,5 +416,444 @@ public class StaticDataSeeder : IHostedService
         context.Achievements.AddRange(achievements);
         await context.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("Seeded {Count} achievements", achievements.Count);
+    }
+
+    private async Task SeedAuthoritiesAsync(CivicaDbContext context, CancellationToken cancellationToken)
+    {
+        if (await context.Authorities.AnyAsync(cancellationToken))
+        {
+            _logger.LogDebug("Authorities already seeded - skipping");
+            return;
+        }
+
+        var seedDate = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var authorities = new List<Authority>
+        {
+            // === PMB (city-wide) ===
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000000001"),
+                Name = "Primăria Municipiului București",
+                Email = "relatiipublice@pmb.ro",
+                County = "București",
+                City = "București",
+                District = null,
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000000002"),
+                Name = "Poliția Locală a Municipiului București",
+                Email = "office@plmb.ro",
+                County = "București",
+                City = "București",
+                District = null,
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000000003"),
+                Name = "ASPA București",
+                Email = "relatiicupublicul@aspa.ro",
+                County = "București",
+                City = "București",
+                District = null,
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000000004"),
+                Name = "Protecția Animalelor CJ Ilfov",
+                Email = "protectiaanimalelor@cjilfov.ro",
+                County = "București",
+                City = "București",
+                District = null,
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000000005"),
+                Name = "Administrația Străzilor București",
+                Email = "office@aspmb.ro",
+                County = "București",
+                City = "București",
+                District = null,
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+
+            // === Sector 1 ===
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000001001"),
+                Name = "Primăria Sector 1",
+                Email = "registratura@primarias1.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 1",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000001002"),
+                Name = "DGASPC Sector 1",
+                Email = "registratura@dgaspc-sectorul1.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 1",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000001003"),
+                Name = "Poliția Locală S1",
+                Email = "contact@politialocalasector1.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 1",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000001004"),
+                Name = "Poliția Locală S1 (Protecția Animalelor)",
+                Email = "politiaanimalelor@politialocalasector1.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 1",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000001005"),
+                Name = "Protecția Animalelor S1",
+                Email = "protectiaanimalelor@primarias1.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 1",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000001006"),
+                Name = "Direcția de Utilități Publice, Salubrizare și Protecția Mediului S1",
+                Email = "secretariat@mediusectorul1.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 1",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+
+            // === Sector 2 ===
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000002001"),
+                Name = "Primăria Sector 2",
+                Email = "infopublice@ps2.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 2",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000002002"),
+                Name = "Poliția Locală S2",
+                Email = "directorgeneral.dgpl@politialocalas2.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 2",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000002003"),
+                Name = "Asistenţă Socială si Protecţia Copilului S2",
+                Email = "social@social2.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 2",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000002004"),
+                Name = "Primar Sector 2",
+                Email = "primar@ps2.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 2",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+
+            // === Sector 3 ===
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000003001"),
+                Name = "Primăria Sector 3",
+                Email = "relatiipublice@primarie3.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 3",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000003002"),
+                Name = "Poliția Locală S3",
+                Email = "secretariat.dgpl@primarie3.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 3",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000003003"),
+                Name = "Salubritate S3",
+                Email = "comunicare@salubritate3.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 3",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000003004"),
+                Name = "Directia Parcari",
+                Email = "directiaparcari@primarie3.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 3",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000003005"),
+                Name = "Ordine Publică și Control",
+                Email = "ordinepublica.control@primarie3.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 3",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000003006"),
+                Name = "Serviciul Circulație pe Dumurile Publice",
+                Email = "circulatie@primarie3.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 3",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000003007"),
+                Name = "Serviciul Disciplina în Construcții",
+                Email = "disciplinainconstructii@primarie3.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 3",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000003008"),
+                Name = "Serviciul Control Protecția Mediului",
+                Email = "mediu@primarie3.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 3",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+
+            // === Sector 4 ===
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000004001"),
+                Name = "Primăria Sector 4",
+                Email = "contact@ps4.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 4",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000004002"),
+                Name = "Poliția Locală S4",
+                Email = "sesizari@politialocala4.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 4",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000004003"),
+                Name = "DGASPC Sector 4",
+                Email = "contact@dgaspc4.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 4",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+
+            // === Sector 5 ===
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000005001"),
+                Name = "Primăria Sector 5",
+                Email = "primarie@sector5.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 5",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000005002"),
+                Name = "Serviciul de Ordine Publică și Intervenție Rapidă",
+                Email = "ordinepublica@sector5.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 5",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000005003"),
+                Name = "Serviciul Politia Animalelor",
+                Email = "politiaanimalelor@sector5.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 5",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000005004"),
+                Name = "Serviciul Monitorizare Și Control Salubrizare",
+                Email = "salubrizare@sector5.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 5",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000005005"),
+                Name = "Serviciul Spații Verzi",
+                Email = "spatiiverzi@sector5.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 5",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000005006"),
+                Name = "Administrația Dezvoltare Urbană",
+                Email = "dezvoltareurbana@sector5.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 5",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000005007"),
+                Name = "Poliția Locală S5",
+                Email = "politialocala@sector5.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 5",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+
+            // === Sector 6 ===
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000006001"),
+                Name = "Primăria Sector 6",
+                Email = "prim6@primarie6.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 6",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000006002"),
+                Name = "Poliţia Locală S6",
+                Email = "contact@politia6.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 6",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000006003"),
+                Name = "DGASPC Sector 6",
+                Email = "office@dgaspc6.com",
+                County = "București",
+                City = "București",
+                District = "Sector 6",
+                IsActive = true,
+                CreatedAt = seedDate
+            },
+            new()
+            {
+                Id = Guid.Parse("a0000000-0000-0000-0000-000000006004"),
+                Name = "ADP Sector 6",
+                Email = "contact@adps6.ro",
+                County = "București",
+                City = "București",
+                District = "Sector 6",
+                IsActive = true,
+                CreatedAt = seedDate
+            }
+        };
+
+        context.Authorities.AddRange(authorities);
+        await context.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Seeded {Count} authorities", authorities.Count);
     }
 }
