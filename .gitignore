@@ -5,6 +5,7 @@ obj/
 .nuget/
 riderModule.iml
 /_ReSharper.Caches/
+*.DotSettings.user
 
 # Environment files
 .env

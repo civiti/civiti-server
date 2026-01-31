@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Civica.Api - Swagger" type="LaunchSettings" factoryName=".NET Launch Settings Profile">
-    <option name="LAUNCH_PROFILE_PROJECT_FILE_PATH" value="$PROJECT_DIR$/Civica.Api/Civica.Api.csproj" />
+    <option name="LAUNCH_PROFILE_PROJECT_FILE_PATH" value="$PROJECT_DIR$/Civiti.Api/Civiti.Api.csproj" />
     <option name="LAUNCH_PROFILE_TFM" value="net9.0" />
     <option name="LAUNCH_PROFILE_NAME" value="Civica.Api" />
     <option name="USE_EXTERNAL_CONSOLE" value="0" />

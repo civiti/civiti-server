@@ -1,0 +1,85 @@
+namespace Civiti.Api.Infrastructure.Constants;
+
+public static class ApiRoutes
+{
+    private const string ApiBase = "/api";
+
+    public static class Auth
+    {
+        public const string Base = $"{ApiBase}/auth";
+        public const string Status = "/status";
+    }
+
+    public static class Issues
+    {
+        public const string Base = $"{ApiBase}/issues";
+        public const string ById = "/{id:guid}";
+        public const string EmailSent = "/{id:guid}/email-sent";
+        public const string EnhanceText = "/enhance-text";
+        public const string Poster = "/{id:guid}/poster";
+        public const string Vote = "/{id:guid}/vote";
+    }
+
+    public static class User
+    {
+        public const string Base = $"{ApiBase}/user";
+        public const string Profile = "/profile";
+        public const string MyGamification = "/gamification";
+        public const string MyIssues = "/issues";
+        public const string IssueById = "/issues/{id:guid}";
+        public const string IssueStatus = "/issues/{id:guid}/status";
+        public const string Account = "/account";
+        public const string Leaderboard = "/leaderboard";
+    }
+
+    public static class Admin
+    {
+        public const string Base = $"{ApiBase}/admin";
+        public const string PendingIssues = "/pending-issues";
+        public const string IssueById = "/issues/{id:guid}";
+        public const string Approve = "/issues/{id:guid}/approve";
+        public const string Reject = "/issues/{id:guid}/reject";
+        public const string RequestChanges = "/issues/{id:guid}/request-changes";
+        public const string Statistics = "/statistics";
+        public const string BulkApprove = "/bulk-approve";
+        public const string ModerationStats = "/moderation-stats";
+        public const string Actions = "/actions";
+    }
+
+    public static class Gamification
+    {
+        public const string Base = $"{ApiBase}/gamification";
+        public const string Badges = "/badges";
+        public const string BadgesUser = "/badges/user";
+        public const string Achievements = "/achievements";
+        public const string AchievementsUser = "/achievements/user";
+        public const string Leaderboard = "/leaderboard";
+    }
+
+    public static class Authorities
+    {
+        public const string Base = $"{ApiBase}/authorities";
+        public const string ById = "/{id:guid}";
+    }
+
+    public static class Utility
+    {
+        public const string Base = ApiBase;
+        public const string Health = "/health";
+        public const string Categories = "/categories";
+    }
+
+    public static class Activity
+    {
+        public const string Base = $"{ApiBase}/activity";
+        public const string My = "/my";
+    }
+
+    public static class Comments
+    {
+        public const string Base = $"{ApiBase}/comments";
+        public const string ById = "/{id:guid}";
+        public const string Vote = "/{id:guid}/vote";
+        public const string IssueComments = $"{Issues.Base}/{{issueId:guid}}/comments";
+    }
+}

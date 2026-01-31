@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(dotnet build:*)",
-      "Bash(docker run:*)"
+      "Bash(docker run:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
