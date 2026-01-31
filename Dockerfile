@@ -3,17 +3,17 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Copy csproj and restore dependencies
-COPY ["Civica.Api/Civica.Api.csproj", "Civica.Api/"]
-RUN dotnet restore "Civica.Api/Civica.Api.csproj"
+COPY ["Civiti.Api/Civiti.Api.csproj", "Civiti.Api/"]
+RUN dotnet restore "Civiti.Api/Civiti.Api.csproj"
 
 # Copy everything else and build
 COPY . .
-WORKDIR "/src/Civica.Api"
-RUN dotnet build "Civica.Api.csproj" -c Release -o /app/build
+WORKDIR "/src/Civiti.Api"
+RUN dotnet build "Civiti.Api.csproj" -c Release -o /app/build
 
 # Publish stage
 FROM build AS publish
-RUN dotnet publish "Civica.Api.csproj" -c Release -o /app/publish
+RUN dotnet publish "Civiti.Api.csproj" -c Release -o /app/publish
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
@@ -24,4 +24,4 @@ COPY --from=publish /app/publish .
 # Our app reads it in Program.cs
 EXPOSE 8080
 
-ENTRYPOINT ["dotnet", "Civica.Api.dll"]
+ENTRYPOINT ["dotnet", "Civiti.Api.dll"]

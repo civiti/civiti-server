@@ -9,4 +9,4 @@ cmds = ["dotnet restore"]
 cmds = ["dotnet publish -c Release -o out"]
 
 [start]
-cmd = "dotnet out/Civica.Api.dll"
+cmd = "dotnet out/Civiti.Api.dll"
