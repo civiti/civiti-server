@@ -144,4 +144,109 @@ public static class ClaimsPrincipalExtensions
 
         return null;
     }
+
+    /// <summary>
+    /// Extracts signup metadata from user_metadata in the JWT.
+    /// These are set during signup via Supabase's data property and become user_metadata claims.
+    /// Includes location fields and notification preferences collected during registration.
+    /// Returns null if no signup-specific metadata is present (e.g. OAuth logins).
+    /// </summary>
+    public static SignupMetadata? GetSignupMetadata(this ClaimsPrincipal user)
+    {
+        var userMetadata = user.FindFirst("user_metadata")?.Value;
+        if (string.IsNullOrEmpty(userMetadata))
+            return null;
+
+        try
+        {
+            using JsonDocument metadata = JsonDocument.Parse(userMetadata);
+            if (metadata.RootElement.ValueKind != JsonValueKind.Object)
+                return null;
+
+            // Location fields
+            var county = GetStringProperty(metadata.RootElement, "county");
+            var city = GetStringProperty(metadata.RootElement, "city");
+            var district = GetStringProperty(metadata.RootElement, "district");
+            var residenceType = GetStringProperty(metadata.RootElement, "residence_type");
+
+            // Notification preferences
+            var issueUpdates = GetBoolProperty(metadata.RootElement, "issue_updates_enabled");
+            var communityNews = GetBoolProperty(metadata.RootElement, "community_news_enabled");
+            var monthlyDigest = GetBoolProperty(metadata.RootElement, "monthly_digest_enabled");
+            var achievements = GetBoolProperty(metadata.RootElement, "achievements_enabled");
+
+            // Only return metadata if at least one signup field was present
+            if (county is null && city is null && district is null && residenceType is null
+                && issueUpdates is null && communityNews is null && monthlyDigest is null && achievements is null)
+                return null;
+
+            return new SignupMetadata
+            {
+                County = county,
+                City = city,
+                District = district,
+                ResidenceType = residenceType,
+                IssueUpdatesEnabled = issueUpdates,
+                CommunityNewsEnabled = communityNews,
+                MonthlyDigestEnabled = monthlyDigest,
+                AchievementsEnabled = achievements
+            };
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Extracts a boolean property from a JSON element, handling both native JSON booleans
+    /// and string-encoded booleans ("true"/"false").
+    /// </summary>
+    private static bool? GetBoolProperty(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out JsonElement prop))
+            return null;
+
+        return prop.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String when bool.TryParse(prop.GetString(), out var parsed) => parsed,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Extracts a non-empty string property from a JSON element.
+    /// Returns null if the property is missing, not a string, or whitespace-only.
+    /// </summary>
+    private static string? GetStringProperty(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out JsonElement prop)
+            || prop.ValueKind != JsonValueKind.String)
+            return null;
+
+        var value = prop.GetString();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+}
+
+/// <summary>
+/// Registration data extracted from Supabase user_metadata.
+/// Stored in Supabase's data property during signup, carried in the JWT after email confirmation.
+/// Nullable fields distinguish "not set" from explicit values.
+/// </summary>
+public record SignupMetadata
+{
+    // Location
+    public string? County { get; init; }
+    public string? City { get; init; }
+    public string? District { get; init; }
+    public string? ResidenceType { get; init; }
+
+    // Notification preferences
+    public bool? IssueUpdatesEnabled { get; init; }
+    public bool? CommunityNewsEnabled { get; init; }
+    public bool? MonthlyDigestEnabled { get; init; }
+    public bool? AchievementsEnabled { get; init; }
 }

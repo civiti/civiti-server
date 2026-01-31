@@ -10,4 +10,8 @@ public class CreateUserProfileRequest
     public string? City { get; set; }
     public string? District { get; set; }
     public ResidenceType? ResidenceType { get; set; }
+    public bool IssueUpdatesEnabled { get; set; } = true;
+    public bool CommunityNewsEnabled { get; set; } = true;
+    public bool MonthlyDigestEnabled { get; set; }
+    public bool AchievementsEnabled { get; set; } = true;
 }

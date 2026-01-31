@@ -190,7 +190,7 @@ public class NotificationService(
         {
             [UserName] = user.DisplayName,
             [Level] = newLevel.ToString(),
-            [CtaUrl] = $"{config.FrontendBaseUrl}/profile",
+            [CtaUrl] = $"{config.FrontendBaseUrl}/dashboard",
             [CtaText] = "Vezi profilul"
         });
     }
@@ -203,7 +203,7 @@ public class NotificationService(
         {
             [UserName] = user.DisplayName,
             [BadgeName] = badgeName,
-            [CtaUrl] = $"{config.FrontendBaseUrl}/profile",
+            [CtaUrl] = $"{config.FrontendBaseUrl}/dashboard",
             [CtaText] = "Vezi insignele"
         });
     }
@@ -216,7 +216,7 @@ public class NotificationService(
         {
             [UserName] = user.DisplayName,
             [AchievementName] = achievementName,
-            [CtaUrl] = $"{config.FrontendBaseUrl}/profile",
+            [CtaUrl] = $"{config.FrontendBaseUrl}/dashboard",
             [CtaText] = "Vezi realizările"
         });
     }

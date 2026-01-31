@@ -1,4 +1,5 @@
 using Civiti.Api.Data;
+using Civiti.Api.Infrastructure.Extensions;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Auth;
 using Civiti.Api.Models.Responses.Auth;
@@ -121,7 +122,8 @@ public class UserService(
         string supabaseUserId,
         string email,
         string displayName,
-        string? photoUrl)
+        string? photoUrl,
+        SignupMetadata? signupMetadata = null)
     {
         // Try to get existing profile first
         UserProfileResponse? existingProfile = await GetUserProfileAsync(supabaseUserId);
@@ -142,9 +144,14 @@ public class UserService(
                 Email = email,
                 DisplayName = displayName,
                 PhotoUrl = photoUrl,
-                County = "București",
-                City = "București",
-                District = "Sector 5",
+                County = signupMetadata?.County ?? "București",
+                City = signupMetadata?.City ?? "București",
+                District = signupMetadata?.District ?? "Sector 5",
+                ResidenceType = Enum.TryParse<ResidenceType>(signupMetadata?.ResidenceType, ignoreCase: true, out var rt) ? rt : null,
+                IssueUpdatesEnabled = signupMetadata?.IssueUpdatesEnabled ?? true,
+                CommunityNewsEnabled = signupMetadata?.CommunityNewsEnabled ?? true,
+                MonthlyDigestEnabled = signupMetadata?.MonthlyDigestEnabled ?? false,
+                AchievementsEnabled = signupMetadata?.AchievementsEnabled ?? true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 LastActivityDate = DateTime.UtcNow,
@@ -302,6 +309,10 @@ public class UserService(
                 City = request.City ?? "București",
                 District = request.District ?? "Sector 5",
                 ResidenceType = request.ResidenceType,
+                IssueUpdatesEnabled = request.IssueUpdatesEnabled,
+                CommunityNewsEnabled = request.CommunityNewsEnabled,
+                MonthlyDigestEnabled = request.MonthlyDigestEnabled,
+                AchievementsEnabled = request.AchievementsEnabled,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 LastActivityDate = DateTime.UtcNow,

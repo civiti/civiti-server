@@ -46,13 +46,14 @@ public static class UserEndpoints
                 return Results.BadRequest(new { error = "Email not found in token" });
             }
 
-            // Extract display name and photo from JWT user_metadata
+            // Extract display name, photo, and signup metadata from JWT user_metadata
             var displayName = context.User.GetDisplayName(email);
             var photoUrl = context.User.GetPhotoUrl();
+            var signupMetadata = context.User.GetSignupMetadata();
 
-            // Get existing profile or auto-create one
+            // Get existing profile or auto-create one (signup metadata only used during creation)
             UserProfileResponse profile = await userService.GetOrCreateUserProfileAsync(
-                supabaseUserId, email, displayName, photoUrl);
+                supabaseUserId, email, displayName, photoUrl, signupMetadata);
 
             return Results.Ok(profile);
         })
