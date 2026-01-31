@@ -90,20 +90,7 @@ public static class UserEndpoints
                 if (existingProfile != null)
                 {
                     // Profile exists - update it with provided data
-                    UpdateUserProfileRequest updateRequest = new()
-                    {
-                        DisplayName = request.DisplayName,
-                        PhotoUrl = request.PhotoUrl,
-                        County = request.County,
-                        City = request.City,
-                        District = request.District,
-                        ResidenceType = request.ResidenceType,
-                        IssueUpdatesEnabled = request.IssueUpdatesEnabled,
-                        CommunityNewsEnabled = request.CommunityNewsEnabled,
-                        MonthlyDigestEnabled = request.MonthlyDigestEnabled,
-                        AchievementsEnabled = request.AchievementsEnabled
-                    };
-                    UserProfileResponse updatedProfile = await userService.UpdateUserProfileAsync(supabaseUserId, updateRequest);
+                    UserProfileResponse updatedProfile = await userService.UpdateUserProfileAsync(supabaseUserId, request.ToUpdateRequest());
                     return Results.Ok(updatedProfile);
                 }
 
@@ -120,20 +107,7 @@ public static class UserEndpoints
                 {
                     try
                     {
-                        UpdateUserProfileRequest updateRequest = new()
-                        {
-                            DisplayName = request.DisplayName,
-                            PhotoUrl = request.PhotoUrl,
-                            County = request.County,
-                            City = request.City,
-                            District = request.District,
-                            ResidenceType = request.ResidenceType,
-                            IssueUpdatesEnabled = request.IssueUpdatesEnabled,
-                            CommunityNewsEnabled = request.CommunityNewsEnabled,
-                            MonthlyDigestEnabled = request.MonthlyDigestEnabled,
-                            AchievementsEnabled = request.AchievementsEnabled
-                        };
-                        UserProfileResponse updatedProfile = await userService.UpdateUserProfileAsync(supabaseUserId, updateRequest);
+                        UserProfileResponse updatedProfile = await userService.UpdateUserProfileAsync(supabaseUserId, request.ToUpdateRequest());
                         return Results.Ok(updatedProfile);
                     }
                     catch (InvalidOperationException ex) when (ex.Message == "User not found")
