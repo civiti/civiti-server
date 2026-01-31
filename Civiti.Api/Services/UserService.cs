@@ -147,7 +147,7 @@ public class UserService(
                 County = signupMetadata?.County ?? "București",
                 City = signupMetadata?.City ?? "București",
                 District = signupMetadata?.District ?? "Sector 5",
-                ResidenceType = Enum.TryParse<ResidenceType>(signupMetadata?.ResidenceType, ignoreCase: true, out var rt) ? rt : null,
+                ResidenceType = !string.IsNullOrWhiteSpace(signupMetadata?.ResidenceType) && Enum.TryParse<ResidenceType>(signupMetadata.ResidenceType, ignoreCase: true, out var rt) ? rt : null,
                 IssueUpdatesEnabled = signupMetadata?.IssueUpdatesEnabled ?? true,
                 CommunityNewsEnabled = signupMetadata?.CommunityNewsEnabled ?? true,
                 MonthlyDigestEnabled = signupMetadata?.MonthlyDigestEnabled ?? false,

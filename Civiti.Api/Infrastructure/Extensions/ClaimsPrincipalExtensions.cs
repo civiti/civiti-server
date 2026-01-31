@@ -81,19 +81,9 @@ public static class ClaimsPrincipalExtensions
                 if (metadata.RootElement.ValueKind == JsonValueKind.Object)
                 {
                     // Try full_name first, then name
-                    if (metadata.RootElement.TryGetProperty("full_name", out JsonElement fullName)
-                        && fullName.ValueKind == JsonValueKind.String)
-                    {
-                        var value = fullName.GetString();
-                        if (!string.IsNullOrWhiteSpace(value)) return value;
-                    }
-
-                    if (metadata.RootElement.TryGetProperty("name", out JsonElement name)
-                        && name.ValueKind == JsonValueKind.String)
-                    {
-                        var value = name.GetString();
-                        if (!string.IsNullOrWhiteSpace(value)) return value;
-                    }
+                    var result = GetStringProperty(metadata.RootElement, "full_name")
+                                 ?? GetStringProperty(metadata.RootElement, "name");
+                    if (result is not null) return result;
                 }
             }
             catch (JsonException)
@@ -121,19 +111,9 @@ public static class ClaimsPrincipalExtensions
                 using JsonDocument metadata = JsonDocument.Parse(userMetadata);
                 if (metadata.RootElement.ValueKind == JsonValueKind.Object)
                 {
-                    if (metadata.RootElement.TryGetProperty("avatar_url", out JsonElement avatarUrl)
-                        && avatarUrl.ValueKind == JsonValueKind.String)
-                    {
-                        var value = avatarUrl.GetString();
-                        if (!string.IsNullOrWhiteSpace(value)) return value;
-                    }
-
-                    if (metadata.RootElement.TryGetProperty("picture", out JsonElement picture)
-                        && picture.ValueKind == JsonValueKind.String)
-                    {
-                        var value = picture.GetString();
-                        if (!string.IsNullOrWhiteSpace(value)) return value;
-                    }
+                    var result = GetStringProperty(metadata.RootElement, "avatar_url")
+                                 ?? GetStringProperty(metadata.RootElement, "picture");
+                    if (result is not null) return result;
                 }
             }
             catch (JsonException)
