@@ -97,7 +97,11 @@ public static class UserEndpoints
                         County = request.County,
                         City = request.City,
                         District = request.District,
-                        ResidenceType = request.ResidenceType
+                        ResidenceType = request.ResidenceType,
+                        IssueUpdatesEnabled = request.IssueUpdatesEnabled,
+                        CommunityNewsEnabled = request.CommunityNewsEnabled,
+                        MonthlyDigestEnabled = request.MonthlyDigestEnabled,
+                        AchievementsEnabled = request.AchievementsEnabled
                     };
                     UserProfileResponse updatedProfile = await userService.UpdateUserProfileAsync(supabaseUserId, updateRequest);
                     return Results.Ok(updatedProfile);
@@ -123,7 +127,11 @@ public static class UserEndpoints
                             County = request.County,
                             City = request.City,
                             District = request.District,
-                            ResidenceType = request.ResidenceType
+                            ResidenceType = request.ResidenceType,
+                            IssueUpdatesEnabled = request.IssueUpdatesEnabled,
+                            CommunityNewsEnabled = request.CommunityNewsEnabled,
+                            MonthlyDigestEnabled = request.MonthlyDigestEnabled,
+                            AchievementsEnabled = request.AchievementsEnabled
                         };
                         UserProfileResponse updatedProfile = await userService.UpdateUserProfileAsync(supabaseUserId, updateRequest);
                         return Results.Ok(updatedProfile);
