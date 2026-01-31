@@ -87,10 +87,10 @@ public class CreateIssueRequest
     public string? CommunityImpact { get; set; }
 
     /// <summary>
-    /// URLs of uploaded photos (max 5 photos)
+    /// URLs of uploaded photos (max 8 photos)
     /// </summary>
     /// <example>["https://storage.civica.ro/photos/issue-123-photo1.jpg"]</example>
-    [MaxLength(5)]
+    [MaxLength(8)]
     public List<string>? PhotoUrls { get; set; }
 }
 

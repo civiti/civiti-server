@@ -1,5 +1,6 @@
 using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Infrastructure.Extensions;
+using Civiti.Api.Infrastructure.Filters;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Auth;
 using Civiti.Api.Models.Requests.Issues;
@@ -335,6 +336,7 @@ public static class UserEndpoints
 
             return Results.Ok(issue);
         })
+        .AddEndpointFilter<ValidationFilter<UpdateIssueRequest>>()
         .WithName("UpdateUserIssue")
         .WithSummary("Update and resubmit an issue")
         .WithDescription("Allows the authenticated user to edit their own issue. Cannot edit Cancelled or Resolved issues. After editing, the issue status is set to 'UnderReview' for admin re-approval.")

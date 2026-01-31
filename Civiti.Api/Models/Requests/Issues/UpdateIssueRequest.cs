@@ -79,8 +79,8 @@ public class UpdateIssueRequest
     public string? CommunityImpact { get; set; }
 
     /// <summary>
-    /// URLs of uploaded photos (replaces existing photos, max 5)
+    /// URLs of uploaded photos (replaces existing photos, max 8)
     /// </summary>
-    [MaxLength(5)]
+    [MaxLength(8)]
     public List<string>? PhotoUrls { get; set; }
 }
