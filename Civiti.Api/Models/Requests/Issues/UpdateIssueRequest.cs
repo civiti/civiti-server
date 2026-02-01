@@ -81,6 +81,5 @@ public class UpdateIssueRequest
     /// <summary>
     /// URLs of uploaded photos (replaces existing photos, max 8)
     /// </summary>
-    [MaxLength(8)]
     public List<string>? PhotoUrls { get; set; }
 }

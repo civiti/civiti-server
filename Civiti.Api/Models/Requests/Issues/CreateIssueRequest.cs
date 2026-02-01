@@ -8,6 +8,8 @@ namespace Civiti.Api.Models.Requests.Issues;
 /// </summary>
 public class CreateIssueRequest
 {
+    public const int MaxPhotoCount = 8;
+
     /// <summary>
     /// Brief, descriptive title of the issue (max 200 characters)
     /// </summary>
@@ -90,7 +92,6 @@ public class CreateIssueRequest
     /// URLs of uploaded photos (max 8 photos)
     /// </summary>
     /// <example>["https://storage.civica.ro/photos/issue-123-photo1.jpg"]</example>
-    [MaxLength(8)]
     public List<string>? PhotoUrls { get; set; }
 }
 

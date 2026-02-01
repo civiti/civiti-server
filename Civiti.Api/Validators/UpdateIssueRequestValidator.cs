@@ -8,7 +8,7 @@ public class UpdateIssueRequestValidator : AbstractValidator<UpdateIssueRequest>
     public UpdateIssueRequestValidator()
     {
         RuleFor(x => x.PhotoUrls)
-            .Must(urls => urls is null || urls.Count <= 8)
-            .WithMessage("A maximum of 8 photos are allowed.");
+            .Must(urls => urls is null || urls.Count <= CreateIssueRequest.MaxPhotoCount)
+            .WithMessage($"A maximum of {CreateIssueRequest.MaxPhotoCount} photos are allowed.");
     }
 }
