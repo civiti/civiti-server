@@ -25,8 +25,7 @@ public static class IssueEndpoints
     public static void MapIssueEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup(ApiRoutes.Issues.Base)
-            .WithTags("Issues")
-            .WithOpenApi();
+            .WithTags("Issues");
 
         // GET /api/issues
         group.MapGet("/", async (
@@ -104,20 +103,7 @@ public static class IssueEndpoints
         .WithName("GetIssues")
         .WithSummary("Get paginated list of approved issues")
         .WithDescription("Retrieves a paginated list of civic issues. By default, returns only Active issues. Use the status filter to include Resolved issues. Supports filtering by category, urgency level, status, district, and address. Results can be sorted by date, popularity (email count), votes, or urgency. Only publicly visible issues are returned. If authenticated, includes HasVoted field indicating if the current user has voted on each issue.")
-        .Produces<PagedResult<IssueListResponse>>()
-        .WithOpenApi(operation =>
-        {
-            operation.Parameters[0].Description = "Page number (default: 1)";
-            operation.Parameters[1].Description = "Items per page (default: 12, max: 100)";
-            operation.Parameters[2].Description = "Filter by category (Infrastructure, StreetLighting, GreenSpaces, etc.)";
-            operation.Parameters[3].Description = "Filter by urgency (Low, Medium, High, Critical)";
-            operation.Parameters[4].Description = "Filter by status - comma-separated (e.g., 'Active,Resolved'). Default: Active only";
-            operation.Parameters[5].Description = "Filter by district (e.g., Sector 1, Sector 2)";
-            operation.Parameters[6].Description = "Filter by address (partial match, case-insensitive)";
-            operation.Parameters[7].Description = "Sort field (date, emails, votes, urgency)";
-            operation.Parameters[8].Description = "Sort in descending order (default: true)";
-            return operation;
-        });
+        .Produces<PagedResult<IssueListResponse>>();
 
         // GET /api/issues/{id}
         group.MapGet(ApiRoutes.Issues.ById, async Task<Results<Ok<IssueDetailResponse>, NotFound>> (
@@ -145,8 +131,7 @@ public static class IssueEndpoints
         .WithSummary("Get issue details by ID")
         .WithDescription("Retrieves detailed information about a specific issue including full description, location data, photos, email tracking statistics, community votes, and related user information. If authenticated, includes HasVoted field indicating if the current user has voted on this issue. Returns 404 if the issue doesn't exist or hasn't been approved yet.")
         .Produces<IssueDetailResponse>()
-        .Produces(404)
-        .WithOpenApi();
+        .Produces(404);
 
         // POST /api/issues
         group.MapPost("/", [Authorize] async Task<Results<Ok<CreateIssueResponse>, BadRequest<string>, UnauthorizedHttpResult>> (
@@ -178,8 +163,7 @@ public static class IssueEndpoints
         .Produces<CreateIssueResponse>(201)
         .Produces(400)
         .Produces(401)
-        .Produces(429)
-        .WithOpenApi();
+        .Produces(429);
 
         // POST /api/issues/{id}/email-sent
         group.MapPost(ApiRoutes.Issues.EmailSent, async Task<Results<Ok, BadRequest<string>, NotFound, StatusCodeHttpResult>> (
@@ -211,8 +195,7 @@ public static class IssueEndpoints
         .Produces(200)
         .Produces(400)
         .Produces(404)
-        .Produces(429)
-        .WithOpenApi();
+        .Produces(429);
 
         // POST /api/issues/enhance-text
         group.MapPost(ApiRoutes.Issues.EnhanceText, [Authorize] async Task<Results<Ok<EnhanceTextResponse>, BadRequest<string>, UnauthorizedHttpResult, StatusCodeHttpResult>> (
@@ -251,8 +234,7 @@ public static class IssueEndpoints
         .Produces<EnhanceTextResponse>()
         .Produces(400)
         .Produces(401)
-        .Produces(429)
-        .WithOpenApi();
+        .Produces(429);
 
         // GET /api/issues/{id}/poster
         group.MapGet(ApiRoutes.Issues.Poster, async Task<Results<FileContentHttpResult, NotFound>> (
@@ -275,8 +257,7 @@ public static class IssueEndpoints
         .WithSummary("Generate printable PDF poster with QR code")
         .WithDescription("Generates a printable A4 PDF poster featuring a QR code that links to the specified civic issue. The poster includes the Civiti branding, a large QR code, a Romanian call-to-action, and the issue title. Only available for publicly visible, active issues. No authentication required.")
         .Produces(200, contentType: "application/pdf")
-        .Produces(404)
-        .WithOpenApi();
+        .Produces(404);
 
         // POST /api/issues/{id}/vote
         group.MapPost(ApiRoutes.Issues.Vote, [Authorize] async Task<Results<Ok, BadRequest<string>, NotFound, UnauthorizedHttpResult>> (
@@ -310,8 +291,7 @@ public static class IssueEndpoints
         .Produces(200)
         .Produces(400)
         .Produces(401)
-        .Produces(404)
-        .WithOpenApi();
+        .Produces(404);
 
         // DELETE /api/issues/{id}/vote
         group.MapDelete(ApiRoutes.Issues.Vote, [Authorize] async Task<Results<Ok, BadRequest<string>, NotFound, UnauthorizedHttpResult>> (
@@ -345,7 +325,6 @@ public static class IssueEndpoints
         .Produces(200)
         .Produces(400)
         .Produces(401)
-        .Produces(404)
-        .WithOpenApi();
+        .Produces(404);
     }
 }

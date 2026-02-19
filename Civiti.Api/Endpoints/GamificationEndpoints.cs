@@ -18,8 +18,7 @@ public static class GamificationEndpoints
     public static void MapGamificationEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup(ApiRoutes.Gamification.Base)
-            .WithTags("Gamification")
-            .WithOpenApi();
+            .WithTags("Gamification");
 
         // GET /api/gamification/badges
         group.MapGet(ApiRoutes.Gamification.Badges, async (
@@ -31,8 +30,7 @@ public static class GamificationEndpoints
         .WithName("GetAllBadges")
         .WithSummary("Get all available badges")
         .WithDescription("Retrieves a list of all badges available in the gamification system, including their requirements and point values.")
-        .Produces<List<BadgeResponse>>()
-        .WithOpenApi();
+        .Produces<List<BadgeResponse>>();
 
         // GET /api/gamification/badges/user
         group.MapGet(ApiRoutes.Gamification.BadgesUser, async (

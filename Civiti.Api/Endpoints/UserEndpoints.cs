@@ -27,7 +27,6 @@ public static class UserEndpoints
     {
         RouteGroupBuilder group = app.MapGroup(ApiRoutes.User.Base)
             .WithTags("User")
-            .WithOpenApi()
             .RequireAuthorization();
 
         // GET /api/user/profile
@@ -63,8 +62,7 @@ public static class UserEndpoints
         .WithDescription("Retrieves the complete profile for the authenticated user including personal information, gamification data (points, level, badges, achievements), and notification preferences. If no profile exists, one will be automatically created using data from the JWT token.")
         .Produces<UserProfileResponse>()
         .Produces(StatusCodes.Status400BadRequest)
-        .Produces(StatusCodes.Status401Unauthorized)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status401Unauthorized);
 
         // POST /api/user/profile - Create or update profile
         group.MapPost(ApiRoutes.User.Profile, async (
@@ -136,8 +134,7 @@ public static class UserEndpoints
         .Produces<UserProfileResponse>()
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status404NotFound)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status404NotFound);
 
         // PUT /api/user/profile
         group.MapPut(ApiRoutes.User.Profile, async (
@@ -166,8 +163,7 @@ public static class UserEndpoints
         .WithDescription("Updates the authenticated user's profile information. Only provided fields will be updated; null fields are ignored. Returns the complete updated profile with gamification data.")
         .Produces<UserProfileResponse>()
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status404NotFound)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status404NotFound);
 
         // GET /api/user/gamification
         group.MapGet(ApiRoutes.User.MyGamification, async (

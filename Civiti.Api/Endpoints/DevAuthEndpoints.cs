@@ -12,8 +12,7 @@ public static class DevAuthEndpoints
             return;
 
         RouteGroupBuilder devAuth = app.MapGroup("/api/dev")
-            .WithTags("Development Auth")
-            .WithOpenApi();
+            .WithTags("Development Auth");
 
         // Test login endpoint for development
         devAuth.MapPost("/test-login", async (TestLoginRequest request, IConfiguration configuration, IHttpClientFactory httpClientFactory) =>

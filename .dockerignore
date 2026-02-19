@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/logs/
+**/.vs/
+**/.idea/
+*.user
+*.suo
+.git/
+.github/
+docs/
+*.md
+!DATABASE_SETUP.md

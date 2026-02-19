@@ -21,8 +21,7 @@ public static class ActivityEndpoints
     public static void MapActivityEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup(ApiRoutes.Activity.Base)
-            .WithTags("Activity")
-            .WithOpenApi();
+            .WithTags("Activity");
 
         // GET /api/activity - Public recent activity feed
         group.MapGet("", async (
@@ -46,8 +45,7 @@ public static class ActivityEndpoints
         .WithName("GetRecentActivities")
         .WithSummary("Get public recent activity feed")
         .WithDescription("Retrieves recent activity events for active, publicly visible issues. Includes new supporters, status changes, and approvals.")
-        .Produces<PagedResult<ActivityResponse>>()
-        .WithOpenApi();
+        .Produces<PagedResult<ActivityResponse>>();
 
         // GET /api/activity/my - User's issue activities
         group.MapGet(ApiRoutes.Activity.My, async (
@@ -88,7 +86,6 @@ public static class ActivityEndpoints
         .WithDescription("Retrieves activity events for issues owned by the authenticated user. Useful for tracking engagement on your reported issues.")
         .Produces<PagedResult<ActivityResponse>>()
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status404NotFound)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status404NotFound);
     }
 }

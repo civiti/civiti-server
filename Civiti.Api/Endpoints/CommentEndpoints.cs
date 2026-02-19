@@ -20,13 +20,11 @@ public static class CommentEndpoints
     {
         // Issue comments group
         RouteGroupBuilder issueCommentsGroup = app.MapGroup(ApiRoutes.Comments.IssueComments)
-            .WithTags("Comments")
-            .WithOpenApi();
+            .WithTags("Comments");
 
         // Comments group for direct comment operations
         RouteGroupBuilder commentsGroup = app.MapGroup(ApiRoutes.Comments.Base)
-            .WithTags("Comments")
-            .WithOpenApi();
+            .WithTags("Comments");
 
         // GET /api/issues/{issueId}/comments - Get paginated comments for an issue
         issueCommentsGroup.MapGet("", async (
@@ -63,8 +61,7 @@ public static class CommentEndpoints
         .WithSummary("Get comments for an issue")
         .WithDescription("Retrieves paginated comments for a specific issue. Supports sorting by date or helpful count.")
         .Produces<PagedResult<CommentResponse>>()
-        .Produces(StatusCodes.Status404NotFound)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status404NotFound);
 
         // POST /api/issues/{issueId}/comments - Create a comment on an issue
         issueCommentsGroup.MapPost("", async (
@@ -104,8 +101,7 @@ public static class CommentEndpoints
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict)
-        .Produces(StatusCodes.Status429TooManyRequests)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status429TooManyRequests);
 
         // GET /api/comments/{id} - Get a single comment
         commentsGroup.MapGet(ApiRoutes.Comments.ById, async (
@@ -135,8 +131,7 @@ public static class CommentEndpoints
         .WithSummary("Get a single comment")
         .WithDescription("Retrieves a comment by its ID.")
         .Produces<CommentResponse>()
-        .Produces(StatusCodes.Status404NotFound)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status404NotFound);
 
         // PUT /api/comments/{id} - Update own comment
         commentsGroup.MapPut(ApiRoutes.Comments.ById, async (
@@ -172,8 +167,7 @@ public static class CommentEndpoints
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
-        .Produces(StatusCodes.Status404NotFound)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status404NotFound);
 
         // DELETE /api/comments/{id} - Delete comment (owner or admin)
         commentsGroup.MapDelete(ApiRoutes.Comments.ById, async (
@@ -209,8 +203,7 @@ public static class CommentEndpoints
         .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
-        .Produces(StatusCodes.Status404NotFound)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status404NotFound);
 
         // POST /api/comments/{id}/vote - Vote comment as helpful
         commentsGroup.MapPost(ApiRoutes.Comments.Vote, async (
@@ -241,8 +234,7 @@ public static class CommentEndpoints
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status404NotFound)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status404NotFound);
 
         // DELETE /api/comments/{id}/vote - Remove helpful vote
         commentsGroup.MapDelete(ApiRoutes.Comments.Vote, async (
@@ -273,7 +265,6 @@ public static class CommentEndpoints
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status404NotFound)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status404NotFound);
     }
 }

@@ -15,8 +15,7 @@ public static class UtilityEndpoints
     public static void MapUtilityEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup(ApiRoutes.Utility.Base)
-            .WithTags("Utility")
-            .WithOpenApi();
+            .WithTags("Utility");
 
         // GET /api/categories - Get all issue categories with Romanian labels (public)
         group.MapGet(ApiRoutes.Utility.Categories, () =>

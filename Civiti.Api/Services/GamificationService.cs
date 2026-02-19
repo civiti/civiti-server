@@ -230,7 +230,7 @@ public class GamificationService(
             {
                 if (ua.Achievement == null)
                 {
-                    ua.Achievement = await context.Achievements.FindAsync(ua.AchievementId);
+                    ua.Achievement = (await context.Achievements.FindAsync(ua.AchievementId))!;
                 }
             }
 

@@ -8,7 +8,7 @@ This file provides essential context for Claude agents working on the Civica pro
 
 ### Current Project State
 - **Frontend**: ✅ READY FOR INTEGRATION - Angular application with mock services, ready to connect to backend
-- **Backend**: 🚧 IN DEVELOPMENT - .NET 9 Minimal API with Supabase Auth and PostgreSQL/MongoDB
+- **Backend**: 🚧 IN DEVELOPMENT - .NET 10 Minimal API with Supabase Auth and PostgreSQL/MongoDB
 
 The frontend is feature-complete with mock services but will continue to evolve as we:
 - Integrate with the real backend API
@@ -24,7 +24,7 @@ The frontend is feature-complete with mock services but will continue to evolve 
 - **Admin Approval Interface** for issue moderation
 
 ### Backend Tech Stack (Next Phase)
-- **.NET 9 Minimal API** with C# 13
+- **.NET 10 Minimal API** with C# 14
 - **Supabase Auth** for authentication
 - **PostgreSQL** (primary) or MongoDB
 - **Railway** for deployment
@@ -97,7 +97,7 @@ backend-architect:
   Workflow: Creates comprehensive plans for csharp-expert to implement
 
 csharp-expert:
-  Purpose: "Implement .NET 9 Minimal API backend"
+  Purpose: "Implement .NET 10 Minimal API backend"
   Use for: Writing C# code, implementing endpoints, Supabase integration, database operations
   Workflow: Follows plans from backend-architect, implements actual backend code
 
@@ -174,7 +174,7 @@ romanian-translator:
 ```bash
 # Backend implementation by csharp-expert
 "Use csharp-expert agent to implement based on backend-architect's plan:
-1. Create .NET 9 Minimal API project structure
+1. Create .NET 10 Minimal API project structure
 2. Implement Supabase Auth integration
 3. Build core API endpoints (auth, issues, users, admin)
 4. Set up PostgreSQL with Entity Framework Core
@@ -237,7 +237,7 @@ romanian-translator:
 
 ### Component Library
 **Frontend**: NG-ZORRO components exclusively
-**Backend**: .NET 9 Minimal API patterns
+**Backend**: .NET 10 Minimal API patterns
 
 ## 🏗️ Project Architecture
 
@@ -279,7 +279,7 @@ Civica.Api/
 - 📝 Documentation must be updated with all changes
 
 ### Backend Development Rules
-- ✅ Use .NET 9 Minimal API patterns
+- ✅ Use .NET 10 Minimal API patterns
 - ✅ Integrate Supabase for authentication
 - ✅ Use PostgreSQL with Entity Framework Core
 - ✅ Deploy to Railway platform
@@ -307,10 +307,10 @@ Civica.Api/
 
 ### For csharp-expert Agent
 - Follow backend-architect's development plan
-- Use .NET 9 Minimal API best practices
+- Use .NET 10 Minimal API best practices
 - Implement async/await patterns throughout
 - Use dependency injection properly
-- Follow C# 13 conventions
+- Follow C# 14 conventions
 - Write clean, maintainable code
 - Add XML documentation comments
 - **Documentation**: Create/update `docs/api/endpoints/` for each endpoint group

@@ -26,7 +26,6 @@ public static class AdminEndpoints
     {
         RouteGroupBuilder group = app.MapGroup(ApiRoutes.Admin.Base)
             .WithTags("Admin")
-            .WithOpenApi()
             .RequireAuthorization(AuthorizationPolicies.AdminOnly);
 
         // GET /api/admin/pending-issues
@@ -75,20 +74,7 @@ public static class AdminEndpoints
         .WithDescription("Retrieves a paginated list of issues awaiting admin approval. Supports advanced filtering by category, urgency, date range, and search terms. This endpoint is critical for the moderation workflow and only accessible to administrators.")
         .Produces<PagedResult<AdminIssueResponse>>()
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status403Forbidden)
-        .WithOpenApi(operation =>
-        {
-            operation.Parameters[0].Description = "Page number (default: 1)";
-            operation.Parameters[1].Description = "Items per page (default: 20, max: 100)";
-            operation.Parameters[2].Description = "Filter by issue category";
-            operation.Parameters[3].Description = "Filter by urgency level";
-            operation.Parameters[4].Description = "Search in title and description";
-            operation.Parameters[5].Description = "Filter issues submitted after this date";
-            operation.Parameters[6].Description = "Filter issues submitted before this date";
-            operation.Parameters[7].Description = "Sort field (CreatedAt, Urgency, Category)";
-            operation.Parameters[8].Description = "Sort in descending order (default: true)";
-            return operation;
-        });
+        .Produces(StatusCodes.Status403Forbidden);
 
         // GET /api/admin/issues/{id}
         group.MapGet(ApiRoutes.Admin.IssueById, async (
@@ -106,8 +92,7 @@ public static class AdminEndpoints
         .Produces<AdminIssueDetailResponse>()
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
-        .Produces(StatusCodes.Status404NotFound)
-        .WithOpenApi();
+        .Produces(StatusCodes.Status404NotFound);
 
         // PUT /api/admin/issues/{id}/approve
         group.MapPut(ApiRoutes.Admin.Approve, async (

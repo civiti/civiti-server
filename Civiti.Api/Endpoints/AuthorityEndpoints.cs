@@ -16,8 +16,7 @@ public static class AuthorityEndpoints
     public static void MapAuthorityEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup(ApiRoutes.Authorities.Base)
-            .WithTags("Authorities")
-            .WithOpenApi();
+            .WithTags("Authorities");
 
         // GET /api/authorities - List active authorities with optional filtering (public)
         group.MapGet("/", async (

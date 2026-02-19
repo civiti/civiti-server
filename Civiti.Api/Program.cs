@@ -420,7 +420,7 @@ ForwardedHeadersOptions forwardedHeadersOptions = new()
     ForwardLimit = 1 // Only trust the first proxy hop to prevent spoofing
 };
 // Clear default known networks/proxies to allow any proxy (needed for cloud deployments)
-forwardedHeadersOptions.KnownNetworks.Clear();
+forwardedHeadersOptions.KnownIPNetworks.Clear();
 forwardedHeadersOptions.KnownProxies.Clear();
 app.UseForwardedHeaders(forwardedHeadersOptions);
 
@@ -538,7 +538,6 @@ app.MapGet("/api/health", async (CivitiDbContext context, ISupabaseService supab
     })
     .WithName("HealthCheck")
     .WithTags("Health")
-    .WithOpenApi()
     .WithSummary("Health check endpoint with connectivity tests")
     .WithDescription(
         "Performs health checks on critical dependencies including PostgreSQL database and Supabase authentication service. Returns detailed connectivity status for each component.")

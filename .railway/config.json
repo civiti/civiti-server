@@ -1,7 +1,7 @@
 {
   "build": {
     "env": {
-      "NIXPACKS_DOTNET_SDK_VERSION": "9.0"
+      "NIXPACKS_DOTNET_SDK_VERSION": "10.0"
     }
   },
   "deploy": {

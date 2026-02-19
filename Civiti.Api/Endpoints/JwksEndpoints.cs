@@ -16,8 +16,7 @@ public static class JwksEndpoints
     public static void MapJwksEndpoints(this WebApplication app)
     {
         RouteGroupBuilder jwksGroup = app.MapGroup("/api/jwks")
-            .WithTags("JWKS")
-            .WithOpenApi();
+            .WithTags("JWKS");
 
         // JWKS health check endpoint
         jwksGroup.MapGet("/health", GetJwksHealth)

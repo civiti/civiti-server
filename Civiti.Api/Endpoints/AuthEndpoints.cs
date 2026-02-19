@@ -17,8 +17,7 @@ public static class AuthEndpoints
     public static void MapAuthEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup(ApiRoutes.Auth.Base)
-            .WithTags("Authentication")
-            .WithOpenApi();
+            .WithTags("Authentication");
 
         // GET /api/auth/status - Check if user is authenticated and has a valid token
         group.MapGet(ApiRoutes.Auth.Status, [Authorize] (HttpContext context) =>
@@ -37,7 +36,6 @@ public static class AuthEndpoints
             .WithSummary("Check authentication status")
             .WithDescription("Verifies that the current JWT token is valid and returns basic user identity information from the token claims. Use /api/user/profile to get the full user profile.")
             .Produces(200)
-            .Produces(401)
-            .WithOpenApi();
+            .Produces(401);
     }
 }

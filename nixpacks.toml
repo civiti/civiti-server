@@ -1,12 +1,15 @@
 # nixpacks.toml
 [phases.setup]
-nixPkgs = ["dotnet-sdk_9"]
+nixPkgs = ["dotnet-sdk_10"]
 
 [phases.install]
 cmds = ["dotnet restore"]
 
 [phases.build]
-cmds = ["dotnet publish Civiti.Api/Civiti.Api.csproj -c Release -o out"]
+cmds = [
+    "dotnet test Civiti.Tests/Civiti.Tests.csproj -c Release --no-restore",
+    "dotnet publish Civiti.Api/Civiti.Api.csproj -c Release -o out"
+]
 
 [start]
 cmd = "dotnet out/Civiti.Api.dll"

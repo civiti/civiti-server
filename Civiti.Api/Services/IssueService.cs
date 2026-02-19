@@ -684,7 +684,7 @@ public class IssueService(
     {
         IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
-        return await strategy.ExecuteAsync(async () =>
+        return await strategy.ExecuteAsync<(bool Success, string? Error)>(async () =>
         {
             // Clear change tracker to ensure fresh data on retry (prevents skipping gamification on retry)
             context.ChangeTracker.Clear();

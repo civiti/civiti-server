@@ -1,6 +1,7 @@
 using System.Reflection;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Http.Metadata;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.Filters;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
@@ -82,18 +83,11 @@ public static class SwaggerConfiguration
         });
 
         // Security Requirement
-        options.AddSecurityRequirement(new OpenApiSecurityRequirement
+        options.AddSecurityRequirement(_ => new OpenApiSecurityRequirement
         {
             {
-                new OpenApiSecurityScheme
-                {
-                    Reference = new OpenApiReference
-                    {
-                        Type = ReferenceType.SecurityScheme,
-                        Id = "Bearer"
-                    }
-                },
-                Array.Empty<string>()
+                new OpenApiSecuritySchemeReference("Bearer"),
+                new List<string>()
             }
         });
 
@@ -138,16 +132,16 @@ public static class SwaggerConfiguration
         // Map types for better documentation
         options.MapType<DateOnly>(() => new OpenApiSchema
         {
-            Type = "string",
+            Type = JsonSchemaType.String,
             Format = "date",
-            Example = new Microsoft.OpenApi.Any.OpenApiString("2024-01-15")
+            Example = JsonValue.Create("2024-01-15")
         });
 
         options.MapType<TimeOnly>(() => new OpenApiSchema
         {
-            Type = "string",
+            Type = JsonSchemaType.String,
             Format = "time",
-            Example = new Microsoft.OpenApi.Any.OpenApiString("14:30:00")
+            Example = JsonValue.Create("14:30:00")
         });
 
         // Custom naming strategy for schemas
@@ -174,6 +168,7 @@ public class SwaggerOperationFilter : IOperationFilter
     public void Apply(OpenApiOperation operation, OperationFilterContext context)
     {
         // Add default responses if not already defined
+        if (operation.Responses is null) return;
         if (!operation.Responses.ContainsKey("401"))
         {
             operation.Responses.Add("401", new OpenApiResponse
@@ -185,13 +180,13 @@ public class SwaggerOperationFilter : IOperationFilter
                     {
                         Schema = new OpenApiSchema
                         {
-                            Type = "object",
-                            Properties = new Dictionary<string, OpenApiSchema>
+                            Type = JsonSchemaType.Object,
+                            Properties = new Dictionary<string, IOpenApiSchema>
                             {
-                                ["error"] = new()
+                                ["error"] = new OpenApiSchema
                                 {
-                                    Type = "string",
-                                    Example = new Microsoft.OpenApi.Any.OpenApiString("Invalid authentication token")
+                                    Type = JsonSchemaType.String,
+                                    Example = JsonValue.Create("Invalid authentication token")
                                 }
                             }
                         }
@@ -211,18 +206,18 @@ public class SwaggerOperationFilter : IOperationFilter
                     {
                         Schema = new OpenApiSchema
                         {
-                            Type = "object",
-                            Properties = new Dictionary<string, OpenApiSchema>
+                            Type = JsonSchemaType.Object,
+                            Properties = new Dictionary<string, IOpenApiSchema>
                             {
-                                ["error"] = new()
+                                ["error"] = new OpenApiSchema
                                 {
-                                    Type = "string",
-                                    Example = new Microsoft.OpenApi.Any.OpenApiString("An unexpected error occurred")
+                                    Type = JsonSchemaType.String,
+                                    Example = JsonValue.Create("An unexpected error occurred")
                                 },
-                                ["requestId"] = new()
+                                ["requestId"] = new OpenApiSchema
                                 {
-                                    Type = "string",
-                                    Example = new Microsoft.OpenApi.Any.OpenApiString("abc123-def456")
+                                    Type = JsonSchemaType.String,
+                                    Example = JsonValue.Create("abc123-def456")
                                 }
                             }
                         }
@@ -240,7 +235,8 @@ public class SwaggerOperationFilter : IOperationFilter
         }
 
         // Enhance parameter descriptions
-        foreach (OpenApiParameter? parameter in operation.Parameters)
+        if (operation.Parameters == null) return;
+        foreach (OpenApiParameter parameter in operation.Parameters)
         {
             if (parameter.In == ParameterLocation.Query && string.IsNullOrEmpty(parameter.Description))
             {
@@ -273,12 +269,12 @@ public class SwaggerOperationFilter : IOperationFilter
 /// </summary>
 public class SwaggerSchemaFilter : ISchemaFilter
 {
-    public void Apply(OpenApiSchema schema, SchemaFilterContext context)
+    public void Apply(IOpenApiSchema schema, SchemaFilterContext context)
     {
         // Add descriptions for common properties
         if (schema.Properties != null)
         {
-            foreach (KeyValuePair<string, OpenApiSchema> property in schema.Properties)
+            foreach (var property in schema.Properties)
             {
                 if (string.IsNullOrEmpty(property.Value.Description))
                 {
@@ -296,23 +292,17 @@ public class SwaggerSchemaFilter : ISchemaFilter
                         _ => property.Value.Description
                     };
                 }
-
-                // Mark required fields
-                if (property.Key.EndsWith("Id") || property.Key == "email")
-                {
-                    property.Value.Nullable = false;
-                }
             }
         }
 
-        // Add examples for enums
-        if (!context.Type.IsEnum) return;
-        schema.Enum = Enum.GetValues(context.Type)
+        // Add examples for enums (need concrete OpenApiSchema to set writable properties)
+        if (!context.Type.IsEnum || schema is not OpenApiSchema concreteSchema) return;
+        concreteSchema.Enum = Enum.GetValues(context.Type)
             .Cast<object>()
-            .Select(e => new Microsoft.OpenApi.Any.OpenApiString(e.ToString()))
-            .ToList<Microsoft.OpenApi.Any.IOpenApiAny>();
+            .Select(e => (JsonNode)JsonValue.Create(e.ToString()!)!)
+            .ToList();
 
-        schema.Type = "string";
-        schema.Description = $"Possible values: {string.Join(", ", Enum.GetNames(context.Type))}";
+        concreteSchema.Type = JsonSchemaType.String;
+        concreteSchema.Description = $"Possible values: {string.Join(", ", Enum.GetNames(context.Type))}";
     }
 }
