@@ -2,8 +2,11 @@ using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Admin;
 using Civiti.Api.Models.Requests.Auth;
 using Civiti.Api.Models.Requests.Issues;
+using Civiti.Api.Models.Responses.Activity;
 using Civiti.Api.Models.Responses.Admin;
 using Civiti.Api.Models.Responses.Auth;
+using Civiti.Api.Models.Responses.Authority;
+using Civiti.Api.Models.Responses.Comments;
 using Civiti.Api.Models.Responses.Common;
 using Civiti.Api.Models.Responses.Gamification;
 using Civiti.Api.Models.Responses.Issues;
@@ -386,6 +389,92 @@ public class AdminStatisticsResponseExample : IExamplesProvider<AdminStatisticsR
             // Period information
             Period = "monthly",
             GeneratedAt = DateTime.UtcNow
+        };
+    }
+}
+
+/// <summary>
+/// Example provider for AuthStatusResponse
+/// </summary>
+public class AuthStatusResponseExample : IExamplesProvider<AuthStatusResponse>
+{
+    public AuthStatusResponse GetExamples()
+    {
+        return new AuthStatusResponse
+        {
+            Authenticated = true,
+            SupabaseUserId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            Email = "ion.popescu@example.com"
+        };
+    }
+}
+
+/// <summary>
+/// Example provider for ActivityResponse
+/// </summary>
+public class ActivityResponseExample : IExamplesProvider<ActivityResponse>
+{
+    public ActivityResponse GetExamples()
+    {
+        return new ActivityResponse
+        {
+            Id = Guid.NewGuid(),
+            Type = ActivityType.IssueCreated,
+            IssueId = Guid.NewGuid(),
+            IssueTitle = "Groapă periculoasă pe strada Mihai Eminescu",
+            Message = "Ion Popescu a raportat o problemă nouă",
+            AggregatedCount = 1,
+            ActorDisplayName = "Ion Popescu",
+            CreatedAt = DateTime.UtcNow.AddMinutes(-30)
+        };
+    }
+}
+
+/// <summary>
+/// Example provider for CommentResponse
+/// </summary>
+public class CommentResponseExample : IExamplesProvider<CommentResponse>
+{
+    public CommentResponse GetExamples()
+    {
+        return new CommentResponse
+        {
+            Id = Guid.NewGuid(),
+            IssueId = Guid.NewGuid(),
+            Content = "Am observat și eu această problemă. Este foarte periculoasă pentru pietoni.",
+            HelpfulCount = 5,
+            IsEdited = false,
+            IsDeleted = false,
+            CreatedAt = DateTime.UtcNow.AddHours(-2),
+            UpdatedAt = DateTime.UtcNow.AddHours(-2),
+            ParentCommentId = null,
+            ReplyCount = 2,
+            User = new CommentUserResponse
+            {
+                Id = Guid.NewGuid(),
+                DisplayName = "Maria Ionescu",
+                PhotoUrl = "https://storage.civiti.ro/avatars/user-456.jpg",
+                Level = 3
+            },
+            HasVoted = false
+        };
+    }
+}
+
+/// <summary>
+/// Example provider for AuthorityListResponse
+/// </summary>
+public class AuthorityListResponseExample : IExamplesProvider<AuthorityListResponse>
+{
+    public AuthorityListResponse GetExamples()
+    {
+        return new AuthorityListResponse
+        {
+            Id = Guid.NewGuid(),
+            Name = "Primăria Sector 2",
+            Email = "contact@sector2.ro",
+            City = "București",
+            District = "Sector 2"
         };
     }
 }

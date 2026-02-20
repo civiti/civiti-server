@@ -1,4 +1,5 @@
 using Civiti.Api.Infrastructure.Constants;
+using Civiti.Api.Models.Responses.Jwks;
 using Civiti.Api.Services.Interfaces;
 using Microsoft.IdentityModel.Tokens;
 
@@ -23,8 +24,8 @@ public static class JwksEndpoints
             .WithName("GetJwksHealth")
             .WithSummary("Check JWKS service health and cache statistics")
             .WithDescription("Returns health status of the JWKS service including cache statistics and connectivity to Supabase JWKS endpoint")
-            .Produces(200)
-            .Produces(503);
+            .Produces<JwksHealthResponse>()
+            .Produces<JwksErrorResponse>(503);
 
         // JWKS cache stats endpoint (admin only)
         jwksGroup.MapGet("/stats", GetJwksStats)
@@ -32,7 +33,7 @@ public static class JwksEndpoints
             .WithSummary("Get detailed JWKS cache statistics")
             .WithDescription("Returns detailed cache statistics for monitoring JWKS performance (admin only)")
             .RequireAuthorization(AuthorizationPolicies.AdminOnly)
-            .Produces(200)
+            .Produces<JwksStatsResponse>()
             .Produces(401)
             .Produces(403);
 
@@ -42,7 +43,7 @@ public static class JwksEndpoints
             .WithSummary("Clear JWKS cache")
             .WithDescription("Manually clear the JWKS cache to force refresh from Supabase (admin only)")
             .RequireAuthorization(AuthorizationPolicies.AdminOnly)
-            .Produces(200)
+            .Produces<JwksCacheClearResponse>()
             .Produces(401)
             .Produces(403);
 
@@ -52,10 +53,10 @@ public static class JwksEndpoints
             .WithSummary("Refresh JWKS cache")
             .WithDescription("Manually refresh the JWKS cache from Supabase (admin only)")
             .RequireAuthorization(AuthorizationPolicies.AdminOnly)
-            .Produces(200)
+            .Produces<JwksCacheRefreshResponse>()
             .Produces(401)
             .Produces(403)
-            .Produces(503);
+            .Produces<JwksErrorResponse>(503);
     }
 
     /// <summary>
@@ -71,19 +72,19 @@ public static class JwksEndpoints
 
             (var hitRate, DateTime? lastRefresh, var totalRequests) = jwksManager.GetCacheStats();
 
-            var health = new
+            var health = new JwksHealthResponse
             {
                 Status = "Healthy",
                 JwksEndpoint = "Connected",
                 KeyCount = jwks.Keys.Count,
-                Cache = new
+                Cache = new JwksCacheInfo
                 {
                     HitRate = Math.Round(hitRate * 100, 2),
                     LastRefresh = lastRefresh?.ToString("yyyy-MM-dd HH:mm:ss UTC") ?? "Never",
                     TotalRequests = totalRequests
                 },
                 Timestamp = DateTime.UtcNow,
-                AvailableKeyIds = jwks.Keys.Select(k => k.Kid).Where(kid => !string.IsNullOrEmpty(kid)).ToArray()
+                AvailableKeyIds = jwks.Keys.Select(k => k.Kid).Where(kid => !string.IsNullOrEmpty(kid)).ToArray()!
             };
 
             return Results.Ok(health);
@@ -91,7 +92,7 @@ public static class JwksEndpoints
         catch (OperationCanceledException)
         {
             logger.LogWarning("JWKS health check timed out");
-            return Results.Json(new
+            return Results.Json(new JwksErrorResponse
             {
                 Status = "Unhealthy",
                 JwksEndpoint = "Timeout",
@@ -102,7 +103,7 @@ public static class JwksEndpoints
         catch (Exception ex)
         {
             logger.LogError(ex, "JWKS health check failed");
-            return Results.Json(new
+            return Results.Json(new JwksErrorResponse
             {
                 Status = "Unhealthy",
                 JwksEndpoint = "Error",
@@ -124,9 +125,9 @@ public static class JwksEndpoints
             // Get current JWKS without forcing refresh to see cached data
             JsonWebKeySet jwks = await jwksManager.GetJwksAsync(false, CancellationToken.None);
 
-            var stats = new
+            var stats = new JwksStatsResponse
             {
-                Cache = new
+                Cache = new JwksCacheStats
                 {
                     HitRate = Math.Round(hitRate * 100, 2),
                     HitRateDecimal = hitRate,
@@ -136,10 +137,10 @@ public static class JwksEndpoints
                     LastRefresh = lastRefresh?.ToString("yyyy-MM-dd HH:mm:ss UTC") ?? "Never",
                     LastRefreshUtc = lastRefresh
                 },
-                Keys = new
+                Keys = new JwksKeysInfo
                 {
                     Total = jwks.Keys.Count,
-                    KeyDetails = jwks.Keys.Select(k => new
+                    KeyDetails = jwks.Keys.Select(k => new JwksKeyDetail
                     {
                         Kid = k.Kid,
                         Kty = k.Kty,
@@ -155,7 +156,7 @@ public static class JwksEndpoints
         }
         catch (Exception ex)
         {
-            return Results.Json(new
+            return Results.Json(new JwksErrorResponse
             {
                 Error = "Failed to retrieve JWKS statistics",
                 Message = ex.Message,
@@ -174,7 +175,7 @@ public static class JwksEndpoints
             jwksManager.ClearCache();
             logger.LogInformation("JWKS cache cleared by admin");
 
-            return Results.Ok(new
+            return Results.Ok(new JwksCacheClearResponse
             {
                 Message = "JWKS cache cleared successfully",
                 Timestamp = DateTime.UtcNow
@@ -183,7 +184,7 @@ public static class JwksEndpoints
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to clear JWKS cache");
-            return Results.Json(new
+            return Results.Json(new JwksErrorResponse
             {
                 Error = "Failed to clear JWKS cache",
                 Message = ex.Message,
@@ -204,18 +205,18 @@ public static class JwksEndpoints
 
             logger.LogInformation("JWKS cache refreshed by admin - {KeyCount} keys loaded", jwks.Keys.Count);
 
-            return Results.Ok(new
+            return Results.Ok(new JwksCacheRefreshResponse
             {
                 Message = "JWKS cache refreshed successfully",
                 KeyCount = jwks.Keys.Count,
-                AvailableKeyIds = jwks.Keys.Select(k => k.Kid).Where(kid => !string.IsNullOrEmpty(kid)).ToArray(),
+                AvailableKeyIds = jwks.Keys.Select(k => k.Kid).Where(kid => !string.IsNullOrEmpty(kid)).ToArray()!,
                 Timestamp = DateTime.UtcNow
             });
         }
         catch (OperationCanceledException)
         {
             logger.LogWarning("JWKS cache refresh timed out");
-            return Results.Json(new
+            return Results.Json(new JwksErrorResponse
             {
                 Error = "JWKS refresh timed out",
                 Message = "Supabase JWKS endpoint did not respond within 30 seconds",
@@ -225,7 +226,7 @@ public static class JwksEndpoints
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to refresh JWKS cache");
-            return Results.Json(new
+            return Results.Json(new JwksErrorResponse
             {
                 Error = "Failed to refresh JWKS cache",
                 Message = ex.Message,

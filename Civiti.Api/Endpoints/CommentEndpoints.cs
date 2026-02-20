@@ -5,6 +5,7 @@ using Civiti.Api.Models.Responses.Auth;
 using Civiti.Api.Models.Responses.Comments;
 using Civiti.Api.Models.Responses.Common;
 using Civiti.Api.Services.Interfaces;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Civiti.Api.Endpoints;
 
@@ -225,13 +226,13 @@ public static class CommentEndpoints
                     : Results.BadRequest(new { error });
             }
 
-            return Results.Ok(new { message = "Vote recorded" });
+            return Results.Ok(new CommentVoteResponse { Message = "Vote recorded" });
         })
         .RequireAuthorization()
         .WithName("VoteCommentHelpful")
         .WithSummary("Vote a comment as helpful")
         .WithDescription("Marks a comment as helpful. Awards points to the comment author.")
-        .Produces(StatusCodes.Status200OK)
+        .Produces<CommentVoteResponse>()
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound);
@@ -256,13 +257,13 @@ public static class CommentEndpoints
                     : Results.BadRequest(new { error });
             }
 
-            return Results.Ok(new { message = "Vote removed" });
+            return Results.Ok(new CommentVoteResponse { Message = "Vote removed" });
         })
         .RequireAuthorization()
         .WithName("RemoveCommentVote")
         .WithSummary("Remove helpful vote from a comment")
         .WithDescription("Removes a previously cast helpful vote from a comment.")
-        .Produces(StatusCodes.Status200OK)
+        .Produces<CommentVoteResponse>()
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound);

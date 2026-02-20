@@ -36,8 +36,6 @@ builder.Host.UseSerilog();
 
 // Add services
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddOpenApi(); // Add OpenAPI support for .NET 9
-
 // Configure JSON serialization to handle enums as strings (case-insensitive)
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -492,13 +490,13 @@ app.MapGet("/swagger-debug", async (HttpContext context) =>
 
 app.MapGet("/api/health", async (CivitiDbContext context, ISupabaseService supabaseService) =>
     {
-        var health = new
+        Civiti.Api.Models.Responses.Health.HealthCheckResponse health = new()
         {
             Status = "Healthy",
             Timestamp = DateTime.UtcNow,
             Version = "1.0.0",
             Database = "unknown",
-            DatabaseError = (string?)null,
+            DatabaseError = null,
             Supabase = "unknown",
             Environment = app.Environment.EnvironmentName
         };
@@ -508,40 +506,42 @@ app.MapGet("/api/health", async (CivitiDbContext context, ISupabaseService supab
             // Test database connectivity with timeout
             using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
             await context.Database.CanConnectAsync(cts.Token);
-            health = health with { Database = "connected" };
+            health.Database = "connected";
         }
         catch (OperationCanceledException)
         {
             Log.Warning("Database health check timed out after 5 seconds");
-            health = health with { Database = "timeout", DatabaseError = "Connection timeout (5s)" };
+            health.Database = "timeout";
+            health.DatabaseError = "Connection timeout (5s)";
         }
         catch (Exception ex)
         {
             Log.Warning(ex, "Database health check failed");
-            health = health with { Database = "disconnected", DatabaseError = ex.Message };
+            health.Database = "disconnected";
+            health.DatabaseError = ex.Message;
         }
 
         try
         {
             // Test Supabase connectivity
             var supabaseHealthy = await supabaseService.CheckHealthAsync();
-            health = health with { Supabase = supabaseHealthy ? "connected" : "disconnected" };
+            health.Supabase = supabaseHealthy ? "connected" : "disconnected";
         }
         catch (Exception ex)
         {
             Log.Warning(ex, "Supabase health check failed");
-            health = health with { Supabase = "disconnected" };
+            health.Supabase = "disconnected";
         }
 
-        var overallStatus = health.Database == "connected" ? "Healthy" : "Degraded";
-        return Results.Ok(health with { Status = overallStatus });
+        health.Status = health.Database == "connected" ? "Healthy" : "Degraded";
+        return Results.Ok(health);
     })
     .WithName("HealthCheck")
     .WithTags("Health")
     .WithSummary("Health check endpoint with connectivity tests")
     .WithDescription(
         "Performs health checks on critical dependencies including PostgreSQL database and Supabase authentication service. Returns detailed connectivity status for each component.")
-    .Produces(200);
+    .Produces<Civiti.Api.Models.Responses.Health.HealthCheckResponse>();
 
 // Database migration on startup (Railway compatible with retry logic)
 var skipMigration = Environment.GetEnvironmentVariable("SKIP_DB_MIGRATION") == "true";

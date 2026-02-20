@@ -1,6 +1,8 @@
 using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Infrastructure.Extensions;
+using Civiti.Api.Models.Responses.Auth;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Civiti.Api.Endpoints;
 
@@ -20,22 +22,22 @@ public static class AuthEndpoints
             .WithTags("Authentication");
 
         // GET /api/auth/status - Check if user is authenticated and has a valid token
-        group.MapGet(ApiRoutes.Auth.Status, [Authorize] (HttpContext context) =>
+        group.MapGet(ApiRoutes.Auth.Status, [Authorize] Task<Ok<AuthStatusResponse>> (HttpContext context) =>
             {
                 var supabaseUserId = context.User.GetSupabaseUserId();
                 var email = context.User.GetEmail();
 
-                return Results.Ok(new
+                return Task.FromResult(TypedResults.Ok(new AuthStatusResponse
                 {
-                    authenticated = true,
-                    supabaseUserId,
-                    email
-                });
+                    Authenticated = true,
+                    SupabaseUserId = supabaseUserId,
+                    Email = email
+                }));
             })
             .WithName("GetAuthStatus")
             .WithSummary("Check authentication status")
             .WithDescription("Verifies that the current JWT token is valid and returns basic user identity information from the token claims. Use /api/user/profile to get the full user profile.")
-            .Produces(200)
+            .Produces<AuthStatusResponse>()
             .Produces(401);
     }
 }

@@ -97,7 +97,8 @@ public static class DevAuthEndpoints
         .WithName("DevTestLogin")
         .WithSummary("Get Bearer token for Swagger testing (Development Only)")
         .WithDescription("Use this endpoint to get a Bearer token for testing authenticated endpoints in Swagger. Only available in development environment.")
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .ExcludeFromDescription();
 
         // Token validation endpoint for debugging
         devAuth.MapPost("/validate-token", async (TokenValidationRequest request, IConfiguration configuration, IHttpClientFactory httpClientFactory) =>
@@ -153,7 +154,8 @@ public static class DevAuthEndpoints
         })
         .WithName("DevValidateToken")
         .WithSummary("Validate a Bearer token (Development Only)")
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .ExcludeFromDescription();
     }
 }
 

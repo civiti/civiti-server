@@ -134,13 +134,13 @@ public static class IssueEndpoints
         .Produces(404);
 
         // POST /api/issues
-        group.MapPost("/", [Authorize] async Task<Results<Ok<CreateIssueResponse>, BadRequest<string>, UnauthorizedHttpResult>> (
+        group.MapPost("/", [Authorize] async Task<Results<Created<CreateIssueResponse>, BadRequest<string>, UnauthorizedHttpResult>> (
             IIssueService issueService,
             CreateIssueRequest request,
             HttpContext httpContext) =>
         {
             var supabaseUserId = httpContext.User.GetSupabaseUserId();
-            
+
             if (string.IsNullOrEmpty(supabaseUserId))
             {
                 return TypedResults.Unauthorized();
@@ -149,7 +149,7 @@ public static class IssueEndpoints
             try
             {
                 CreateIssueResponse result = await issueService.CreateIssueAsync(request, supabaseUserId);
-                return TypedResults.Ok(result);
+                return TypedResults.Created($"/api/issues/{result.Id}", result);
             }
             catch (InvalidOperationException ex)
             {

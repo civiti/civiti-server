@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.Filters;
@@ -82,14 +83,8 @@ public static class SwaggerConfiguration
                           """
         });
 
-        // Security Requirement
-        options.AddSecurityRequirement(_ => new OpenApiSecurityRequirement
-        {
-            {
-                new OpenApiSecuritySchemeReference("Bearer"),
-                new List<string>()
-            }
-        });
+        // Note: Security requirements are applied per-operation via SwaggerOperationFilter
+        // to avoid marking public endpoints as requiring authentication.
 
         // Add XML Comments
         var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
@@ -167,9 +162,29 @@ public class SwaggerOperationFilter : IOperationFilter
 {
     public void Apply(OpenApiOperation operation, OperationFilterContext context)
     {
-        // Add default responses if not already defined
         if (operation.Responses is null) return;
-        if (!operation.Responses.ContainsKey("401"))
+
+        // Determine if the endpoint requires authentication
+        var metadata = context.ApiDescription.ActionDescriptor.EndpointMetadata;
+        var hasAuthorize = metadata.Any(m => m is AuthorizeAttribute or IAuthorizeData);
+        var hasAllowAnonymous = metadata.Any(m => m is AllowAnonymousAttribute or IAllowAnonymous);
+        var requiresAuth = hasAuthorize && !hasAllowAnonymous;
+
+        // Apply Bearer security requirement only to authenticated endpoints
+        if (requiresAuth)
+        {
+            operation.Security ??= [];
+            operation.Security.Add(new OpenApiSecurityRequirement
+            {
+                {
+                    new OpenApiSecuritySchemeReference("Bearer"),
+                    new List<string>()
+                }
+            });
+        }
+
+        // Add 401 response only to endpoints that require authentication
+        if (requiresAuth && !operation.Responses.ContainsKey("401"))
         {
             operation.Responses.Add("401", new OpenApiResponse
             {
