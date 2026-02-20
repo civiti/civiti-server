@@ -13,5 +13,8 @@ riderModule.iml
 .env.development
 .env.production
 
+# Logs
+**/logs/
+
 # Development settings with secrets
 **/appsettings.Development.json
