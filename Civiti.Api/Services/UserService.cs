@@ -73,6 +73,10 @@ public class UserService(
                 LevelProgressPercentage = levelProgressPercentage
             };
         }
+        catch (InvalidOperationException)
+        {
+            throw; // Re-throw domain exceptions (e.g. deleted account) as-is
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error getting user gamification for Supabase ID: {SupabaseUserId}", supabaseUserId);
