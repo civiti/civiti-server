@@ -171,6 +171,13 @@ public static class UserEndpoints
                 UserProfileResponse updatedProfile = await userService.UpdateUserProfileAsync(supabaseUserId, request);
                 return Results.Ok(updatedProfile);
             }
+            catch (InvalidOperationException ex) when (ex.Message == "This account has been deleted.")
+            {
+                return Results.Problem(
+                    detail: "This account has been deleted.",
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "Account Deleted");
+            }
             catch (InvalidOperationException)
             {
                 return Results.NotFound(new { error = "User profile not found" });

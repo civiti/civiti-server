@@ -125,6 +125,10 @@ public class UserService(
                 CreatedAt = user.CreatedAt
             };
         }
+        catch (InvalidOperationException)
+        {
+            throw; // Re-throw domain exceptions (e.g. deleted account) as-is
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error getting user profile for Supabase ID: {SupabaseUserId}", supabaseUserId);
@@ -402,6 +406,12 @@ public class UserService(
 
             if (user == null)
             {
+                bool wasDeleted = await context.UserProfiles
+                    .IgnoreQueryFilters()
+                    .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
+                if (wasDeleted)
+                    throw new InvalidOperationException("This account has been deleted.");
+
                 logger.LogWarning("User not found for Supabase ID: {SupabaseUserId}", supabaseUserId);
                 throw new InvalidOperationException("User not found");
             }
@@ -444,6 +454,10 @@ public class UserService(
             logger.LogInformation("Updated profile for user {UserId}", user.Id);
 
             return (await GetUserProfileAsync(supabaseUserId))!;
+        }
+        catch (InvalidOperationException)
+        {
+            throw; // Re-throw domain exceptions (e.g. deleted account) as-is
         }
         catch (Exception ex)
         {
