@@ -165,7 +165,7 @@ public class UserServiceTests : IDisposable
         deleted.City.Should().Be("Unknown");
         deleted.District.Should().Be("Unknown");
         deleted.ResidenceType.Should().BeNull();
-        deleted.SupabaseUserId.Should().StartWith("deleted_");
+        deleted.SupabaseUserId.Should().Be("delete_me"); // preserved for deleted-user lookup guard
 
         // Deletion flags
         deleted.IsDeleted.Should().BeTrue();
@@ -238,8 +238,8 @@ public class UserServiceTests : IDisposable
         var user = TestDataBuilder.CreateUser(supabaseUserId: "already_deleted");
         user.IsDeleted = true;
         user.DeletedAt = DateTime.UtcNow.AddDays(-1);
-        user.SupabaseUserId = $"deleted_{user.Id}";
-
+        // SupabaseUserId is now preserved on deletion, so the lookup filter
+        // "!u.IsDeleted" excludes this row and returns false
         using (var ctx = _dbFactory.CreateContext())
         {
             ctx.UserProfiles.Add(user);
@@ -249,8 +249,6 @@ public class UserServiceTests : IDisposable
         var svc = CreateService();
         var result = await svc.DeleteUserAsync("already_deleted");
 
-        // The original SupabaseUserId was changed to "deleted_{id}", so lookup with
-        // "already_deleted" won't find any non-deleted user
         result.Should().BeFalse();
     }
 

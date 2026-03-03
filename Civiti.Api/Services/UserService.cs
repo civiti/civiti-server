@@ -19,13 +19,16 @@ public class UserService(
     ISupabaseService supabaseService)
     : IUserService
 {
+    // Note: UserProfile has a global query filter (HasQueryFilter) that automatically
+    // excludes IsDeleted rows. Use IgnoreQueryFilters() only in admin/maintenance paths
+    // that need to see deleted records.
     public async Task<UserGamificationResponse> GetUserGamificationAsync(string supabaseUserId)
     {
         try
         {
             UserProfile? user = await context.UserProfiles
                 .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
             {
@@ -78,7 +81,7 @@ public class UserService(
             // Use AsNoTracking since we only need to read user data for the response
             UserProfile? user = await context.UserProfiles
                 .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
             {
@@ -131,6 +134,16 @@ public class UserService(
         if (existingProfile != null)
         {
             return existingProfile;
+        }
+
+        // Block re-creation of soft-deleted accounts (bypasses the global query filter)
+        bool wasDeleted = await context.UserProfiles
+            .IgnoreQueryFilters()
+            .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
+        if (wasDeleted)
+        {
+            logger.LogWarning("Blocked profile re-creation for deleted user {SupabaseUserId}", supabaseUserId);
+            throw new InvalidOperationException("This account has been deleted.");
         }
 
         // Profile doesn't exist - attempt to create it
@@ -292,7 +305,7 @@ public class UserService(
         try
         {
             UserProfile? existingUser = await context.UserProfiles
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (existingUser != null)
             {
@@ -364,7 +377,7 @@ public class UserService(
         try
         {
             UserProfile? user = await context.UserProfiles
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
             {
@@ -422,8 +435,7 @@ public class UserService(
     {
         try
         {
-            IQueryable<UserProfile> query = context.UserProfiles.AsNoTracking()
-                .Where(u => !u.IsDeleted);
+            IQueryable<UserProfile> query = context.UserProfiles.AsNoTracking();
 
             // Apply period filter
             if (period != "all")
@@ -520,7 +532,7 @@ public class UserService(
         try
         {
             UserProfile? user = await context.UserProfiles
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
             {
@@ -528,14 +540,9 @@ public class UserService(
                 return false;
             }
 
-            // Best-effort: delete the Supabase Auth account so the user can't log in again
-            var supabaseDeleted = await supabaseService.DeleteAuthUserAsync(supabaseUserId);
-            if (!supabaseDeleted)
-            {
-                logger.LogWarning("Supabase auth deletion failed for user {UserId}, proceeding with local soft-delete", user.Id);
-            }
-
-            // Anonymize ALL PII fields
+            // 1. Anonymize PII and soft-delete locally FIRST so the DB is always consistent.
+            //    Keep the original SupabaseUserId so the global query filter + the
+            //    IgnoreQueryFilters guard in GetOrCreateUserProfileAsync blocks re-creation.
             user.Email = $"deleted_{user.Id}@civica.ro";
             user.DisplayName = "Deleted User";
             user.PhotoUrl = null;
@@ -544,7 +551,7 @@ public class UserService(
             user.City = "Unknown";
             user.District = "Unknown";
             user.ResidenceType = null;
-            user.SupabaseUserId = $"deleted_{user.Id}";
+            // SupabaseUserId intentionally preserved for deleted-user lookup
 
             // Disable all notification preferences
             user.IssueUpdatesEnabled = false;
@@ -558,6 +565,17 @@ public class UserService(
             user.UpdatedAt = DateTime.UtcNow;
 
             await context.SaveChangesAsync();
+
+            // 2. Revoke Supabase auth AFTER the local save succeeds.
+            //    If this fails, PII is already scrubbed and the soft-delete flag
+            //    prevents profile re-creation. The stale auth can be cleaned up later.
+            var supabaseDeleted = await supabaseService.DeleteAuthUserAsync(supabaseUserId);
+            if (!supabaseDeleted)
+            {
+                logger.LogError(
+                    "Supabase auth deletion failed for user {UserId} after local soft-delete. " +
+                    "Auth record requires manual cleanup.", user.Id);
+            }
 
             logger.LogInformation("Soft deleted user {UserId} (Supabase auth removed: {SupabaseDeleted})",
                 user.Id, supabaseDeleted);

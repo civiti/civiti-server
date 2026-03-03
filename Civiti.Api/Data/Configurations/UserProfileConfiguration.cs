@@ -67,7 +67,8 @@ public class UserProfileConfiguration : IEntityTypeConfiguration<UserProfile>
         builder.HasQueryFilter(u => !u.IsDeleted);
 
         // Indexes
-        builder.HasIndex(u => u.IsDeleted);
+        builder.HasIndex(u => u.IsDeleted)
+            .HasFilter("\"IsDeleted\" = true");
         builder.HasIndex(u => u.District);
         builder.HasIndex(u => u.Points).IsDescending();
         builder.HasIndex(u => u.Level).IsDescending();
