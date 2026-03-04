@@ -148,7 +148,7 @@ public class SupabaseService(ILogger<SupabaseService> logger, SupabaseConfigurat
             }
 
             // Simple health check - verify Supabase URL is reachable
-            using HttpClient httpClient = new();
+            using HttpClient httpClient = httpClientFactory.CreateClient();
             httpClient.Timeout = TimeSpan.FromSeconds(5);
 
             HttpResponseMessage response = await httpClient.GetAsync($"{supabaseConfig.Url}/auth/v1/health");

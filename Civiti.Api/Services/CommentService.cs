@@ -147,6 +147,12 @@ public class CommentService(
 
             if (user == null)
             {
+                bool wasDeleted = await context.UserProfiles
+                    .IgnoreQueryFilters()
+                    .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
+                if (wasDeleted)
+                    throw new InvalidOperationException("This account has been deleted.");
+
                 throw new InvalidOperationException("User not found");
             }
 
@@ -355,6 +361,12 @@ public class CommentService(
 
             if (user == null)
             {
+                bool wasDeleted = await context.UserProfiles
+                    .IgnoreQueryFilters()
+                    .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
+                if (wasDeleted)
+                    return (false, "This account has been deleted.");
+
                 return (false, "User not found");
             }
 
@@ -417,6 +429,12 @@ public class CommentService(
 
             if (user == null)
             {
+                bool wasDeleted = await context.UserProfiles
+                    .IgnoreQueryFilters()
+                    .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
+                if (wasDeleted)
+                    return (false, "This account has been deleted.");
+
                 return (false, "User not found");
             }
 
@@ -630,6 +648,12 @@ public class CommentService(
 
             if (user == null)
             {
+                bool wasDeleted = await context.UserProfiles
+                    .IgnoreQueryFilters()
+                    .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
+                if (wasDeleted)
+                    return (false, "This account has been deleted.");
+
                 return (false, "User not found");
             }
 
@@ -748,6 +772,12 @@ public class CommentService(
 
             if (user == null)
             {
+                bool wasDeleted = await context.UserProfiles
+                    .IgnoreQueryFilters()
+                    .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
+                if (wasDeleted)
+                    return (false, "This account has been deleted.");
+
                 return (false, "User not found");
             }
 
