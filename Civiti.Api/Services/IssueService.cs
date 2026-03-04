@@ -1270,15 +1270,16 @@ public class IssueService(
                 }
 
                 // Increment CommunityVotes on the issue author's profile (votes received)
+                // Guard against soft-deleted authors explicitly since ExecuteUpdateAsync bypasses global filters
                 await context.UserProfiles
-                    .Where(u => u.Id == issue.UserId)
+                    .Where(u => u.Id == issue.UserId && !u.IsDeleted)
                     .ExecuteUpdateAsync(u => u
                         .SetProperty(x => x.CommunityVotes, x => x.CommunityVotes + 1)
                         .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
 
                 // Increment VotesGiven on the voter's profile
                 await context.UserProfiles
-                    .Where(u => u.Id == user.Id)
+                    .Where(u => u.Id == user.Id && !u.IsDeleted)
                     .ExecuteUpdateAsync(u => u
                         .SetProperty(x => x.VotesGiven, x => x.VotesGiven + 1)
                         .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
@@ -1413,15 +1414,16 @@ public class IssueService(
                     .ExecuteUpdateAsync(i => i.SetProperty(x => x.CommunityVotes, x => Math.Max(0, x.CommunityVotes - 1)));
 
                 // Decrement CommunityVotes on the issue author's profile (votes received)
+                // Guard against soft-deleted authors explicitly since ExecuteUpdateAsync bypasses global filters
                 await context.UserProfiles
-                    .Where(u => u.Id == issue.UserId)
+                    .Where(u => u.Id == issue.UserId && !u.IsDeleted)
                     .ExecuteUpdateAsync(u => u
                         .SetProperty(x => x.CommunityVotes, x => Math.Max(0, x.CommunityVotes - 1))
                         .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));
 
                 // Decrement VotesGiven on the voter's profile
                 await context.UserProfiles
-                    .Where(u => u.Id == user.Id)
+                    .Where(u => u.Id == user.Id && !u.IsDeleted)
                     .ExecuteUpdateAsync(u => u
                         .SetProperty(x => x.VotesGiven, x => Math.Max(0, x.VotesGiven - 1))
                         .SetProperty(x => x.UpdatedAt, DateTime.UtcNow));

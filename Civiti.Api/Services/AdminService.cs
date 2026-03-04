@@ -230,7 +230,7 @@ public class AdminService(
             }
 
             UserProfile? adminUser = await context.UserProfiles
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == adminUserId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == adminUserId);
 
             if (adminUser == null)
             {
@@ -361,7 +361,7 @@ public class AdminService(
             }
 
             UserProfile? adminUser = await context.UserProfiles
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == adminUserId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == adminUserId);
 
             if (adminUser == null)
             {
@@ -464,7 +464,7 @@ public class AdminService(
             }
 
             UserProfile? adminUser = await context.UserProfiles
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == adminUserId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == adminUserId);
 
             if (adminUser == null)
             {
@@ -729,7 +729,7 @@ public class AdminService(
         try
         {
             UserProfile? adminUser = await context.UserProfiles
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == adminUserId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == adminUserId);
 
             if (adminUser == null)
             {
