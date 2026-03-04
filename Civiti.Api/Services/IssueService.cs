@@ -747,7 +747,7 @@ public class IssueService(
                     // Get the issue owner's profile to update their stats
                     UserProfile? issueOwner = issue.UserId == userProfile.Id
                         ? userProfile
-                        : await context.UserProfiles.FindAsync(issue.UserId);
+                        : await context.UserProfiles.FirstOrDefaultAsync(u => u.Id == issue.UserId);
 
                     if (issueOwner != null)
                     {
