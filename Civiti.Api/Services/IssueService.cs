@@ -287,7 +287,7 @@ public class IssueService(
             {
             // Get user profile
             UserProfile? userProfile = await context.UserProfiles
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (userProfile == null)
             {
@@ -598,7 +598,7 @@ public class IssueService(
         {
             // Get user profile
             UserProfile? userProfile = await context.UserProfiles
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId && !u.IsDeleted);
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (userProfile == null)
             {
@@ -707,7 +707,7 @@ public class IssueService(
             {
                 // Get user profile
                 UserProfile? userProfile = await context.UserProfiles
-                    .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId && !u.IsDeleted);
+                    .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
                 if (userProfile == null)
                 {
@@ -893,7 +893,7 @@ public class IssueService(
             {
                 // Get user profile
                 UserProfile? userProfile = await context.UserProfiles
-                    .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId && !u.IsDeleted);
+                    .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
                 if (userProfile == null)
                 {

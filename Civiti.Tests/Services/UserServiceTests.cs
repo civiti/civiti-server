@@ -127,6 +127,27 @@ public class UserServiceTests : IDisposable
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
+    [Fact]
+    public async Task UpdateUserProfile_Should_Throw_For_Deleted_User()
+    {
+        var user = TestDataBuilder.CreateUser(supabaseUserId: "deleted_update_user");
+        user.IsDeleted = true;
+        user.DeletedAt = DateTime.UtcNow.AddDays(-1);
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+        var act = () => svc.UpdateUserProfileAsync(
+            "deleted_update_user",
+            new UpdateUserProfileRequest { DisplayName = "X" });
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("This account has been deleted.");
+    }
+
     // ── DeleteUserAsync ──
 
     [Fact]
