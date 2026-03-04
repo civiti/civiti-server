@@ -596,6 +596,12 @@ public class IssueService(
 
             if (userProfile == null)
             {
+                bool wasDeleted = await context.UserProfiles
+                    .IgnoreQueryFilters()
+                    .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
+                if (wasDeleted)
+                    throw new InvalidOperationException("This account has been deleted.");
+
                 return new PagedResult<IssueListResponse>
                 {
                     Items = [],
@@ -699,6 +705,12 @@ public class IssueService(
 
                 if (userProfile == null)
                 {
+                    bool wasDeleted = await context.UserProfiles
+                        .IgnoreQueryFilters()
+                        .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
+                    if (wasDeleted)
+                        return (false, "This account has been deleted.");
+
                     return (false, "User profile not found");
                 }
 
@@ -879,6 +891,12 @@ public class IssueService(
 
                 if (userProfile == null)
                 {
+                    bool wasDeleted = await context.UserProfiles
+                        .IgnoreQueryFilters()
+                        .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
+                    if (wasDeleted)
+                        return (false, null, "This account has been deleted.");
+
                     return (false, null, "User profile not found");
                 }
 

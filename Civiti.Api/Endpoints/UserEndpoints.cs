@@ -276,8 +276,18 @@ public static class UserEndpoints
                 request.Status = parsedStatus;
             }
 
-            PagedResult<IssueListResponse> issues = await issueService.GetUserIssuesAsync(supabaseUserId, request);
-            return Results.Ok(issues);
+            try
+            {
+                PagedResult<IssueListResponse> issues = await issueService.GetUserIssuesAsync(supabaseUserId, request);
+                return Results.Ok(issues);
+            }
+            catch (InvalidOperationException ex) when (ex.Message == "This account has been deleted.")
+            {
+                return Results.Problem(
+                    detail: "This account has been deleted.",
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "Account Deleted");
+            }
         })
         .WithName("GetUserIssues")
         .WithSummary("Get issues created by the authenticated user")
@@ -323,6 +333,10 @@ public static class UserEndpoints
             {
                 return error switch
                 {
+                    "This account has been deleted." => Results.Problem(
+                        detail: "This account has been deleted.",
+                        statusCode: StatusCodes.Status403Forbidden,
+                        title: "Account Deleted"),
                     "Issue not found" => Results.NotFound(new { error }),
                     "User profile not found" => Results.NotFound(new { error }),
                     "You can only change status of your own issues" => Results.Forbid(),
@@ -360,6 +374,10 @@ public static class UserEndpoints
             {
                 return error switch
                 {
+                    "This account has been deleted." => Results.Problem(
+                        detail: "This account has been deleted.",
+                        statusCode: StatusCodes.Status403Forbidden,
+                        title: "Account Deleted"),
                     "Issue not found" => Results.NotFound(new { error }),
                     "User profile not found" => Results.NotFound(new { error }),
                     "You can only edit your own issues" => Results.Forbid(),

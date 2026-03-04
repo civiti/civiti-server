@@ -2,6 +2,8 @@ bin/
 obj/
 
 # Binary build artifacts (catches WSL2 backslash-path variants that bypass bin/ rule)
+**/bin\\*
+**/obj\\*
 *.dll
 *.exe
 *.pdb
