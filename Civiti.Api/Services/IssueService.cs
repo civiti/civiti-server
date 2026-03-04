@@ -490,6 +490,11 @@ public class IssueService(
                 CreatedAt = issue.CreatedAt
             };
         }
+            catch (InvalidOperationException)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
@@ -685,6 +690,10 @@ public class IssueService(
                 PageSize = request.PageSize,
                 TotalPages = (int)Math.Ceiling((double)totalItems / request.PageSize)
             };
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
