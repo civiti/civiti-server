@@ -1,3 +1,4 @@
+using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Auth;
 using Civiti.Api.Services;
@@ -145,7 +146,7 @@ public class UserServiceTests : IDisposable
             new UpdateUserProfileRequest { DisplayName = "X" });
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("This account has been deleted.");
+            .WithMessage(DomainErrors.AccountDeleted);
     }
 
     // ── DeleteUserAsync ──
@@ -179,7 +180,8 @@ public class UserServiceTests : IDisposable
 
         // PII anonymized
         deleted!.DisplayName.Should().Be("Deleted User");
-        deleted.Email.Should().Contain("deleted_");
+        deleted.Email.Should().StartWith("deleted_").And.EndWith("@civica.ro");
+        deleted.Email.Should().NotContain(user.Id.ToString()); // opaque hash, not reversible ID
         deleted.PhotoUrl.Should().BeNull();
         deleted.Phone.Should().BeNull();
         deleted.County.Should().Be("Unknown");
@@ -366,7 +368,7 @@ public class UserServiceTests : IDisposable
         var act = () => svc.GetOrCreateUserProfileAsync("deleted_user", "x@test.com", "New Name", null);
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("This account has been deleted.");
+            .WithMessage(DomainErrors.AccountDeleted);
     }
 
     [Fact]
@@ -388,7 +390,7 @@ public class UserServiceTests : IDisposable
             "reborn@test.com");
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("This account has been deleted.");
+            .WithMessage(DomainErrors.AccountDeleted);
     }
 
     // Note: GetLeaderboardAsync cannot be tested with SQLite due to SQL APPLY limitation

@@ -56,7 +56,7 @@ public static class CommentEndpoints
             }
 
             PagedResult<CommentResponse>? result = await commentService.GetIssueCommentsAsync(issueId, request, currentUserId);
-            return result == null ? Results.NotFound(new { error = "Issue not found" }) : Results.Ok(result);
+            return result == null ? Results.NotFound(new { error = DomainErrors.IssueNotFound }) : Results.Ok(result);
         })
         .WithName("GetIssueComments")
         .WithSummary("Get comments for an issue")
@@ -86,11 +86,11 @@ public static class CommentEndpoints
             {
                 return ex.Message switch
                 {
-                    "Issue not found" or "Parent comment not found" => Results.NotFound(new { error = ex.Message }),
+                    DomainErrors.IssueNotFound or "Parent comment not found" => Results.NotFound(new { error = ex.Message }),
                     "Please wait before posting another comment" => Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status429TooManyRequests),
                     "You have already posted this comment" => Results.Conflict(new { error = ex.Message }),
-                    "This account has been deleted." => Results.Problem(
-                        detail: "This account has been deleted.",
+                    DomainErrors.AccountDeleted => Results.Problem(
+                        detail: DomainErrors.AccountDeleted,
                         statusCode: StatusCodes.Status403Forbidden,
                         title: "Account Deleted"),
                     _ => Results.BadRequest(new { error = ex.Message })
@@ -158,8 +158,8 @@ public static class CommentEndpoints
                 {
                     "Comment not found" => Results.NotFound(new { error }),
                     "You can only edit your own comments" => Results.Forbid(),
-                    "This account has been deleted." => Results.Problem(
-                        detail: "This account has been deleted.",
+                    DomainErrors.AccountDeleted => Results.Problem(
+                        detail: DomainErrors.AccountDeleted,
                         statusCode: StatusCodes.Status403Forbidden,
                         title: "Account Deleted"),
                     _ => Results.BadRequest(new { error })
@@ -199,8 +199,8 @@ public static class CommentEndpoints
                 {
                     "Comment not found" => Results.NotFound(new { error }),
                     "You can only delete your own comments" => Results.Forbid(),
-                    "This account has been deleted." => Results.Problem(
-                        detail: "This account has been deleted.",
+                    DomainErrors.AccountDeleted => Results.Problem(
+                        detail: DomainErrors.AccountDeleted,
                         statusCode: StatusCodes.Status403Forbidden,
                         title: "Account Deleted"),
                     _ => Results.BadRequest(new { error })
@@ -236,8 +236,8 @@ public static class CommentEndpoints
                 return error switch
                 {
                     "Comment not found" => Results.NotFound(new { error }),
-                    "This account has been deleted." => Results.Problem(
-                        detail: "This account has been deleted.",
+                    DomainErrors.AccountDeleted => Results.Problem(
+                        detail: DomainErrors.AccountDeleted,
                         statusCode: StatusCodes.Status403Forbidden,
                         title: "Account Deleted"),
                     _ => Results.BadRequest(new { error })
@@ -273,8 +273,8 @@ public static class CommentEndpoints
                 return error switch
                 {
                     "Comment not found" => Results.NotFound(new { error }),
-                    "This account has been deleted." => Results.Problem(
-                        detail: "This account has been deleted.",
+                    DomainErrors.AccountDeleted => Results.Problem(
+                        detail: DomainErrors.AccountDeleted,
                         statusCode: StatusCodes.Status403Forbidden,
                         title: "Account Deleted"),
                     _ => Results.BadRequest(new { error })

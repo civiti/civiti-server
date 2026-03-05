@@ -1,5 +1,6 @@
 using System.Data;
 using Civiti.Api.Data;
+using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Comments;
 using Civiti.Api.Models.Responses.Comments;
@@ -147,9 +148,9 @@ public class CommentService(
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
-                throw new InvalidOperationException("User not found");
+                throw new InvalidOperationException(DomainErrors.UserNotFound);
             if (user.IsDeleted)
-                throw new InvalidOperationException("This account has been deleted.");
+                throw new InvalidOperationException(DomainErrors.AccountDeleted);
 
             // Verify issue exists and is active
             Issue? issue = await context.Issues
@@ -157,7 +158,7 @@ public class CommentService(
 
             if (issue == null)
             {
-                throw new InvalidOperationException("Issue not found");
+                throw new InvalidOperationException(DomainErrors.IssueNotFound);
             }
 
             if (issue.Status != IssueStatus.Active)
@@ -357,9 +358,9 @@ public class CommentService(
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
-                return (false, "User not found");
+                return (false, DomainErrors.UserNotFound);
             if (user.IsDeleted)
-                return (false, "This account has been deleted.");
+                return (false, DomainErrors.AccountDeleted);
 
             Comment? comment = await context.Comments
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
@@ -420,9 +421,9 @@ public class CommentService(
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
-                return (false, "User not found");
+                return (false, DomainErrors.UserNotFound);
             if (user.IsDeleted)
-                return (false, "This account has been deleted.");
+                return (false, DomainErrors.AccountDeleted);
 
             // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
             // which would return the tracked entity, causing double points on retry
@@ -636,9 +637,9 @@ public class CommentService(
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
-                return (false, "User not found");
+                return (false, DomainErrors.UserNotFound);
             if (user.IsDeleted)
-                return (false, "This account has been deleted.");
+                return (false, DomainErrors.AccountDeleted);
 
             // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
             // which would return the tracked entity, causing double points on retry
@@ -756,9 +757,9 @@ public class CommentService(
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
-                return (false, "User not found");
+                return (false, DomainErrors.UserNotFound);
             if (user.IsDeleted)
-                return (false, "This account has been deleted.");
+                return (false, DomainErrors.AccountDeleted);
 
             // Don't include User to avoid tracking UserProfile - gamification uses FindAsync
             // which would return the tracked entity, causing double points on retry

@@ -1,4 +1,5 @@
 using Civiti.Api.Data;
+using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Issues;
 using Civiti.Api.Services;
@@ -379,7 +380,7 @@ public class IssueServiceTests : IDisposable
         var (success, error) = await svc.IncrementEmailCountAsync(Guid.NewGuid(), "127.0.0.1");
 
         success.Should().BeFalse();
-        error.Should().Be("Issue not found");
+        error.Should().Be(DomainErrors.IssueNotFound);
     }
 
     // ── VoteForIssueAsync ──
@@ -393,7 +394,7 @@ public class IssueServiceTests : IDisposable
         var (success, error) = await svc.VoteForIssueAsync(Guid.NewGuid(), "nonexistent");
 
         success.Should().BeFalse();
-        error.Should().Be("User not found");
+        error.Should().Be(DomainErrors.UserNotFound);
     }
 
     [Fact]
@@ -410,7 +411,7 @@ public class IssueServiceTests : IDisposable
         var (success, error) = await svc.VoteForIssueAsync(Guid.NewGuid(), user.SupabaseUserId);
 
         success.Should().BeFalse();
-        error.Should().Be("Issue not found");
+        error.Should().Be(DomainErrors.IssueNotFound);
     }
 
     [Fact]

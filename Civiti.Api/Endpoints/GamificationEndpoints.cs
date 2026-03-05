@@ -47,7 +47,7 @@ public static class GamificationEndpoints
             UserProfileResponse? profile = await userService.GetUserProfileAsync(supabaseUserId);
             if (profile == null)
             {
-                return Results.NotFound(new { error = "User not found" });
+                return Results.NotFound(new { error = DomainErrors.UserNotFound });
             }
 
             List<BadgeResponse> badges = await gamificationService.GetAvailableBadgesAsync(profile.Id);
@@ -86,7 +86,7 @@ public static class GamificationEndpoints
             UserProfileResponse? profile = await userService.GetUserProfileAsync(supabaseUserId);
             if (profile == null)
             {
-                return Results.NotFound(new { error = "User not found" });
+                return Results.NotFound(new { error = DomainErrors.UserNotFound });
             }
 
             List<AchievementProgressResponse> achievements = await gamificationService.GetUserAchievementsAsync(profile.Id);

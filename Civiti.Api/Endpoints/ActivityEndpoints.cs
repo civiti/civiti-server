@@ -66,7 +66,7 @@ public static class ActivityEndpoints
             UserProfileResponse? profile = await userService.GetUserProfileAsync(supabaseUserId);
             if (profile == null)
             {
-                return Results.NotFound(new { error = "User not found" });
+                return Results.NotFound(new { error = DomainErrors.UserNotFound });
             }
 
             GetActivitiesRequest request = new()

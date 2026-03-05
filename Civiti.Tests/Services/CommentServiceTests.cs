@@ -1,3 +1,4 @@
+using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Comments;
 using Civiti.Api.Models.Responses.Moderation;
@@ -111,7 +112,7 @@ public class CommentServiceTests : IDisposable
         var act = () => svc.CreateCommentAsync(Guid.NewGuid(),
             new CreateCommentRequest { Content = "Test" }, "nonexistent");
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("User not found");
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage(DomainErrors.UserNotFound);
     }
 
     [Fact]
@@ -128,7 +129,7 @@ public class CommentServiceTests : IDisposable
         var act = () => svc.CreateCommentAsync(Guid.NewGuid(),
             new CreateCommentRequest { Content = "Test" }, user.SupabaseUserId);
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("Issue not found");
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage(DomainErrors.IssueNotFound);
     }
 
     [Fact]

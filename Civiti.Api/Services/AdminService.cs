@@ -1,4 +1,5 @@
 using Civiti.Api.Data;
+using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Admin;
 using Civiti.Api.Models.Responses.Admin;
@@ -216,7 +217,7 @@ public class AdminService(
                 return new IssueActionResponse
                 {
                     Success = false,
-                    Message = "Issue not found"
+                    Message = DomainErrors.IssueNotFound
                 };
             }
 
@@ -347,7 +348,7 @@ public class AdminService(
                 return new IssueActionResponse
                 {
                     Success = false,
-                    Message = "Issue not found"
+                    Message = DomainErrors.IssueNotFound
                 };
             }
 
@@ -459,7 +460,7 @@ public class AdminService(
                 return new IssueActionResponse
                 {
                     Success = false,
-                    Message = "Issue not found"
+                    Message = DomainErrors.IssueNotFound
                 };
             }
 

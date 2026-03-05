@@ -151,10 +151,10 @@ public static class IssueEndpoints
                 CreateIssueResponse result = await issueService.CreateIssueAsync(request, supabaseUserId);
                 return TypedResults.Created($"/api/issues/{result.Id}", result);
             }
-            catch (InvalidOperationException ex) when (ex.Message == "This account has been deleted.")
+            catch (InvalidOperationException ex) when (ex.Message == DomainErrors.AccountDeleted)
             {
                 return TypedResults.Problem(
-                    detail: "This account has been deleted.",
+                    detail: DomainErrors.AccountDeleted,
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Account Deleted");
             }
@@ -191,7 +191,7 @@ public static class IssueEndpoints
             {
                 return error switch
                 {
-                    "Issue not found" => TypedResults.NotFound(),
+                    DomainErrors.IssueNotFound => TypedResults.NotFound(),
                     IssueService.RateLimitedError => TypedResults.StatusCode(429),
                     _ => TypedResults.BadRequest(error)
                 };
@@ -288,9 +288,9 @@ public static class IssueEndpoints
             {
                 return error switch
                 {
-                    "Issue not found" => TypedResults.NotFound(),
-                    "This account has been deleted." => TypedResults.Problem(
-                        detail: "This account has been deleted.",
+                    DomainErrors.IssueNotFound => TypedResults.NotFound(),
+                    DomainErrors.AccountDeleted => TypedResults.Problem(
+                        detail: DomainErrors.AccountDeleted,
                         statusCode: StatusCodes.Status403Forbidden,
                         title: "Account Deleted"),
                     _ => TypedResults.BadRequest(error)
@@ -327,9 +327,9 @@ public static class IssueEndpoints
             {
                 return error switch
                 {
-                    "Issue not found" => TypedResults.NotFound(),
-                    "This account has been deleted." => TypedResults.Problem(
-                        detail: "This account has been deleted.",
+                    DomainErrors.IssueNotFound => TypedResults.NotFound(),
+                    DomainErrors.AccountDeleted => TypedResults.Problem(
+                        detail: DomainErrors.AccountDeleted,
                         statusCode: StatusCodes.Status403Forbidden,
                         title: "Account Deleted"),
                     _ => TypedResults.BadRequest(error)

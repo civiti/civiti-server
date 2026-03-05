@@ -83,7 +83,7 @@ public static class AdminEndpoints
         {
             AdminIssueDetailResponse? issue = await adminService.GetIssueDetailsForAdminAsync(id);
             return issue == null 
-                ? Results.NotFound(new { message = "Issue not found" })
+                ? Results.NotFound(new { message = DomainErrors.IssueNotFound })
                 : Results.Ok(issue);
         })
         .WithName("GetIssueDetailsForAdmin")

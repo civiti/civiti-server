@@ -1,4 +1,6 @@
+using System.Security.Cryptography;
 using Civiti.Api.Data;
+using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Infrastructure.Extensions;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Auth;
@@ -37,7 +39,7 @@ public class UserService(
                 return new UserGamificationResponse();
             }
             if (user.IsDeleted)
-                throw new InvalidOperationException("This account has been deleted.");
+                throw new InvalidOperationException(DomainErrors.AccountDeleted);
 
             // Get recent badges
             List<BadgeResponse> recentBadges = await gamificationService.GetUserBadgesAsync(user.Id);
@@ -154,7 +156,7 @@ public class UserService(
         if (wasDeleted)
         {
             logger.LogWarning("Blocked profile re-creation for deleted user {SupabaseUserId}", supabaseUserId);
-            throw new InvalidOperationException("This account has been deleted.");
+            throw new InvalidOperationException(DomainErrors.AccountDeleted);
         }
 
         // Profile doesn't exist - attempt to create it
@@ -204,7 +206,7 @@ public class UserService(
                 .IgnoreQueryFilters()
                 .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
             if (deletedDuringRace)
-                throw new InvalidOperationException("This account has been deleted.");
+                throw new InvalidOperationException(DomainErrors.AccountDeleted);
 
             logger.LogInformation(
                 "Profile creation conflict for {SupabaseUserId}, fetching existing profile (likely concurrent creation)",
@@ -329,7 +331,7 @@ public class UserService(
             if (existingUser is { IsDeleted: true })
             {
                 logger.LogWarning("Blocked profile re-creation for deleted user {SupabaseUserId}", supabaseUserId);
-                throw new InvalidOperationException("This account has been deleted.");
+                throw new InvalidOperationException(DomainErrors.AccountDeleted);
             }
 
             if (existingUser != null)
@@ -412,10 +414,10 @@ public class UserService(
             if (user == null)
             {
                 logger.LogWarning("User not found for Supabase ID: {SupabaseUserId}", supabaseUserId);
-                throw new InvalidOperationException("User not found");
+                throw new InvalidOperationException(DomainErrors.UserNotFound);
             }
             if (user.IsDeleted)
-                throw new InvalidOperationException("This account has been deleted.");
+                throw new InvalidOperationException(DomainErrors.AccountDeleted);
 
             // Update only provided fields
             if (!string.IsNullOrWhiteSpace(request.DisplayName))
@@ -590,7 +592,8 @@ public class UserService(
             // 1. Anonymize PII and soft-delete locally FIRST so the DB is always consistent.
             //    Keep the original SupabaseUserId so the global query filter + the
             //    IgnoreQueryFilters guard in GetOrCreateUserProfileAsync blocks re-creation.
-            user.Email = $"deleted_{user.Id}@civica.ro";
+            var opaqueId = Convert.ToHexString(SHA256.HashData(user.Id.ToByteArray()))[..16].ToLowerInvariant();
+            user.Email = $"deleted_{opaqueId}@civica.ro";
             user.DisplayName = "Deleted User";
             user.PhotoUrl = null;
             user.Phone = null;

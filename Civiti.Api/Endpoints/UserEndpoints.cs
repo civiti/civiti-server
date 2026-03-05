@@ -58,10 +58,10 @@ public static class UserEndpoints
                     supabaseUserId, email, displayName, photoUrl, signupMetadata);
                 return Results.Ok(profile);
             }
-            catch (InvalidOperationException ex) when (ex.Message == "This account has been deleted.")
+            catch (InvalidOperationException ex) when (ex.Message == DomainErrors.AccountDeleted)
             {
                 return Results.Problem(
-                    detail: "This account has been deleted.",
+                    detail: DomainErrors.AccountDeleted,
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Account Deleted");
             }
@@ -119,7 +119,7 @@ public static class UserEndpoints
                         UserProfileResponse updatedProfile = await userService.UpdateUserProfileAsync(supabaseUserId, request.ToUpdateRequest());
                         return Results.Ok(updatedProfile);
                     }
-                    catch (InvalidOperationException ex) when (ex.Message == "User not found")
+                    catch (InvalidOperationException ex) when (ex.Message == DomainErrors.UserNotFound)
                     {
                         // Profile was deleted between get and update - very rare edge case
                         return Results.NotFound(new { error = "User profile not found" });
@@ -127,14 +127,14 @@ public static class UserEndpoints
                 }
                 throw; // Re-throw if profile still doesn't exist (genuine DB error)
             }
-            catch (InvalidOperationException ex) when (ex.Message == "This account has been deleted.")
+            catch (InvalidOperationException ex) when (ex.Message == DomainErrors.AccountDeleted)
             {
                 return Results.Problem(
-                    detail: "This account has been deleted.",
+                    detail: DomainErrors.AccountDeleted,
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Account Deleted");
             }
-            catch (InvalidOperationException ex) when (ex.Message == "User not found")
+            catch (InvalidOperationException ex) when (ex.Message == DomainErrors.UserNotFound)
             {
                 // Profile was deleted between existence check and update
                 return Results.NotFound(new { error = "User profile not found" });
@@ -171,10 +171,10 @@ public static class UserEndpoints
                 UserProfileResponse updatedProfile = await userService.UpdateUserProfileAsync(supabaseUserId, request);
                 return Results.Ok(updatedProfile);
             }
-            catch (InvalidOperationException ex) when (ex.Message == "This account has been deleted.")
+            catch (InvalidOperationException ex) when (ex.Message == DomainErrors.AccountDeleted)
             {
                 return Results.Problem(
-                    detail: "This account has been deleted.",
+                    detail: DomainErrors.AccountDeleted,
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Account Deleted");
             }
@@ -207,10 +207,10 @@ public static class UserEndpoints
                 UserGamificationResponse gamification = await userService.GetUserGamificationAsync(supabaseUserId);
                 return Results.Ok(gamification);
             }
-            catch (InvalidOperationException ex) when (ex.Message == "This account has been deleted.")
+            catch (InvalidOperationException ex) when (ex.Message == DomainErrors.AccountDeleted)
             {
                 return Results.Problem(
-                    detail: "This account has been deleted.",
+                    detail: DomainErrors.AccountDeleted,
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Account Deleted");
             }
@@ -221,9 +221,9 @@ public static class UserEndpoints
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden);
 
-        // DELETE /api/user/account
+        // DELETE /api/user/account?confirmation=DELETE
         group.MapDelete(ApiRoutes.User.Account, async (
-            DeleteAccountRequest request,
+            string? confirmation,
             HttpContext context,
             IUserService userService) =>
         {
@@ -233,23 +233,16 @@ public static class UserEndpoints
                 return Results.Unauthorized();
             }
 
-            if (!string.Equals(request.Confirmation, "DELETE", StringComparison.Ordinal))
+            if (!string.Equals(confirmation, "DELETE", StringComparison.Ordinal))
             {
-                return Results.BadRequest(new { error = "Confirmation must be exactly \"DELETE\" to proceed." });
+                return Results.BadRequest(new { error = "Query parameter 'confirmation' must be exactly \"DELETE\" to proceed." });
             }
 
             try
             {
                 var deleted = await userService.DeleteUserAsync(supabaseUserId);
 
-                return !deleted ? Results.NotFound(new { error = "User not found" }) : Results.NoContent();
-            }
-            catch (InvalidOperationException ex) when (ex.Message == "This account has been deleted.")
-            {
-                return Results.Problem(
-                    detail: "This account has been deleted.",
-                    statusCode: StatusCodes.Status403Forbidden,
-                    title: "Account Deleted");
+                return !deleted ? Results.NotFound(new { error = DomainErrors.UserNotFound }) : Results.NoContent();
             }
             catch (InvalidOperationException ex)
             {
@@ -261,11 +254,10 @@ public static class UserEndpoints
         })
         .WithName("DeleteUserAccount")
         .WithSummary("Delete user account (soft delete)")
-        .WithDescription("Permanently soft-deletes the authenticated user's account. Requires a confirmation body with {\"confirmation\": \"DELETE\"}. All personal data is anonymized and the Supabase Auth account is removed (best-effort). The user's issues and comments are preserved with author shown as 'Deleted User'. This action cannot be undone.")
+        .WithDescription("Permanently soft-deletes the authenticated user's account. Requires a query parameter confirmation=DELETE. All personal data is anonymized and the Supabase Auth account is removed (best-effort). The user's issues and comments are preserved with author shown as 'Deleted User'. This action cannot be undone.")
         .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status500InternalServerError);
 
@@ -308,10 +300,10 @@ public static class UserEndpoints
                 PagedResult<IssueListResponse> issues = await issueService.GetUserIssuesAsync(supabaseUserId, request);
                 return Results.Ok(issues);
             }
-            catch (InvalidOperationException ex) when (ex.Message == "This account has been deleted.")
+            catch (InvalidOperationException ex) when (ex.Message == DomainErrors.AccountDeleted)
             {
                 return Results.Problem(
-                    detail: "This account has been deleted.",
+                    detail: DomainErrors.AccountDeleted,
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Account Deleted");
             }
@@ -368,11 +360,11 @@ public static class UserEndpoints
             {
                 return error switch
                 {
-                    "This account has been deleted." => Results.Problem(
-                        detail: "This account has been deleted.",
+                    DomainErrors.AccountDeleted => Results.Problem(
+                        detail: DomainErrors.AccountDeleted,
                         statusCode: StatusCodes.Status403Forbidden,
                         title: "Account Deleted"),
-                    "Issue not found" => Results.NotFound(new { error }),
+                    DomainErrors.IssueNotFound => Results.NotFound(new { error }),
                     "User profile not found" => Results.NotFound(new { error }),
                     "You can only change status of your own issues" => Results.Forbid(),
                     _ => Results.BadRequest(new { error })
@@ -409,11 +401,11 @@ public static class UserEndpoints
             {
                 return error switch
                 {
-                    "This account has been deleted." => Results.Problem(
-                        detail: "This account has been deleted.",
+                    DomainErrors.AccountDeleted => Results.Problem(
+                        detail: DomainErrors.AccountDeleted,
                         statusCode: StatusCodes.Status403Forbidden,
                         title: "Account Deleted"),
-                    "Issue not found" => Results.NotFound(new { error }),
+                    DomainErrors.IssueNotFound => Results.NotFound(new { error }),
                     "User profile not found" => Results.NotFound(new { error }),
                     "You can only edit your own issues" => Results.Forbid(),
                     _ => Results.BadRequest(new { error })

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Civiti.Api.Data;
+using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Issues;
 using Civiti.Api.Models.Responses.Authority;
@@ -299,7 +300,7 @@ public class IssueService(
             if (userProfile == null)
                 throw new InvalidOperationException("User profile not found");
             if (userProfile.IsDeleted)
-                throw new InvalidOperationException("This account has been deleted.");
+                throw new InvalidOperationException(DomainErrors.AccountDeleted);
 
             // Create the issue
             Issue issue = new()
@@ -521,7 +522,7 @@ public class IssueService(
             if (issueStatus == null)
             {
                 logger.LogWarning("Issue {IssueId} not found", issueId);
-                return (false, "Issue not found");
+                return (false, DomainErrors.IssueNotFound);
             }
 
             // Only allow incrementing for active issues
@@ -615,7 +616,7 @@ public class IssueService(
 
             if (userProfile.IsDeleted)
             {
-                throw new InvalidOperationException("This account has been deleted.");
+                throw new InvalidOperationException(DomainErrors.AccountDeleted);
             }
 
             IQueryable<Issue> query = context.Issues
@@ -716,7 +717,7 @@ public class IssueService(
                 if (userProfile == null)
                     return (false, "User profile not found");
                 if (userProfile.IsDeleted)
-                    return (false, "This account has been deleted.");
+                    return (false, DomainErrors.AccountDeleted);
 
                 // Get the issue
                 Issue? issue = await context.Issues
@@ -724,7 +725,7 @@ public class IssueService(
 
                 if (issue == null)
                 {
-                    return (false, "Issue not found");
+                    return (false, DomainErrors.IssueNotFound);
                 }
 
                 // Check ownership (admins can bypass)
@@ -897,7 +898,7 @@ public class IssueService(
                 if (userProfile == null)
                     return (false, null, "User profile not found");
                 if (userProfile.IsDeleted)
-                    return (false, null, "This account has been deleted.");
+                    return (false, null, DomainErrors.AccountDeleted);
 
                 // Get the issue with related data
                 Issue? issue = await context.Issues
@@ -907,7 +908,7 @@ public class IssueService(
 
                 if (issue == null)
                 {
-                    return (false, null, "Issue not found");
+                    return (false, null, DomainErrors.IssueNotFound);
                 }
 
                 // Check ownership
@@ -1166,16 +1167,16 @@ public class IssueService(
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
-                return (false, "User not found");
+                return (false, DomainErrors.UserNotFound);
             if (user.IsDeleted)
-                return (false, "This account has been deleted.");
+                return (false, DomainErrors.AccountDeleted);
 
             Issue? issue = await context.Issues
                 .FirstOrDefaultAsync(i => i.Id == issueId);
 
             if (issue == null)
             {
-                return (false, "Issue not found");
+                return (false, DomainErrors.IssueNotFound);
             }
 
             // Can only vote on active issues
@@ -1341,16 +1342,16 @@ public class IssueService(
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
             if (user == null)
-                return (false, "User not found");
+                return (false, DomainErrors.UserNotFound);
             if (user.IsDeleted)
-                return (false, "This account has been deleted.");
+                return (false, DomainErrors.AccountDeleted);
 
             Issue? issue = await context.Issues
                 .FirstOrDefaultAsync(i => i.Id == issueId);
 
             if (issue == null)
             {
-                return (false, "Issue not found");
+                return (false, DomainErrors.IssueNotFound);
             }
 
             // Check if vote exists (for user-friendly error message)
