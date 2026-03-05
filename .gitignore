@@ -25,3 +25,6 @@ riderModule.iml
 
 # Development settings with secrets
 **/appsettings.Development.json
+
+# Claude Code local settings
+.claude/settings.local.json

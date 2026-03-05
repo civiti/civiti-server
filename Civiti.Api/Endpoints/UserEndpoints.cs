@@ -296,6 +296,13 @@ public static class UserEndpoints
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Account Deleted");
             }
+            catch (InvalidOperationException ex) when (ex.Message == "User profile not found.")
+            {
+                return Results.Problem(
+                    detail: "User profile not found.",
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "Profile Not Found");
+            }
         })
         .WithName("GetUserIssues")
         .WithSummary("Get issues created by the authenticated user")

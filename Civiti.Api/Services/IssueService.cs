@@ -607,19 +607,15 @@ public class IssueService(
                 .IgnoreQueryFilters()
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
-            if (userProfile == null || userProfile.IsDeleted)
+            if (userProfile == null)
             {
-                if (userProfile?.IsDeleted == true)
-                    throw new InvalidOperationException("This account has been deleted.");
+                logger.LogWarning("User profile not found for Supabase user: {SupabaseUserId}", supabaseUserId);
+                throw new InvalidOperationException("User profile not found.");
+            }
 
-                return new PagedResult<IssueListResponse>
-                {
-                    Items = [],
-                    TotalItems = 0,
-                    Page = request.Page,
-                    PageSize = request.PageSize,
-                    TotalPages = 0
-                };
+            if (userProfile.IsDeleted)
+            {
+                throw new InvalidOperationException("This account has been deleted.");
             }
 
             IQueryable<Issue> query = context.Issues

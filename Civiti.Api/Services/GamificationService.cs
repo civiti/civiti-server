@@ -231,6 +231,23 @@ public class GamificationService(
     {
         try
         {
+            // Guard: skip for soft-deleted users
+            UserProfile? user = await context.UserProfiles
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user == null)
+            {
+                logger.LogWarning("User not found for achievement check: {UserId}", userId);
+                return;
+            }
+
+            if (user.IsDeleted)
+            {
+                logger.LogDebug("Skipping achievement check for soft-deleted user: {UserId}", userId);
+                return;
+            }
+
             // Get achievements from database
             List<UserAchievement> userAchievements = await context.UserAchievements
                 .Include(ua => ua.Achievement)
