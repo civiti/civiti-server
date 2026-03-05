@@ -233,11 +233,6 @@ public static class UserEndpoints
                 return Results.Unauthorized();
             }
 
-            if (!string.Equals(request.Confirmation, "DELETE", StringComparison.Ordinal))
-            {
-                return Results.BadRequest(new { error = "Body field 'confirmation' must be exactly \"DELETE\" to proceed." });
-            }
-
             try
             {
                 var deleted = await userService.DeleteUserAsync(supabaseUserId);
@@ -255,6 +250,8 @@ public static class UserEndpoints
         .WithName("DeleteUserAccount")
         .WithSummary("Delete user account (soft delete)")
         .WithDescription("Permanently soft-deletes the authenticated user's account. Requires a JSON body with confirmation=\"DELETE\". All personal data is anonymized and the Supabase Auth account is removed (best-effort). The user's issues and comments are preserved with author shown as 'Deleted User'. This action cannot be undone.")
+        .AddEndpointFilter<ValidationFilter<DeleteAccountRequest>>()
+        .DisableValidation()
         .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)

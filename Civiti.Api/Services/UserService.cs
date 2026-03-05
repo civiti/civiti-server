@@ -147,11 +147,12 @@ public class UserService(
             return existingProfile;
         }
 
-        // Block re-creation of soft-deleted accounts (bypasses the global query filter).
-        // This is NOT dead code — it guards against a race condition where another thread
-        // could create and soft-delete a profile between the GetUserProfileAsync call above
-        // (which uses the global filter and won't see deleted rows) and the INSERT below.
-        // Without this check, a deleted user could re-register and bypass the soft-delete.
+        // Block re-creation of soft-deleted accounts.
+        // GetUserProfileAsync (above) already uses IgnoreQueryFilters and throws
+        // AccountDeleted for deleted rows — so if we reach here, the user truly didn't
+        // exist at that point. However, a TOCTOU race is possible: another request could
+        // create and soft-delete a profile between the null return above and the INSERT
+        // below. This explicit check with IgnoreQueryFilters closes that window.
         bool wasDeleted = await context.UserProfiles
             .IgnoreQueryFilters()
             .AnyAsync(u => u.SupabaseUserId == supabaseUserId && u.IsDeleted);
