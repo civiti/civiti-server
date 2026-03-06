@@ -582,6 +582,13 @@ public class UserService(
 
             await strategy.ExecuteAsync(async () =>
             {
+                // Reset closure state on each retry to prevent stale flags from a
+                // previous attempt (e.g. SaveChangesAsync succeeded but a later
+                // transient failure triggered a retry — without reset the retry
+                // would see IsDeleted = true and incorrectly return AlreadyDeleted).
+                alreadyDeleted = false;
+                deletedUserId = null;
+
                 // Clear change tracker to ensure fresh data on retry
                 context.ChangeTracker.Clear();
 

@@ -487,6 +487,11 @@ public class IssueService(
                 CreatedAt = issue.CreatedAt
             };
         }
+            catch (AccountDeletedException)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
             catch (InvalidOperationException)
             {
                 await transaction.RollbackAsync();
