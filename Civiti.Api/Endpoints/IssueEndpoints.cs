@@ -94,8 +94,15 @@ public static class IssueEndpoints
             var supabaseUserId = httpContext.User.GetSupabaseUserId();
             if (!string.IsNullOrEmpty(supabaseUserId))
             {
-                UserProfileResponse? userProfile = await userService.GetUserProfileAsync(supabaseUserId);
-                currentUserId = userProfile?.Id;
+                try
+                {
+                    UserProfileResponse? userProfile = await userService.GetUserProfileAsync(supabaseUserId);
+                    currentUserId = userProfile?.Id;
+                }
+                catch (AccountDeletedException)
+                {
+                    // Deleted user with a still-valid JWT — treat as unauthenticated
+                }
             }
 
             PagedResult<IssueListResponse> result = await issueService.GetAllIssuesAsync(request, currentUserId);
@@ -118,8 +125,15 @@ public static class IssueEndpoints
             var supabaseUserId = httpContext.User.GetSupabaseUserId();
             if (!string.IsNullOrEmpty(supabaseUserId))
             {
-                UserProfileResponse? userProfile = await userService.GetUserProfileAsync(supabaseUserId);
-                currentUserId = userProfile?.Id;
+                try
+                {
+                    UserProfileResponse? userProfile = await userService.GetUserProfileAsync(supabaseUserId);
+                    currentUserId = userProfile?.Id;
+                }
+                catch (AccountDeletedException)
+                {
+                    // Deleted user with a still-valid JWT — treat as unauthenticated
+                }
             }
 
             IssueDetailResponse? issue = await issueService.GetIssueByIdAsync(id, currentUserId);
