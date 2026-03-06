@@ -112,19 +112,26 @@ public static class UserEndpoints
             {
                 // Handle race condition: another request may have created the profile concurrently
                 // Retry getting the profile and update it
-                UserProfileResponse? concurrentProfile = await userService.GetUserProfileAsync(supabaseUserId);
-                if (concurrentProfile != null)
+                try
                 {
-                    try
+                    UserProfileResponse? concurrentProfile = await userService.GetUserProfileAsync(supabaseUserId);
+                    if (concurrentProfile != null)
                     {
                         UserProfileResponse updatedProfile = await userService.UpdateUserProfileAsync(supabaseUserId, request.ToUpdateRequest());
                         return Results.Ok(updatedProfile);
                     }
-                    catch (InvalidOperationException ex) when (ex.Message == DomainErrors.UserNotFound)
-                    {
-                        // Profile was deleted between get and update - very rare edge case
-                        return Results.NotFound(new { error = "User profile not found" });
-                    }
+                }
+                catch (AccountDeletedException)
+                {
+                    return Results.Problem(
+                        detail: DomainErrors.AccountDeleted,
+                        statusCode: StatusCodes.Status403Forbidden,
+                        title: "Account Deleted");
+                }
+                catch (InvalidOperationException ex) when (ex.Message == DomainErrors.UserNotFound)
+                {
+                    // Profile was deleted between get and update - very rare edge case
+                    return Results.NotFound(new { error = "User profile not found" });
                 }
                 throw; // Re-throw if profile still doesn't exist (genuine DB error)
             }

@@ -573,67 +573,90 @@ public class UserService(
     {
         try
         {
-            UserProfile? user = await context.UserProfiles
-                .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+            // Use execution strategy to handle transient failures during PII scrub.
+            // Re-fetch user inside callback to ensure fresh data on retry.
+            IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
-            if (user == null)
+            bool alreadyDeleted = false;
+            Guid? deletedUserId = null;
+
+            await strategy.ExecuteAsync(async () =>
             {
-                logger.LogWarning("User not found for deletion: {SupabaseUserId}", supabaseUserId);
+                // Clear change tracker to ensure fresh data on retry
+                context.ChangeTracker.Clear();
+
+                UserProfile? user = await context.UserProfiles
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+
+                if (user == null)
+                {
+                    logger.LogWarning("User not found for deletion: {SupabaseUserId}", supabaseUserId);
+                    return;
+                }
+
+                // Already soft-deleted locally — skip DB work, just flag for Supabase retry.
+                if (user.IsDeleted)
+                {
+                    alreadyDeleted = true;
+                    return;
+                }
+
+                // 1. Anonymize PII and soft-delete locally FIRST so the DB is always consistent.
+                //    Keep the original SupabaseUserId so the global query filter + the
+                //    IgnoreQueryFilters guard in GetOrCreateUserProfileAsync blocks re-creation.
+                var opaqueId = Convert.ToHexString(SHA256.HashData(user.Id.ToByteArray()))[..32].ToLowerInvariant();
+                user.Email = $"deleted_{opaqueId}@civica.ro";
+                user.DisplayName = "Deleted User";
+                user.PhotoUrl = null;
+                user.Phone = null;
+                user.County = "Unknown";
+                user.City = "Unknown";
+                user.District = "Unknown";
+                user.ResidenceType = null;
+                // SupabaseUserId intentionally preserved for deleted-user lookup
+
+                // Disable all notification preferences
+                user.IssueUpdatesEnabled = false;
+                user.CommunityNewsEnabled = false;
+                user.MonthlyDigestEnabled = false;
+                user.AchievementsEnabled = false;
+
+                // Mark as deleted
+                user.IsDeleted = true;
+                user.DeletedAt = DateTime.UtcNow;
+                user.UpdatedAt = DateTime.UtcNow;
+
+                await context.SaveChangesAsync();
+                deletedUserId = user.Id;
+            });
+
+            // User was not found in the database
+            if (deletedUserId == null && !alreadyDeleted)
                 return false;
-            }
 
-            // Already soft-deleted locally — retry Supabase auth revocation in case
-            // the previous attempt failed after the local soft-delete committed.
-            if (user.IsDeleted)
-            {
-                var retryResult = await supabaseService.DeleteAuthUserAsync(supabaseUserId);
-                logger.LogInformation(
-                    "Retried Supabase auth cleanup for previously-deleted user {SupabaseUserId}: auth {AuthResult}",
-                    supabaseUserId, retryResult ? "revoked" : "still pending");
-                return true; // Local deletion already complete
-            }
-
-            // 1. Anonymize PII and soft-delete locally FIRST so the DB is always consistent.
-            //    Keep the original SupabaseUserId so the global query filter + the
-            //    IgnoreQueryFilters guard in GetOrCreateUserProfileAsync blocks re-creation.
-            var opaqueId = Convert.ToHexString(SHA256.HashData(user.Id.ToByteArray()))[..32].ToLowerInvariant();
-            user.Email = $"deleted_{opaqueId}@civica.ro";
-            user.DisplayName = "Deleted User";
-            user.PhotoUrl = null;
-            user.Phone = null;
-            user.County = "Unknown";
-            user.City = "Unknown";
-            user.District = "Unknown";
-            user.ResidenceType = null;
-            // SupabaseUserId intentionally preserved for deleted-user lookup
-
-            // Disable all notification preferences
-            user.IssueUpdatesEnabled = false;
-            user.CommunityNewsEnabled = false;
-            user.MonthlyDigestEnabled = false;
-            user.AchievementsEnabled = false;
-
-            // Mark as deleted
-            user.IsDeleted = true;
-            user.DeletedAt = DateTime.UtcNow;
-            user.UpdatedAt = DateTime.UtcNow;
-
-            await context.SaveChangesAsync();
-
-            // 2. Revoke Supabase auth AFTER the local save succeeds.
+            // 2. Revoke Supabase auth AFTER the local save succeeds (or was already done).
             //    If this fails, PII is already scrubbed and the soft-delete flag
             //    prevents profile re-creation. The stale auth can be cleaned up later.
             var supabaseDeleted = await supabaseService.DeleteAuthUserAsync(supabaseUserId);
-            if (!supabaseDeleted)
+            if (alreadyDeleted)
             {
-                logger.LogWarning(
-                    "Supabase auth deletion failed for user {UserId} after local soft-delete. " +
-                    "Auth record requires manual cleanup.", user.Id);
+                logger.LogInformation(
+                    "Retried Supabase auth cleanup for previously-deleted user {SupabaseUserId}: auth {AuthResult}",
+                    supabaseUserId, supabaseDeleted ? "revoked" : "still pending");
             }
+            else
+            {
+                if (!supabaseDeleted)
+                {
+                    logger.LogWarning(
+                        "Supabase auth deletion failed for user {UserId} after local soft-delete. " +
+                        "Auth record requires manual cleanup.", deletedUserId);
+                }
 
-            logger.LogInformation("Soft deleted user {UserId} (Supabase auth removed: {SupabaseDeleted})",
-                user.Id, supabaseDeleted);
+                logger.LogInformation("Soft deleted user {UserId} (Supabase auth removed: {SupabaseDeleted})",
+                    deletedUserId, supabaseDeleted);
+            }
             return true;
         }
         catch (Exception ex)
