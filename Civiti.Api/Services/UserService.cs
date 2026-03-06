@@ -226,7 +226,7 @@ public class UserService(
             logger.LogError(ex, "Database error in GetOrCreateUserProfileAsync for Supabase ID: {SupabaseUserId}", supabaseUserId);
             throw new InvalidOperationException($"Failed to get or create user profile for Supabase ID: {supabaseUserId}", ex);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not AccountDeletedException)
         {
             logger.LogError(ex, "Error in GetOrCreateUserProfileAsync for Supabase ID: {SupabaseUserId}", supabaseUserId);
             throw new InvalidOperationException($"Failed to get or create user profile for Supabase ID: {supabaseUserId}", ex);
