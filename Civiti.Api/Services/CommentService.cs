@@ -674,10 +674,20 @@ public class CommentService(
             // we can detect our already-created vote by this ID
             Guid voteId = Guid.NewGuid();
 
-            var votedByThisRequest = await strategy.ExecuteAsync(async () =>
+            var result = await strategy.ExecuteAsync(async () =>
             {
                 // Clear change tracker to ensure clean state on retry
                 context.ChangeTracker.Clear();
+
+                // Re-check IsDeleted inside the retry loop to close the TOCTOU window:
+                // a concurrent soft-delete between the pre-validation above and the INSERT
+                // would otherwise create an orphaned CommentVotes row.
+                bool isDeleted = await context.UserProfiles
+                    .IgnoreQueryFilters()
+                    .Where(u => u.Id == user.Id && u.IsDeleted)
+                    .AnyAsync();
+                if (isDeleted)
+                    return (voted: false, deleted: true);
 
                 // Check if this vote was already created in a previous retry attempt
                 CommentVote? existingVote = await context.CommentVotes
@@ -686,7 +696,7 @@ public class CommentService(
                 if (existingVote != null)
                 {
                     // Vote was created on a previous attempt - treat as success
-                    return true;
+                    return (voted: true, deleted: false);
                 }
 
                 await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
@@ -724,10 +734,13 @@ public class CommentService(
                     "helpful_vote_received");
 
                 await transaction.CommitAsync();
-                return true;
+                return (voted: true, deleted: false);
             });
 
-            if (votedByThisRequest)
+            if (result.deleted)
+                return (false, DomainErrors.AccountDeleted);
+
+            if (result.voted)
             {
                 logger.LogInformation(
                     "User {UserId} voted comment {CommentId} as helpful",
@@ -784,10 +797,18 @@ public class CommentService(
             // Use execution strategy to wrap the transaction
             IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
-            var removedByThisRequest = await strategy.ExecuteAsync(async () =>
+            var removeResult = await strategy.ExecuteAsync(async () =>
             {
                 // Clear change tracker to ensure clean state on retry
                 context.ChangeTracker.Clear();
+
+                // Re-check IsDeleted inside the retry loop to close the TOCTOU window
+                bool isDeleted = await context.UserProfiles
+                    .IgnoreQueryFilters()
+                    .Where(u => u.Id == user.Id && u.IsDeleted)
+                    .AnyAsync();
+                if (isDeleted)
+                    return (removed: false, deleted: true);
 
                 await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
@@ -800,7 +821,7 @@ public class CommentService(
                 if (rowsDeleted == 0)
                 {
                     await transaction.RollbackAsync();
-                    return false; // Idempotent success
+                    return (removed: false, deleted: false); // Idempotent success
                 }
 
                 // Use atomic database operations to prevent race conditions on helpful counts
@@ -822,10 +843,13 @@ public class CommentService(
                     "helpful_vote_removed");
 
                 await transaction.CommitAsync();
-                return true;
+                return (removed: true, deleted: false);
             });
 
-            if (removedByThisRequest)
+            if (removeResult.deleted)
+                return (false, DomainErrors.AccountDeleted);
+
+            if (removeResult.removed)
             {
                 logger.LogInformation(
                     "User {UserId} removed vote from comment {CommentId}, deducted {Points} points from author {AuthorId}",
