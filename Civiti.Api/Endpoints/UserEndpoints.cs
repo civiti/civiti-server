@@ -12,6 +12,7 @@ using Civiti.Api.Models.Responses.Issues;
 using Civiti.Api.Models.Responses.User;
 using Civiti.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Civiti.Api.Endpoints;
 
@@ -238,13 +239,27 @@ public static class UserEndpoints
         group.MapPost(ApiRoutes.User.AccountDelete, async (
             DeleteAccountRequest request,
             HttpContext context,
-            IUserService userService) =>
+            IUserService userService,
+            IMemoryCache memoryCache) =>
         {
             var supabaseUserId = context.User.GetSupabaseUserId();
             if (string.IsNullOrEmpty(supabaseUserId))
             {
                 return Results.Unauthorized();
             }
+
+            // Rate limit: max 3 attempts per hour per user to throttle abuse from stolen JWTs
+            string cacheKey = $"delete-cooldown:{supabaseUserId}";
+            int attempts = memoryCache.GetOrCreate(cacheKey, entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1);
+                return 0;
+            });
+            if (attempts >= 3)
+            {
+                return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            }
+            memoryCache.Set(cacheKey, attempts + 1, TimeSpan.FromHours(1));
 
             try
             {
@@ -268,13 +283,72 @@ public static class UserEndpoints
         })
         .WithName("DeleteUserAccount")
         .WithSummary("Delete user account (soft delete)")
-        .WithDescription("Permanently soft-deletes the authenticated user's account. Requires a JSON body with confirmation=\"DELETE\". All personal data is anonymized and the Supabase Auth account is removed (best-effort). The user's issues and comments are preserved with author shown as 'Deleted User'. This action cannot be undone.")
+        .WithDescription("Permanently soft-deletes the authenticated user's account. Requires a JSON body with confirmation=\"DELETE\". All personal data is anonymized and the Supabase Auth account is removed (best-effort). The user's issues and comments are preserved with author shown as 'Deleted User'. This action cannot be undone. Rate limited to 3 attempts per hour.")
         .AddEndpointFilter<ValidationFilter<DeleteAccountRequest>>()
         .DisableValidation()
         .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status429TooManyRequests)
+        .Produces(StatusCodes.Status500InternalServerError);
+
+        // DELETE /api/user/account (deprecated — use POST /api/user/account/delete)
+        group.MapDelete(ApiRoutes.User.Account, async (
+            DeleteAccountRequest request,
+            HttpContext context,
+            IUserService userService,
+            IMemoryCache memoryCache) =>
+        {
+            var supabaseUserId = context.User.GetSupabaseUserId();
+            if (string.IsNullOrEmpty(supabaseUserId))
+            {
+                return Results.Unauthorized();
+            }
+
+            // Rate limit: shares cooldown with POST endpoint
+            string cacheKey = $"delete-cooldown:{supabaseUserId}";
+            int attempts = memoryCache.GetOrCreate(cacheKey, entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1);
+                return 0;
+            });
+            if (attempts >= 3)
+            {
+                return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            }
+            memoryCache.Set(cacheKey, attempts + 1, TimeSpan.FromHours(1));
+
+            try
+            {
+                var result = await userService.DeleteUserAsync(supabaseUserId);
+
+                return result switch
+                {
+                    DeleteUserResult.NotFound => Results.NotFound(new { error = DomainErrors.UserNotFound }),
+                    DeleteUserResult.Deleted => Results.NoContent(),
+                    DeleteUserResult.AlreadyDeleted => Results.NoContent(),
+                    _ => Results.NoContent()
+                };
+            }
+            catch (InvalidOperationException)
+            {
+                return Results.Problem(
+                    detail: "An error occurred while deleting the account. Please try again later.",
+                    statusCode: StatusCodes.Status500InternalServerError,
+                    title: "Delete Failed");
+            }
+        })
+        .WithName("DeleteUserAccountLegacy")
+        .WithSummary("[Deprecated] Delete user account — use POST /account/delete instead")
+        .WithDescription("Deprecated: Use POST /api/user/account/delete instead. This endpoint will be removed in a future release. Rate limited to 3 attempts per hour (shared with POST endpoint).")
+        .AddEndpointFilter<ValidationFilter<DeleteAccountRequest>>()
+        .DisableValidation()
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status429TooManyRequests)
         .Produces(StatusCodes.Status500InternalServerError);
 
         // GET /api/user/issues

@@ -609,6 +609,10 @@ public class UserService(
                     return;
                 }
 
+                // Explicit transaction ensures all PII scrub fields are committed atomically.
+                // Without this, a failure mid-SaveChangesAsync could leave partial PII intact.
+                await using var transaction = await context.Database.BeginTransactionAsync();
+
                 // 1. Anonymize PII and soft-delete locally FIRST so the DB is always consistent.
                 //    Keep the original SupabaseUserId so the global query filter + the
                 //    IgnoreQueryFilters guard in GetOrCreateUserProfileAsync blocks re-creation.
@@ -635,6 +639,7 @@ public class UserService(
                 user.UpdatedAt = DateTime.UtcNow;
 
                 await context.SaveChangesAsync();
+                await transaction.CommitAsync();
                 deletedUserId = user.Id;
             });
 
