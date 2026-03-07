@@ -49,10 +49,8 @@ public class PushNotificationSenderBackgroundService(
                     }
                 }
 
-                // ReadAllAsync returned normally — the channel writer has completed.
-                // All messages have been processed; exit the loop.
-                if (channelReader.Completion.IsCompleted)
-                    break;
+                // ReadAllAsync returned normally — channel is complete, all messages processed.
+                break;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

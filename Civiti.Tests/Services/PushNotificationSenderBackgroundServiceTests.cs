@@ -85,7 +85,7 @@ public class PushNotificationSenderBackgroundServiceTests : IDisposable
         // resolves after all in-flight processing (including post-HTTP DB work)
         // finishes — no cancellation needed, no timing assumptions.
         if (service.ExecuteTask is not null)
-            await service.ExecuteTask;
+            await service.ExecuteTask.WaitAsync(TimeSpan.FromSeconds(5));
 
         return handler.CallCount;
     }
