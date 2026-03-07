@@ -154,10 +154,12 @@ public static class ClaimsPrincipalExtensions
             var communityNews = GetBoolProperty(metadata.RootElement, "community_news_enabled");
             var monthlyDigest = GetBoolProperty(metadata.RootElement, "monthly_digest_enabled");
             var achievements = GetBoolProperty(metadata.RootElement, "achievements_enabled");
+            var pushNotifications = GetBoolProperty(metadata.RootElement, "push_notifications_enabled");
 
             // Only return metadata if at least one signup field was present
             if (county is null && city is null && district is null && residenceType is null
-                && issueUpdates is null && communityNews is null && monthlyDigest is null && achievements is null)
+                && issueUpdates is null && communityNews is null && monthlyDigest is null && achievements is null
+                && pushNotifications is null)
                 return null;
 
             return new SignupMetadata
@@ -169,7 +171,8 @@ public static class ClaimsPrincipalExtensions
                 IssueUpdatesEnabled = issueUpdates,
                 CommunityNewsEnabled = communityNews,
                 MonthlyDigestEnabled = monthlyDigest,
-                AchievementsEnabled = achievements
+                AchievementsEnabled = achievements,
+                PushNotificationsEnabled = pushNotifications
             };
         }
         catch (JsonException)

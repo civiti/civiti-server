@@ -22,6 +22,7 @@ public class UserProfileResponse
     public bool CommunityNewsEnabled { get; set; }
     public bool MonthlyDigestEnabled { get; set; }
     public bool AchievementsEnabled { get; set; }
+    public bool PushNotificationsEnabled { get; set; }
     
     // Gamification data
     public UserGamificationResponse? Gamification { get; set; }

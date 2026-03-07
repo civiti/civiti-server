@@ -10,6 +10,7 @@ using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Infrastructure.Extensions;
 using Civiti.Api.Infrastructure.Middleware;
 using Civiti.Api.Models.Email;
+using Civiti.Api.Models.Push;
 using Civiti.Api.Services;
 using Civiti.Api.Services.Interfaces;
 using FluentValidation;
@@ -400,6 +401,35 @@ builder.Services.AddTransient<IEmailSenderService, EmailSenderService>();
 builder.Services.AddSingleton<IEmailTemplateService, EmailTemplateService>();
 builder.Services.AddHostedService<EmailSenderBackgroundService>();
 
+// Expo Push Notification Configuration
+ExpoPushConfiguration expoPushConfig = new()
+{
+    AccessToken = GetEnvOrConfig("EXPO_PUSH_ACCESS_TOKEN", "ExpoPush:AccessToken"),
+    ChannelCapacity = GetEnvOrConfigInt("EXPO_PUSH_CHANNEL_CAPACITY", "ExpoPush:ChannelCapacity", 10_000),
+    BatchSize = GetEnvOrConfigInt("EXPO_PUSH_BATCH_SIZE", "ExpoPush:BatchSize", 100)
+};
+if (expoPushConfig.BatchSize <= 0)
+    throw new InvalidOperationException($"ExpoPush:BatchSize must be > 0 (got {expoPushConfig.BatchSize}).");
+
+builder.Services.AddSingleton(expoPushConfig);
+
+if (!string.IsNullOrWhiteSpace(expoPushConfig.AccessToken))
+    Log.Information("Expo push configured with access token.");
+else
+    Log.Warning("Expo push access token not configured — operating in unauthenticated mode (low-volume only).");
+
+// Push notification channel (bounded, drop-write if full)
+Channel<PushNotificationMessage> pushChannel = Channel.CreateBounded<PushNotificationMessage>(
+    new BoundedChannelOptions(expoPushConfig.ChannelCapacity) { FullMode = BoundedChannelFullMode.DropWrite });
+builder.Services.AddSingleton(pushChannel.Reader);
+builder.Services.AddSingleton(pushChannel.Writer);
+
+builder.Services.AddHttpClient("ExpoPush", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+});
+builder.Services.AddHostedService<PushNotificationSenderBackgroundService>();
+
 // Custom services
 builder.Services.AddScoped<ISupabaseService, SupabaseService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -414,6 +444,7 @@ builder.Services.AddScoped<ICommentService, CommentService>();
 builder.Services.AddScoped<IContentModerationService, OpenAIModerationService>();
 builder.Services.AddScoped<IPosterService, PosterService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IPushTokenService, PushTokenService>();
 
 // Validators
 builder.Services.AddValidatorsFromAssemblyContaining<Civiti.Api.Program>();
@@ -484,6 +515,7 @@ app.MapJwksEndpoints(); // JWKS management and monitoring endpoints
 app.MapDevAuthEndpoints(); // Development-only endpoints for testing
 app.MapActivityEndpoints(); // Activity feed endpoints
 app.MapCommentEndpoints(); // Comment endpoints
+app.MapPushTokenEndpoints(); // Push notification token endpoints
 
 // Root endpoint redirects to Swagger UI
 app.MapGet("/", () => Results.Redirect("/swagger"))

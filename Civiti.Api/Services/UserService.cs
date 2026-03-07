@@ -83,6 +83,23 @@ public class UserService(
         };
     }
 
+    public async Task<Guid?> GetUserIdAsync(string supabaseUserId)
+    {
+        var user = await context.UserProfiles
+            .AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(u => u.SupabaseUserId == supabaseUserId)
+            .Select(u => new { u.Id, u.IsDeleted })
+            .FirstOrDefaultAsync();
+
+        if (user == null)
+            return null;
+        if (user.IsDeleted)
+            throw new AccountDeletedException();
+
+        return user.Id;
+    }
+
     public async Task<UserProfileResponse?> GetUserProfileAsync(string supabaseUserId)
     {
         try
@@ -120,6 +137,7 @@ public class UserService(
                 CommunityNewsEnabled = user.CommunityNewsEnabled,
                 MonthlyDigestEnabled = user.MonthlyDigestEnabled,
                 AchievementsEnabled = user.AchievementsEnabled,
+                PushNotificationsEnabled = user.PushNotificationsEnabled,
                 Points = user.Points,
                 Level = user.Level,
                 EmailVerified = user.EmailVerified,
@@ -183,6 +201,7 @@ public class UserService(
                 CommunityNewsEnabled = signupMetadata?.CommunityNewsEnabled ?? true,
                 MonthlyDigestEnabled = signupMetadata?.MonthlyDigestEnabled ?? false,
                 AchievementsEnabled = signupMetadata?.AchievementsEnabled ?? true,
+                PushNotificationsEnabled = signupMetadata?.PushNotificationsEnabled ?? true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 LastActivityDate = DateTime.UtcNow,
@@ -370,6 +389,7 @@ public class UserService(
                 CommunityNewsEnabled = request.CommunityNewsEnabled ?? true,
                 MonthlyDigestEnabled = request.MonthlyDigestEnabled ?? false,
                 AchievementsEnabled = request.AchievementsEnabled ?? true,
+                PushNotificationsEnabled = request.PushNotificationsEnabled ?? true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 LastActivityDate = DateTime.UtcNow,
@@ -457,6 +477,9 @@ public class UserService(
 
             if (request.AchievementsEnabled.HasValue)
                 user.AchievementsEnabled = request.AchievementsEnabled.Value;
+
+            if (request.PushNotificationsEnabled.HasValue)
+                user.PushNotificationsEnabled = request.PushNotificationsEnabled.Value;
 
             user.UpdatedAt = DateTime.UtcNow;
 
@@ -632,6 +655,12 @@ public class UserService(
                 user.CommunityNewsEnabled = false;
                 user.MonthlyDigestEnabled = false;
                 user.AchievementsEnabled = false;
+                user.PushNotificationsEnabled = false;
+
+                // Remove all push tokens for this user
+                await context.PushTokens
+                    .Where(pt => pt.UserId == user.Id)
+                    .ExecuteDeleteAsync();
 
                 // Mark as deleted
                 user.IsDeleted = true;

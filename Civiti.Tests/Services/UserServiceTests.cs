@@ -161,6 +161,7 @@ public class UserServiceTests : IDisposable
         user.CommunityNewsEnabled = true;
         user.MonthlyDigestEnabled = true;
         user.AchievementsEnabled = true;
+        user.PushNotificationsEnabled = true;
 
         using (var ctx = _dbFactory.CreateContext())
         {
@@ -200,6 +201,7 @@ public class UserServiceTests : IDisposable
         deleted.CommunityNewsEnabled.Should().BeFalse();
         deleted.MonthlyDigestEnabled.Should().BeFalse();
         deleted.AchievementsEnabled.Should().BeFalse();
+        deleted.PushNotificationsEnabled.Should().BeFalse();
     }
 
     [Fact]

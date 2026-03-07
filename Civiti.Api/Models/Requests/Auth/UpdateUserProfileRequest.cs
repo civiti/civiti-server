@@ -65,4 +65,9 @@ public class UpdateUserProfileRequest
     /// Update achievement notification preference
     /// </summary>
     public bool? AchievementsEnabled { get; set; }
+
+    /// <summary>
+    /// Update push notification preference (global toggle)
+    /// </summary>
+    public bool? PushNotificationsEnabled { get; set; }
 }

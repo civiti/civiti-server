@@ -70,6 +70,11 @@ public class CreateUserProfileRequest
     /// </summary>
     public bool? AchievementsEnabled { get; set; }
 
+    /// <summary>
+    /// Enable push notifications (global toggle)
+    /// </summary>
+    public bool? PushNotificationsEnabled { get; set; }
+
     public UpdateUserProfileRequest ToUpdateRequest() => new()
     {
         DisplayName = DisplayName,
@@ -81,6 +86,7 @@ public class CreateUserProfileRequest
         IssueUpdatesEnabled = IssueUpdatesEnabled,
         CommunityNewsEnabled = CommunityNewsEnabled,
         MonthlyDigestEnabled = MonthlyDigestEnabled,
-        AchievementsEnabled = AchievementsEnabled
+        AchievementsEnabled = AchievementsEnabled,
+        PushNotificationsEnabled = PushNotificationsEnabled
     };
 }

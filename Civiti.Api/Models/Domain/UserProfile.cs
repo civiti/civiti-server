@@ -16,6 +16,7 @@ public class UserProfile
     public bool CommunityNewsEnabled { get; set; } = true;
     public bool MonthlyDigestEnabled { get; set; }
     public bool AchievementsEnabled { get; set; } = true;
+    public bool PushNotificationsEnabled { get; set; } = true;
     public int Points { get; set; }
     public int Level { get; set; } = 1;
     public int IssuesReported { get; set; }

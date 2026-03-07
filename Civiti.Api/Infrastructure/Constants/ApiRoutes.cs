@@ -30,6 +30,8 @@ public static class ApiRoutes
         public const string IssueStatus = "/issues/{id:guid}/status";
         public const string AccountDelete = "/account/delete";
         public const string Leaderboard = "/leaderboard";
+        public const string PushToken = "/push-token";
+        public const string PushTokenDeregister = "/push-token/deregister";
     }
 
     public static class Admin

@@ -18,4 +18,5 @@ public record SignupMetadata
     public bool? CommunityNewsEnabled { get; init; }
     public bool? MonthlyDigestEnabled { get; init; }
     public bool? AchievementsEnabled { get; init; }
+    public bool? PushNotificationsEnabled { get; init; }
 }
