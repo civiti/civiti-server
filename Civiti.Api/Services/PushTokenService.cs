@@ -22,7 +22,7 @@ public class PushTokenService(
         {
             // Race condition: another request inserted the same token concurrently.
             // Retry once — the token now exists, so the upsert will take the update path.
-            context.ChangeTracker.Clear();
+            // Note: UpsertTokenAsync clears the ChangeTracker at the start of its lambda.
             await UpsertTokenAsync(userId, token, parsedPlatform, ct);
         }
     }
