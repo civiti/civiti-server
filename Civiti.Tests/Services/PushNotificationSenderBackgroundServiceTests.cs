@@ -58,9 +58,10 @@ public class PushNotificationSenderBackgroundServiceTests : IDisposable
     /// <summary>
     /// Starts the service, writes a single message, and waits deterministically.
     /// For tests expecting HTTP calls, waits for the handler to be invoked
-    /// <paramref name="expectedCalls"/> times. Otherwise waits for channel drain.
+    /// <paramref name="expectedCalls"/> times. Always stops the service before
+    /// returning to guarantee all processing is complete.
     /// </summary>
-    private async Task<(int callCount, PushNotificationSenderBackgroundService service)> StartServiceWithMessageAsync(
+    private async Task<int> StartServiceWithMessageAsync(
         PushNotificationMessage message, TestHttpHandler handler, int expectedCalls = 0)
     {
         var channel = Channel.CreateUnbounded<PushNotificationMessage>();
@@ -79,10 +80,12 @@ public class PushNotificationSenderBackgroundServiceTests : IDisposable
 
         if (expectedCalls > 0)
             await handler.WaitForCallsAsync(expectedCalls, TimeSpan.FromSeconds(3));
-        else
-            await channel.Reader.Completion;
 
-        return (handler.CallCount, service);
+        // StopAsync waits for ExecuteAsync to finish, guaranteeing all in-flight
+        // ProcessMessageAsync work is complete before we return.
+        await service.StopAsync(CancellationToken.None);
+
+        return handler.CallCount;
     }
 
     [Fact]
@@ -91,9 +94,8 @@ public class PushNotificationSenderBackgroundServiceTests : IDisposable
         var (userId, _) = SeedUserWithToken(pushEnabled: false);
         var handler = TestHttpHandler.AlwaysReturn(OkExpoResponse());
 
-        var (calls, service) = await StartServiceWithMessageAsync(
+        var calls = await StartServiceWithMessageAsync(
             new PushNotificationMessage(userId, "Title", "Body"), handler);
-        await service.StopAsync(CancellationToken.None);
 
         calls.Should().Be(0);
     }
@@ -104,10 +106,9 @@ public class PushNotificationSenderBackgroundServiceTests : IDisposable
         var (userId, _) = SeedUserWithToken(pushEnabled: false);
         var handler = TestHttpHandler.AlwaysReturn(OkExpoResponse());
 
-        var (calls, service) = await StartServiceWithMessageAsync(
+        var calls = await StartServiceWithMessageAsync(
             new PushNotificationMessage(userId, "Title", "Body", ForceSend: true), handler,
             expectedCalls: 1);
-        await service.StopAsync(CancellationToken.None);
 
         calls.Should().Be(1);
     }
@@ -118,19 +119,13 @@ public class PushNotificationSenderBackgroundServiceTests : IDisposable
         var (userId, tokenValue) = SeedUserWithToken();
         var handler = TestHttpHandler.AlwaysReturn(DeviceNotRegisteredExpoResponse());
 
-        var (_, service) = await StartServiceWithMessageAsync(
+        await StartServiceWithMessageAsync(
             new PushNotificationMessage(userId, "Title", "Body"), handler,
             expectedCalls: 1);
 
-        // Token removal happens after HTTP response parsing — poll until DB reflects it
-        bool tokenRemoved = await PollConditionAsync(() =>
-        {
-            using var db = _dbFactory.CreateContext();
-            return !db.PushTokens.Any(pt => pt.Token == tokenValue);
-        }, TimeSpan.FromSeconds(3));
-
-        await service.StopAsync(CancellationToken.None);
-        tokenRemoved.Should().BeTrue();
+        // Service is already stopped — all processing is complete
+        using var db = _dbFactory.CreateContext();
+        db.PushTokens.Any(pt => pt.Token == tokenValue).Should().BeFalse();
     }
 
     [Fact]
@@ -145,23 +140,11 @@ public class PushNotificationSenderBackgroundServiceTests : IDisposable
                 : new HttpResponseMessage(HttpStatusCode.OK)
                     { Content = new StringContent(OkExpoResponse()) });
 
-        var (calls, service) = await StartServiceWithMessageAsync(
+        var calls = await StartServiceWithMessageAsync(
             new PushNotificationMessage(userId, "Title", "Body"), handler,
             expectedCalls: 2);
-        await service.StopAsync(CancellationToken.None);
 
         calls.Should().Be(2);
-    }
-
-    private static async Task<bool> PollConditionAsync(Func<bool> condition, TimeSpan timeout)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            if (condition()) return true;
-            await Task.Delay(20);
-        }
-        return false;
     }
 
     private static string OkExpoResponse() =>

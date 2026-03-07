@@ -352,8 +352,13 @@ public class NotificationService(
                 .Where(u => followerIds.Contains(u.Id) && u.IssueUpdatesEnabled)
                 .ToListAsync(cancellationToken);
 
-            var pushTitle = type == EmailNotificationType.IssueResolved ? "Problemă rezolvată" : "Problemă anulată";
-            var pushBody = $"\"{Truncate(issueTitle, 40)}\" a fost {(type == EmailNotificationType.IssueResolved ? "rezolvată" : "anulată")}.";
+            var (pushTitle, statusText) = type switch
+            {
+                EmailNotificationType.IssueResolved => ("Problemă rezolvată", "rezolvată"),
+                EmailNotificationType.IssueCancelled => ("Problemă anulată", "anulată"),
+                _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unsupported notification type for issue followers")
+            };
+            var pushBody = $"\"{Truncate(issueTitle, 40)}\" a fost {statusText}.";
 
             foreach (UserProfile follower in followers)
             {
