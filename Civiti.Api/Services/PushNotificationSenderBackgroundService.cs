@@ -48,6 +48,11 @@ public class PushNotificationSenderBackgroundService(
                         logger.LogError(ex, "Failed to process push notification for user {UserId}", message.UserId);
                     }
                 }
+
+                // ReadAllAsync returned normally — the channel writer has completed.
+                // All messages have been processed; exit the loop.
+                if (channelReader.Completion.IsCompleted)
+                    break;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

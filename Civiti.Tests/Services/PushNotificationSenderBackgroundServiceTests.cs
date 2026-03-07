@@ -58,8 +58,8 @@ public class PushNotificationSenderBackgroundServiceTests : IDisposable
     /// <summary>
     /// Starts the service, writes a single message, and waits deterministically.
     /// For tests expecting HTTP calls, waits for the handler to be invoked
-    /// <paramref name="expectedCalls"/> times. Always stops the service before
-    /// returning to guarantee all processing is complete.
+    /// <paramref name="expectedCalls"/> times. Then awaits <c>ExecuteTask</c> so all
+    /// post-HTTP processing (e.g. DB deletes) completes before returning.
     /// </summary>
     private async Task<int> StartServiceWithMessageAsync(
         PushNotificationMessage message, TestHttpHandler handler, int expectedCalls = 0)
@@ -81,9 +81,11 @@ public class PushNotificationSenderBackgroundServiceTests : IDisposable
         if (expectedCalls > 0)
             await handler.WaitForCallsAsync(expectedCalls, TimeSpan.FromSeconds(3));
 
-        // StopAsync waits for ExecuteAsync to finish, guaranteeing all in-flight
-        // ProcessMessageAsync work is complete before we return.
-        await service.StopAsync(CancellationToken.None);
+        // The service exits its loop when the channel completes, so ExecuteTask
+        // resolves after all in-flight processing (including post-HTTP DB work)
+        // finishes — no cancellation needed, no timing assumptions.
+        if (service.ExecuteTask is not null)
+            await service.ExecuteTask;
 
         return handler.CallCount;
     }
