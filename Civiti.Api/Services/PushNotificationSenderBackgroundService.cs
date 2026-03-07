@@ -69,6 +69,14 @@ public class PushNotificationSenderBackgroundService(
         using IServiceScope scope = scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<CivitiDbContext>();
 
+        // Re-check preference at delivery time (user may have toggled since enqueue)
+        bool enabled = await context.UserProfiles
+            .Where(up => up.Id == message.UserId)
+            .Select(up => up.PushNotificationsEnabled)
+            .FirstOrDefaultAsync(ct);
+
+        if (!enabled) return;
+
         // Resolve user's push tokens
         List<string> tokens = await context.PushTokens
             .Where(pt => pt.UserId == message.UserId)
