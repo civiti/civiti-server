@@ -84,8 +84,8 @@ public class PushNotificationSenderBackgroundServiceTests : IDisposable
         // The service exits its loop when the channel completes, so ExecuteTask
         // resolves after all in-flight processing (including post-HTTP DB work)
         // finishes — no cancellation needed, no timing assumptions.
-        if (service.ExecuteTask is not null)
-            await service.ExecuteTask.WaitAsync(TimeSpan.FromSeconds(5));
+        service.ExecuteTask.Should().NotBeNull("service should have been started");
+        await service.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
 
         return handler.CallCount;
     }
