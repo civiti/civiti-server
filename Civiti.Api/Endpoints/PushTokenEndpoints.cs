@@ -20,7 +20,8 @@ public static class PushTokenEndpoints
             RegisterPushTokenRequest request,
             HttpContext context,
             IUserService userService,
-            IPushTokenService pushTokenService) =>
+            IPushTokenService pushTokenService,
+            CancellationToken ct) =>
         {
             var supabaseUserId = context.User.GetSupabaseUserId();
             if (string.IsNullOrEmpty(supabaseUserId))
@@ -36,7 +37,7 @@ public static class PushTokenEndpoints
                     return Results.NotFound(new { error = "User profile not found" });
                 }
 
-                await pushTokenService.RegisterTokenAsync(userId.Value, request.Token, request.Platform);
+                await pushTokenService.RegisterTokenAsync(userId.Value, request.Token, request.Platform, ct);
                 return Results.Ok(new { success = true });
             }
             catch (ArgumentException ex)
@@ -67,7 +68,8 @@ public static class PushTokenEndpoints
             DeregisterPushTokenRequest request,
             HttpContext context,
             IUserService userService,
-            IPushTokenService pushTokenService) =>
+            IPushTokenService pushTokenService,
+            CancellationToken ct) =>
         {
             var supabaseUserId = context.User.GetSupabaseUserId();
             if (string.IsNullOrEmpty(supabaseUserId))
@@ -83,7 +85,7 @@ public static class PushTokenEndpoints
                     return Results.NotFound(new { error = "User profile not found" });
                 }
 
-                await pushTokenService.DeregisterTokenAsync(userId.Value, request.Token);
+                await pushTokenService.DeregisterTokenAsync(userId.Value, request.Token, ct);
                 return Results.Ok(new { success = true });
             }
             catch (ArgumentException ex)

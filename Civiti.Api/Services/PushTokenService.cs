@@ -9,79 +9,87 @@ public class PushTokenService(
     CivitiDbContext context,
     ILogger<PushTokenService> logger) : IPushTokenService
 {
-    public async Task RegisterTokenAsync(Guid userId, string token, string platform)
+    public async Task RegisterTokenAsync(Guid userId, string token, string platform, CancellationToken ct = default)
     {
         if (!Enum.TryParse<PushTokenPlatform>(platform, ignoreCase: true, out var parsedPlatform))
             throw new ArgumentException($"Invalid platform: {platform}. Must be 'ios' or 'android'.");
 
         try
         {
-            await UpsertTokenAsync(userId, token, parsedPlatform);
+            await UpsertTokenAsync(userId, token, parsedPlatform, ct);
         }
         catch (DbUpdateException)
         {
             // Race condition: another request inserted the same token concurrently.
             // Retry once — the token now exists, so the upsert will take the update path.
-            context.ChangeTracker.Clear();
-            await UpsertTokenAsync(userId, token, parsedPlatform);
+            // Note: UpsertTokenAsync clears the ChangeTracker at the start of its lambda.
+            await UpsertTokenAsync(userId, token, parsedPlatform, ct);
         }
     }
 
     private const int MaxTokensPerUser = 10;
 
-    private async Task UpsertTokenAsync(Guid userId, string token, PushTokenPlatform platform)
+    private async Task UpsertTokenAsync(Guid userId, string token, PushTokenPlatform platform, CancellationToken ct)
     {
-        await using var tx = await context.Database.BeginTransactionAsync();
-
-        PushToken? existing = await context.PushTokens
-            .FirstOrDefaultAsync(pt => pt.Token == token);
-
-        if (existing != null)
+        var strategy = context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async (cancellationToken) =>
         {
-            if (existing.UserId != userId)
+            context.ChangeTracker.Clear();
+            await using var tx = await context.Database.BeginTransactionAsync(cancellationToken);
+
+            PushToken? existing = await context.PushTokens
+                .FirstOrDefaultAsync(pt => pt.Token == token, cancellationToken);
+
+            if (existing != null)
             {
-                logger.LogInformation("Reassigning push token to user {NewUserId}", userId);
-                existing.UserId = userId;
+                if (existing.UserId != userId)
+                {
+                    logger.LogInformation("Reassigning push token to user {NewUserId}", userId);
+                    existing.UserId = userId;
+                }
+
+                existing.Platform = platform;
+                existing.UpdatedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                context.PushTokens.Add(new PushToken
+                {
+                    UserId = userId,
+                    Token = token,
+                    Platform = platform
+                });
             }
 
-            existing.Platform = platform;
-            existing.UpdatedAt = DateTime.UtcNow;
-        }
-        else
-        {
-            context.PushTokens.Add(new PushToken
+            await context.SaveChangesAsync(cancellationToken);
+
+            // Enforce per-user token cap by removing the oldest excess tokens.
+            // ExecuteDeleteAsync bypasses the change tracker, but this is safe on retry:
+            // ChangeTracker.Clear() resets state and the rolled-back transaction means
+            // excess tokens are re-found and re-deleted idempotently.
+            var excessTokenIds = await context.PushTokens
+                .Where(pt => pt.UserId == userId)
+                .OrderByDescending(pt => pt.UpdatedAt)
+                .Skip(MaxTokensPerUser)
+                .Select(pt => pt.Id)
+                .ToListAsync(cancellationToken);
+
+            if (excessTokenIds.Count > 0)
             {
-                UserId = userId,
-                Token = token,
-                Platform = platform
-            });
-        }
+                await context.PushTokens
+                    .Where(pt => excessTokenIds.Contains(pt.Id))
+                    .ExecuteDeleteAsync(cancellationToken);
+            }
 
-        await context.SaveChangesAsync();
-
-        // Enforce per-user token cap by removing the oldest excess tokens
-        var excessTokenIds = await context.PushTokens
-            .Where(pt => pt.UserId == userId)
-            .OrderByDescending(pt => pt.UpdatedAt)
-            .Skip(MaxTokensPerUser)
-            .Select(pt => pt.Id)
-            .ToListAsync();
-
-        if (excessTokenIds.Count > 0)
-        {
-            await context.PushTokens
-                .Where(pt => excessTokenIds.Contains(pt.Id))
-                .ExecuteDeleteAsync();
-        }
-
-        await tx.CommitAsync();
+            await tx.CommitAsync(cancellationToken);
+        }, ct);
     }
 
-    public async Task DeregisterTokenAsync(Guid userId, string token)
+    public async Task DeregisterTokenAsync(Guid userId, string token, CancellationToken ct = default)
     {
         int deleted = await context.PushTokens
             .Where(pt => pt.Token == token && pt.UserId == userId)
-            .ExecuteDeleteAsync();
+            .ExecuteDeleteAsync(ct);
 
         if (deleted > 0)
         {
