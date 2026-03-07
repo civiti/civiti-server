@@ -184,7 +184,7 @@ public class UserService(
                 CommunityNewsEnabled = signupMetadata?.CommunityNewsEnabled ?? true,
                 MonthlyDigestEnabled = signupMetadata?.MonthlyDigestEnabled ?? false,
                 AchievementsEnabled = signupMetadata?.AchievementsEnabled ?? true,
-                PushNotificationsEnabled = true,
+                PushNotificationsEnabled = signupMetadata?.PushNotificationsEnabled ?? true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 LastActivityDate = DateTime.UtcNow,
