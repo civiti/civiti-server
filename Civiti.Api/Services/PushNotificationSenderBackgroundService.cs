@@ -22,6 +22,7 @@ public class PushNotificationSenderBackgroundService(
     ILogger<PushNotificationSenderBackgroundService> logger) : BackgroundService
 {
     private const string ExpoPushUrl = "https://exp.host/--/api/v2/push/send";
+    private const int MaxErrorBodyLength = 500;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -178,7 +179,7 @@ public class PushNotificationSenderBackgroundService(
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(ct);
-            var truncatedBody = body.Length > 500 ? body[..500] + "…" : body;
+            var truncatedBody = body.Length > MaxErrorBodyLength ? body[..MaxErrorBodyLength] + "…" : body;
             logger.LogError("Expo push API returned {StatusCode}: {Body}", response.StatusCode, truncatedBody);
             throw new HttpRequestException(
                 $"Expo push API returned {response.StatusCode}: {truncatedBody}");

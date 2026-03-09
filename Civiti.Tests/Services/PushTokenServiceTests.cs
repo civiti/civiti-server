@@ -13,18 +13,19 @@ public class PushTokenServiceTests : IDisposable
 {
     private readonly TestDbContextFactory _dbFactory = new();
     private readonly Mock<ILogger<PushTokenService>> _logger = new();
-    private CivitiDbContext? _serviceCtx;
+    private readonly List<CivitiDbContext> _contexts = [];
 
     public void Dispose()
     {
-        _serviceCtx?.Dispose();
+        _contexts.ForEach(c => c.Dispose());
         _dbFactory.Dispose();
     }
 
     private PushTokenService CreateService()
     {
-        _serviceCtx = _dbFactory.CreateContext();
-        return new(_serviceCtx, _logger.Object);
+        var ctx = _dbFactory.CreateContext();
+        _contexts.Add(ctx);
+        return new(ctx, _logger.Object);
     }
 
     private Guid SeedUser()
