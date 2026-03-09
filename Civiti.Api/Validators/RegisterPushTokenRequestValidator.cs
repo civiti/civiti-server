@@ -11,6 +11,7 @@ public class RegisterPushTokenRequestValidator : AbstractValidator<RegisterPushT
     {
         RuleFor(x => x.Token)
             .NotEmpty().WithMessage("Push token is required.")
+            .MaximumLength(255).WithMessage("Push token must not exceed 255 characters.")
             .Matches(@"^Expo(nent)?PushToken\[.+\]$").WithMessage("Invalid Expo push token format.");
 
         RuleFor(x => x.Platform)
