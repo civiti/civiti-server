@@ -22,6 +22,7 @@ public class PushNotificationSenderBackgroundService(
     ILogger<PushNotificationSenderBackgroundService> logger) : BackgroundService
 {
     private const string ExpoPushUrl = "https://exp.host/--/api/v2/push/send";
+    private const int MaxErrorBodyLength = 500;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -43,7 +44,7 @@ public class PushNotificationSenderBackgroundService(
                     {
                         await ProcessMessageAsync(message, stoppingToken);
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OperationCanceledException oce || oce.CancellationToken != stoppingToken)
                     {
                         logger.LogError(ex, "Failed to process push notification for user {UserId}", message.UserId);
                     }
@@ -110,18 +111,18 @@ public class PushNotificationSenderBackgroundService(
             {
                 staleTokens.AddRange(await SendBatchAsync(client, batch, ct));
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException oce || oce.CancellationToken != ct)
             {
-                logger.LogWarning(ex, "First attempt failed for push batch {BatchIndex}, retrying once...",
-                    i / config.BatchSize);
+                logger.LogWarning(ex, "First attempt failed for push batch {BatchIndex} (HTTP {StatusCode}), retrying once...",
+                    i / config.BatchSize, (ex as HttpRequestException)?.StatusCode);
                 try
                 {
                     staleTokens.AddRange(await SendBatchAsync(client, batch, ct));
                 }
-                catch (Exception retryEx)
+                catch (Exception retryEx) when (retryEx is not OperationCanceledException retryOce || retryOce.CancellationToken != ct)
                 {
-                    logger.LogError(retryEx, "Failed to send push batch {BatchIndex} for user {UserId} ({TokenCount} tokens)",
-                        i / config.BatchSize, message.UserId, batch.Count);
+                    logger.LogError(retryEx, "Failed to send push batch {BatchIndex} for user {UserId} ({TokenCount} tokens, HTTP {StatusCode})",
+                        i / config.BatchSize, message.UserId, batch.Count, (retryEx as HttpRequestException)?.StatusCode);
                 }
             }
         }
@@ -135,7 +136,7 @@ public class PushNotificationSenderBackgroundService(
                     .Where(pt => staleTokens.Contains(pt.Token))
                     .ExecuteDeleteAsync(ct);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException oce || oce.CancellationToken != ct)
             {
                 logger.LogWarning(ex, "Failed to remove {Count} stale push token(s) for user {UserId}; will retry on next delivery.",
                     staleTokens.Count, message.UserId);
@@ -178,9 +179,11 @@ public class PushNotificationSenderBackgroundService(
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(ct);
-            logger.LogError("Expo push API returned {StatusCode}: {Body}", response.StatusCode, body);
+            var truncatedBody = body.Length > MaxErrorBodyLength ? body[..MaxErrorBodyLength] + "…" : body;
             throw new HttpRequestException(
-                $"Expo push API returned {response.StatusCode}: {body}");
+                $"Expo push API returned {response.StatusCode}: {truncatedBody}",
+                inner: null,
+                response.StatusCode);
         }
 
         // Parse response to collect stale tokens
@@ -217,7 +220,8 @@ public class PushNotificationSenderBackgroundService(
         }
         catch (JsonException ex)
         {
-            logger.LogError(ex, "Failed to parse Expo push response. Raw body: {ResponseBody}", responseBody);
+            var truncated = responseBody.Length > MaxErrorBodyLength ? responseBody[..MaxErrorBodyLength] + "…" : responseBody;
+            logger.LogError(ex, "Failed to parse Expo push response. Raw body: {ResponseBody}", truncated);
         }
         return staleTokens;
     }

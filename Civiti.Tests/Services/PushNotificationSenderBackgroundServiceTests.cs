@@ -149,6 +149,30 @@ public class PushNotificationSenderBackgroundServiceTests : IDisposable
         calls.Should().Be(2);
     }
 
+    [Fact]
+    public async Task Should_Log_Error_And_Drop_When_Both_Attempts_Fail()
+    {
+        var (userId, _) = SeedUserWithToken();
+        var handler = new TestHttpHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                { Content = new StringContent("server error") });
+
+        var calls = await StartServiceWithMessageAsync(
+            new PushNotificationMessage(userId, "Title", "Body"), handler,
+            expectedCalls: 2);
+
+        calls.Should().Be(2);
+
+        _logger.Verify(
+            x => x.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("Failed to send push batch")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
     private static string OkExpoResponse() =>
         """{"data":[{"status":"ok"}]}""";
 
