@@ -129,9 +129,17 @@ public class PushNotificationSenderBackgroundService(
         // Remove stale tokens using the already-open context
         if (staleTokens.Count > 0)
         {
-            await context.PushTokens
-                .Where(pt => staleTokens.Contains(pt.Token))
-                .ExecuteDeleteAsync(ct);
+            try
+            {
+                await context.PushTokens
+                    .Where(pt => staleTokens.Contains(pt.Token))
+                    .ExecuteDeleteAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to remove {Count} stale push token(s) for user {UserId}; will retry on next delivery.",
+                    staleTokens.Count, message.UserId);
+            }
         }
     }
 
