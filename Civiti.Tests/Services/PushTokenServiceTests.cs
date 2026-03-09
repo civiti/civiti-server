@@ -1,3 +1,4 @@
+using Civiti.Api.Data;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Services;
 using Civiti.Tests.Helpers;
@@ -12,10 +13,19 @@ public class PushTokenServiceTests : IDisposable
 {
     private readonly TestDbContextFactory _dbFactory = new();
     private readonly Mock<ILogger<PushTokenService>> _logger = new();
+    private CivitiDbContext? _serviceCtx;
 
-    public void Dispose() => _dbFactory.Dispose();
+    public void Dispose()
+    {
+        _serviceCtx?.Dispose();
+        _dbFactory.Dispose();
+    }
 
-    private PushTokenService CreateService() => new(_dbFactory.CreateContext(), _logger.Object);
+    private PushTokenService CreateService()
+    {
+        _serviceCtx = _dbFactory.CreateContext();
+        return new(_serviceCtx, _logger.Object);
+    }
 
     private Guid SeedUser()
     {
