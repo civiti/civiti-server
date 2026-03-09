@@ -135,7 +135,7 @@ public class PushNotificationSenderBackgroundService(
                     .Where(pt => staleTokens.Contains(pt.Token))
                     .ExecuteDeleteAsync(ct);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogWarning(ex, "Failed to remove {Count} stale push token(s) for user {UserId}; will retry on next delivery.",
                     staleTokens.Count, message.UserId);
