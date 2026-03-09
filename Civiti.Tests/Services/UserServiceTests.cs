@@ -205,7 +205,7 @@ public class UserServiceTests : IDisposable
         deleted.PushNotificationsEnabled.Should().BeFalse();
 
         // Push tokens removed
-        verifyCtx.PushTokens.Any(pt => pt.UserId == user.Id).Should().BeFalse();
+        (await verifyCtx.PushTokens.AnyAsync(pt => pt.UserId == user.Id)).Should().BeFalse();
     }
 
     [Fact]
