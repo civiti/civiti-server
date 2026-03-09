@@ -410,6 +410,8 @@ ExpoPushConfiguration expoPushConfig = new()
 };
 if (expoPushConfig.BatchSize <= 0 || expoPushConfig.BatchSize > 100)
     throw new InvalidOperationException($"ExpoPush:BatchSize must be between 1 and 100 inclusive (got {expoPushConfig.BatchSize}).");
+if (expoPushConfig.ChannelCapacity <= 0)
+    throw new InvalidOperationException($"ExpoPush:ChannelCapacity must be a positive integer (got {expoPushConfig.ChannelCapacity}).");
 
 builder.Services.AddSingleton(expoPushConfig);
 
