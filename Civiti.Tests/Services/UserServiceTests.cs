@@ -166,6 +166,7 @@ public class UserServiceTests : IDisposable
         using (var ctx = _dbFactory.CreateContext())
         {
             ctx.UserProfiles.Add(user);
+            ctx.PushTokens.Add(new PushToken { UserId = user.Id, Token = "ExponentPushToken[test]", Platform = PushTokenPlatform.Ios });
             await ctx.SaveChangesAsync();
         }
 
@@ -202,6 +203,9 @@ public class UserServiceTests : IDisposable
         deleted.MonthlyDigestEnabled.Should().BeFalse();
         deleted.AchievementsEnabled.Should().BeFalse();
         deleted.PushNotificationsEnabled.Should().BeFalse();
+
+        // Push tokens removed
+        verifyCtx.PushTokens.Any(pt => pt.UserId == user.Id).Should().BeFalse();
     }
 
     [Fact]
