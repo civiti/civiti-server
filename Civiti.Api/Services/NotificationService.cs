@@ -163,14 +163,14 @@ public class NotificationService(
     {
         if (issueAuthor.Id == commenter.Id) return Task.CompletedTask;
 
-        // Debounce: max 1 notification per 5 min per issue author per issue
-        var debounceKey = $"notify:comment:{issue.Id}:{issueAuthor.Id}";
-        if (memoryCache.TryGetValue(debounceKey, out _)) return Task.CompletedTask;
-        memoryCache.Set(debounceKey, true, TimeSpan.FromMinutes(config.DebounceMinutes));
-
         EnqueuePush(issueAuthor, "Comentariu nou",
             $"{commenter.DisplayName} a comentat la \"{Truncate(issue.Title, 40)}\"",
             new PushRoute("issue", issue.Id.ToString()));
+
+        // Debounce: max 1 email per 5 min per issue author per issue
+        var debounceKey = $"notify:comment:{issue.Id}:{issueAuthor.Id}";
+        if (memoryCache.TryGetValue(debounceKey, out _)) return Task.CompletedTask;
+        memoryCache.Set(debounceKey, true, TimeSpan.FromMinutes(config.DebounceMinutes));
 
         if (!issueAuthor.IssueUpdatesEnabled) return Task.CompletedTask;
 
@@ -189,14 +189,14 @@ public class NotificationService(
     {
         if (parentCommentUser.Id == replier.Id) return Task.CompletedTask;
 
-        // Debounce: max 1 reply notification per 5 min per parent comment user
-        var debounceKey = $"notify:reply:{parentCommentUser.Id}:{issueId}";
-        if (memoryCache.TryGetValue(debounceKey, out _)) return Task.CompletedTask;
-        memoryCache.Set(debounceKey, true, TimeSpan.FromMinutes(config.DebounceMinutes));
-
         EnqueuePush(parentCommentUser, "Răspuns la comentariu",
             $"{replier.DisplayName} ți-a răspuns la un comentariu.",
             new PushRoute("issue", issueId.ToString()));
+
+        // Debounce: max 1 email per 5 min per parent comment user per issue
+        var debounceKey = $"notify:reply:{parentCommentUser.Id}:{issueId}";
+        if (memoryCache.TryGetValue(debounceKey, out _)) return Task.CompletedTask;
+        memoryCache.Set(debounceKey, true, TimeSpan.FromMinutes(config.DebounceMinutes));
 
         if (!parentCommentUser.IssueUpdatesEnabled) return Task.CompletedTask;
 
