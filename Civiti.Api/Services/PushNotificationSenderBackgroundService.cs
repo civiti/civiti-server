@@ -113,16 +113,16 @@ public class PushNotificationSenderBackgroundService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException oce || oce.CancellationToken != ct)
             {
-                logger.LogWarning(ex, "First attempt failed for push batch {BatchIndex}, retrying once...",
-                    i / config.BatchSize);
+                logger.LogWarning(ex, "First attempt failed for push batch {BatchIndex} (HTTP {StatusCode}), retrying once...",
+                    i / config.BatchSize, (ex as HttpRequestException)?.StatusCode);
                 try
                 {
                     staleTokens.AddRange(await SendBatchAsync(client, batch, ct));
                 }
                 catch (Exception retryEx) when (retryEx is not OperationCanceledException retryOce || retryOce.CancellationToken != ct)
                 {
-                    logger.LogError(retryEx, "Failed to send push batch {BatchIndex} for user {UserId} ({TokenCount} tokens)",
-                        i / config.BatchSize, message.UserId, batch.Count);
+                    logger.LogError(retryEx, "Failed to send push batch {BatchIndex} for user {UserId} ({TokenCount} tokens, HTTP {StatusCode})",
+                        i / config.BatchSize, message.UserId, batch.Count, (retryEx as HttpRequestException)?.StatusCode);
                 }
             }
         }
@@ -181,7 +181,9 @@ public class PushNotificationSenderBackgroundService(
             var body = await response.Content.ReadAsStringAsync(ct);
             var truncatedBody = body.Length > MaxErrorBodyLength ? body[..MaxErrorBodyLength] + "…" : body;
             throw new HttpRequestException(
-                $"Expo push API returned {response.StatusCode}: {truncatedBody}");
+                $"Expo push API returned {response.StatusCode}: {truncatedBody}",
+                inner: null,
+                response.StatusCode);
         }
 
         // Parse response to collect stale tokens
