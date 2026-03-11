@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text.Json;
-using FluentValidation;
 
 namespace Civiti.Api.Infrastructure.Middleware;
 
@@ -31,15 +30,6 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
 
         switch (exception)
         {
-            case ValidationException validationException:
-                response.StatusCode = (int)HttpStatusCode.BadRequest;
-                errorResponse.Error = "Validation failed";
-                errorResponse.Code = "VALIDATION_ERROR";
-                errorResponse.Details = validationException.Errors
-                    .GroupBy(e => e.PropertyName)
-                    .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
-                break;
-                
             case UnauthorizedAccessException _:
                 response.StatusCode = (int)HttpStatusCode.Unauthorized;
                 errorResponse.Error = "Unauthorized access";

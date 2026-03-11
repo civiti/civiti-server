@@ -35,7 +35,6 @@
         <PackageReference Include="Swashbuckle.AspNetCore.Filters.Abstractions" Version="10.0.1" />
         <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.2.1" />
         <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.2.1" />
-        <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
         <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
         <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
         <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />

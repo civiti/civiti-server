@@ -339,7 +339,7 @@ For each service replacement:
 1. **Authentication**: Always validate Supabase JWT and extract user ID correctly
 2. **Error Handling**: Use structured error responses with proper HTTP status codes
 3. **Logging**: Log all significant operations with user context
-4. **Validation**: Validate all inputs using FluentValidation or similar
+4. **Validation**: Validate all inputs using DataAnnotations and IValidatableObject (built-in)
 5. **Performance**: Use async/await throughout for all I/O operations
 6. **Security**: Apply proper authorization checks on all endpoints
 

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Models.Domain;
 
 namespace Civiti.Api.Models.Requests.Issues;
@@ -81,5 +82,6 @@ public class UpdateIssueRequest
     /// <summary>
     /// URLs of uploaded photos (replaces existing photos, max 8)
     /// </summary>
+    [MaxLength(IssueValidationLimits.MaxPhotoCount, ErrorMessage = "A maximum of {1} photos are allowed.")]
     public List<string>? PhotoUrls { get; set; }
 }

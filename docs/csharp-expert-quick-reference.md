@@ -291,7 +291,7 @@ public class ErrorHandlingMiddleware
 <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0" />
 <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.0" />
 <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
-<PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
+<!-- Built-in validation via builder.Services.AddValidation() — no extra package needed -->
 <PackageReference Include="Serilog.AspNetCore" Version="8.0.0" />
 <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.0.3" />
 ```

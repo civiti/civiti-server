@@ -13,7 +13,6 @@ using Civiti.Api.Models.Email;
 using Civiti.Api.Models.Push;
 using Civiti.Api.Services;
 using Civiti.Api.Services.Interfaces;
-using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -448,8 +447,8 @@ builder.Services.AddScoped<IPosterService, PosterService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPushTokenService, PushTokenService>();
 
-// Validators
-builder.Services.AddValidatorsFromAssemblyContaining<Civiti.Api.Program>();
+// Built-in validation (DataAnnotations + IValidatableObject)
+builder.Services.AddValidation();
 
 
 // HttpClient for development endpoints
