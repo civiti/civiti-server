@@ -19,9 +19,10 @@ public class UpdateIssueRequestValidatorTests
     {
         var request = new UpdateIssueRequest { PhotoUrls = null };
 
-        _ = TryValidate(request, out var results);
+        var isValid = TryValidate(request, out var results);
 
-        results.Should().NotContain(r => r.MemberNames.Contains(nameof(UpdateIssueRequest.PhotoUrls)));
+        isValid.Should().BeTrue();
+        results.Should().BeEmpty();
     }
 
     [Fact]
@@ -32,9 +33,10 @@ public class UpdateIssueRequestValidatorTests
             PhotoUrls = ["https://example.com/photo1.jpg", "https://example.com/photo2.jpg"]
         };
 
-        _ = TryValidate(request, out var results);
+        var isValid = TryValidate(request, out var results);
 
-        results.Should().NotContain(r => r.MemberNames.Contains(nameof(UpdateIssueRequest.PhotoUrls)));
+        isValid.Should().BeTrue();
+        results.Should().BeEmpty();
     }
 
     [Fact]
@@ -47,8 +49,9 @@ public class UpdateIssueRequestValidatorTests
                 .ToList()
         };
 
-        _ = TryValidate(request, out var results);
+        var isValid = TryValidate(request, out var results);
 
+        isValid.Should().BeFalse();
         results.Should().Contain(r =>
             r.MemberNames.Contains(nameof(UpdateIssueRequest.PhotoUrls)) &&
             r.ErrorMessage!.Contains($"A maximum of {IssueValidationLimits.MaxPhotoCount} photos are allowed."));
