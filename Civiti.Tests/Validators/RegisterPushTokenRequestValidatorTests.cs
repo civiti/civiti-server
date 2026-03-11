@@ -81,6 +81,30 @@ public class RegisterPushTokenRequestValidatorTests
     }
 
     [Fact]
+    public void Should_Fail_With_Single_Error_When_Token_Is_Whitespace()
+    {
+        var request = ValidRequest();
+        request.Token = "   ";
+
+        _ = TryValidate(request, out var results);
+
+        results.Should().ContainSingle(r =>
+            r.MemberNames.Contains(nameof(RegisterPushTokenRequest.Token)));
+    }
+
+    [Fact]
+    public void Should_Fail_With_Single_Error_When_Platform_Is_Whitespace()
+    {
+        var request = ValidRequest();
+        request.Platform = "   ";
+
+        _ = TryValidate(request, out var results);
+
+        results.Should().ContainSingle(r =>
+            r.MemberNames.Contains(nameof(RegisterPushTokenRequest.Platform)));
+    }
+
+    [Fact]
     public void Should_Fail_When_Platform_Is_Invalid()
     {
         var request = ValidRequest();

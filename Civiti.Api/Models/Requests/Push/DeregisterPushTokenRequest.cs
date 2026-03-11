@@ -14,7 +14,7 @@ public partial class DeregisterPushTokenRequest : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        if (!string.IsNullOrEmpty(Token) &&
+        if (!string.IsNullOrWhiteSpace(Token) &&
             !ExpoPushTokenRegex().IsMatch(Token))
         {
             yield return new ValidationResult(

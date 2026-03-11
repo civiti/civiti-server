@@ -17,7 +17,7 @@ public partial class RegisterPushTokenRequest : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        if (!string.IsNullOrEmpty(Token) &&
+        if (!string.IsNullOrWhiteSpace(Token) &&
             !ExpoPushTokenRegex().IsMatch(Token))
         {
             yield return new ValidationResult(
@@ -25,7 +25,7 @@ public partial class RegisterPushTokenRequest : IValidatableObject
                 [nameof(Token)]);
         }
 
-        if (!string.IsNullOrEmpty(Platform) &&
+        if (!string.IsNullOrWhiteSpace(Platform) &&
             !Platform.Equals("ios", StringComparison.OrdinalIgnoreCase) &&
             !Platform.Equals("android", StringComparison.OrdinalIgnoreCase))
         {
