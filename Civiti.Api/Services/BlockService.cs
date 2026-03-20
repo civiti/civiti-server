@@ -70,6 +70,11 @@ public class BlockService(
         {
             throw;
         }
+        catch (DbUpdateException)
+        {
+            // Unique constraint violation from concurrent duplicate block request
+            return (false, null, DomainErrors.AlreadyBlocked);
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error blocking user: {TargetUserId}", targetUserId);

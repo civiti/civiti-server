@@ -1,3 +1,4 @@
+using System.Data;
 using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Infrastructure.Exceptions;
@@ -39,6 +40,10 @@ public class ReportService(
             if (issue.UserId == user.Id)
                 return (false, null, DomainErrors.CannotReportOwnContent);
 
+            // Serializable transaction ensures rate-limit and duplicate checks
+            // are atomic with the insert — prevents concurrent bypass
+            await using var tx = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
             // Check for duplicate report (more specific error — check first)
             var alreadyReported = await context.Reports
                 .AnyAsync(r => r.ReporterId == user.Id
@@ -66,8 +71,6 @@ public class ReportService(
                 Details = request.Details?.Trim(),
                 CreatedAt = DateTime.UtcNow
             };
-
-            await using var tx = await context.Database.BeginTransactionAsync();
 
             context.Reports.Add(report);
             await context.SaveChangesAsync();
@@ -128,6 +131,10 @@ public class ReportService(
             if (comment.UserId == user.Id)
                 return (false, null, DomainErrors.CannotReportOwnContent);
 
+            // Serializable transaction ensures rate-limit and duplicate checks
+            // are atomic with the insert — prevents concurrent bypass
+            await using var tx = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
             // Check for duplicate report (more specific error — check first)
             var alreadyReported = await context.Reports
                 .AnyAsync(r => r.ReporterId == user.Id
@@ -155,8 +162,6 @@ public class ReportService(
                 Details = request.Details?.Trim(),
                 CreatedAt = DateTime.UtcNow
             };
-
-            await using var tx = await context.Database.BeginTransactionAsync();
 
             context.Reports.Add(report);
             await context.SaveChangesAsync();
