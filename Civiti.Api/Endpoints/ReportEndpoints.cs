@@ -35,6 +35,9 @@ public static class ReportEndpoints
 
                 if (!success)
                 {
+                    if (error == DomainErrors.ReportRateLimited)
+                        context.Response.Headers.RetryAfter = "3600";
+
                     return error switch
                     {
                         DomainErrors.IssueNotFound => Results.NotFound(new { error }),
@@ -96,6 +99,9 @@ public static class ReportEndpoints
 
                 if (!success)
                 {
+                    if (error == DomainErrors.ReportRateLimited)
+                        context.Response.Headers.RetryAfter = "3600";
+
                     return error switch
                     {
                         DomainErrors.CommentNotFound => Results.NotFound(new { error }),
