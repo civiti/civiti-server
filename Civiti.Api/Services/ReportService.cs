@@ -149,7 +149,6 @@ public class ReportService(
                 throw new AccountDeletedException();
 
             Comment? comment = await context.Comments
-                .Include(c => c.Issue)
                 .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted
                     && c.Issue.Status == IssueStatus.Active);
 

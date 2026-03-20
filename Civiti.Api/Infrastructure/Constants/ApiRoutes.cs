@@ -83,12 +83,11 @@ public static class ApiRoutes
         public const string ById = "/{id:guid}";
         public const string Vote = "/{id:guid}/vote";
         public const string IssueComments = $"{Issues.Base}/{{issueId:guid}}/comments";
-        public const string Report = "/{id:guid}/report";
     }
 
     public static class Reports
     {
-        public const string IssueReport = "/{id:guid}/report";
+        public const string Report = "/{id:guid}/report";
     }
 
     public static class Blocked

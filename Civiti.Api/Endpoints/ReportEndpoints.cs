@@ -17,7 +17,7 @@ public static class ReportEndpoints
             .RequireAuthorization();
 
         // POST /api/issues/{id}/report
-        issueGroup.MapPost(ApiRoutes.Reports.IssueReport, async (
+        issueGroup.MapPost(ApiRoutes.Reports.Report, async (
             Guid id,
             CreateReportRequest request,
             HttpContext context,
@@ -81,7 +81,7 @@ public static class ReportEndpoints
             .RequireAuthorization();
 
         // POST /api/comments/{id}/report
-        commentGroup.MapPost(ApiRoutes.Comments.Report, async (
+        commentGroup.MapPost(ApiRoutes.Reports.Report, async (
             Guid id,
             CreateReportRequest request,
             HttpContext context,
