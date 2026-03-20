@@ -296,6 +296,30 @@ public class ReportServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ReportComment_Should_Fail_For_NonActive_Issue()
+    {
+        var reporter = TestDataBuilder.CreateUser();
+        var author = TestDataBuilder.CreateUser();
+        var issue = TestDataBuilder.CreateIssue(userId: author.Id);
+        issue.Status = IssueStatus.Rejected;
+        var comment = TestDataBuilder.CreateComment(issueId: issue.Id, userId: author.Id);
+
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.AddRange(reporter, author);
+            ctx.Issues.Add(issue);
+            ctx.Comments.Add(comment);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+        var (success, _, error) = await svc.ReportCommentAsync(comment.Id, ValidRequest(), reporter.SupabaseUserId);
+
+        success.Should().BeFalse();
+        error.Should().Be(DomainErrors.CommentNotReportable);
+    }
+
+    [Fact]
     public async Task ReportComment_Should_Fail_For_Deleted_Comment()
     {
         var reporter = TestDataBuilder.CreateUser();
