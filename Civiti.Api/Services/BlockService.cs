@@ -134,11 +134,12 @@ public class BlockService(
                 .Where(b => b.UserId == user.Id)
                 .Include(b => b.Blocked)
                 .OrderByDescending(b => b.CreatedAt)
+                .Take(500)
                 .Select(b => new BlockedUserResponse
                 {
                     UserId = b.BlockedUserId,
-                    DisplayName = b.Blocked.DisplayName,
-                    PhotoUrl = b.Blocked.PhotoUrl,
+                    DisplayName = b.Blocked != null ? b.Blocked.DisplayName : "Deleted User",
+                    PhotoUrl = b.Blocked != null ? b.Blocked.PhotoUrl : null,
                     BlockedAt = b.CreatedAt
                 })
                 .ToListAsync();

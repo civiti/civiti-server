@@ -67,6 +67,8 @@ public class ReportService(
                 CreatedAt = DateTime.UtcNow
             };
 
+            await using var tx = await context.Database.BeginTransactionAsync();
+
             context.Reports.Add(report);
             await context.SaveChangesAsync();
 
@@ -76,6 +78,8 @@ public class ReportService(
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(i => i.ReportCount, i => i.ReportCount + 1)
                     .SetProperty(i => i.IsFlagged, i => i.IsFlagged || (i.ReportCount + 1) >= AutoFlagThreshold));
+
+            await tx.CommitAsync();
 
             logger.LogInformation(
                 "User {UserId} reported issue {IssueId} for {Reason}",
@@ -147,6 +151,8 @@ public class ReportService(
                 CreatedAt = DateTime.UtcNow
             };
 
+            await using var tx = await context.Database.BeginTransactionAsync();
+
             context.Reports.Add(report);
             await context.SaveChangesAsync();
 
@@ -156,6 +162,8 @@ public class ReportService(
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(c => c.ReportCount, c => c.ReportCount + 1)
                     .SetProperty(c => c.IsHidden, c => c.IsHidden || (c.ReportCount + 1) >= AutoFlagThreshold));
+
+            await tx.CommitAsync();
 
             logger.LogInformation(
                 "User {UserId} reported comment {CommentId} for {Reason}",
