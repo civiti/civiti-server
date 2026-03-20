@@ -40,14 +40,14 @@ public class ReportService(
             if (issue.UserId == user.Id)
                 return (false, null, DomainErrors.CannotReportOwnContent);
 
-            // Serializable transaction ensures rate-limit and duplicate checks
-            // are atomic with the insert — prevents concurrent bypass
+            // Serializable transaction covers duplicate-check + rate-limit + insert only.
+            // User/entity lookups above are safe outside it (ownership is immutable).
             await using var tx = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
             // Check for duplicate report (more specific error — check first)
             var alreadyReported = await context.Reports
                 .AnyAsync(r => r.ReporterId == user.Id
-                    && r.TargetType == "Issue"
+                    && r.TargetType == ReportTargetTypes.Issue
                     && r.TargetId == issueId);
 
             if (alreadyReported)
@@ -65,7 +65,7 @@ public class ReportService(
             {
                 Id = Guid.NewGuid(),
                 ReporterId = user.Id,
-                TargetType = "Issue",
+                TargetType = ReportTargetTypes.Issue,
                 TargetId = issueId,
                 Reason = request.ParsedReason,
                 Details = request.Details?.Trim(),
@@ -131,14 +131,14 @@ public class ReportService(
             if (comment.UserId == user.Id)
                 return (false, null, DomainErrors.CannotReportOwnContent);
 
-            // Serializable transaction ensures rate-limit and duplicate checks
-            // are atomic with the insert — prevents concurrent bypass
+            // Serializable transaction covers duplicate-check + rate-limit + insert only.
+            // User/entity lookups above are safe outside it (ownership is immutable).
             await using var tx = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
             // Check for duplicate report (more specific error — check first)
             var alreadyReported = await context.Reports
                 .AnyAsync(r => r.ReporterId == user.Id
-                    && r.TargetType == "Comment"
+                    && r.TargetType == ReportTargetTypes.Comment
                     && r.TargetId == commentId);
 
             if (alreadyReported)
@@ -156,7 +156,7 @@ public class ReportService(
             {
                 Id = Guid.NewGuid(),
                 ReporterId = user.Id,
-                TargetType = "Comment",
+                TargetType = ReportTargetTypes.Comment,
                 TargetId = commentId,
                 Reason = request.ParsedReason,
                 Details = request.Details?.Trim(),
