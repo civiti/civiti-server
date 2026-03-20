@@ -42,6 +42,7 @@ public class ReportService(
 
             // Pre-generate ID for idempotency on retry
             Guid reportId = Guid.NewGuid();
+            string? businessError = null;
 
             // Execution strategy wrapper required for retry-enabled DbContext
             var strategy = context.Database.CreateExecutionStrategy();
@@ -64,7 +65,10 @@ public class ReportService(
                         && r.TargetId == issueId);
 
                 if (alreadyReported)
-                    throw new InvalidOperationException(DomainErrors.AlreadyReported);
+                {
+                    businessError = DomainErrors.AlreadyReported;
+                    return;
+                }
 
                 // DB-based rate limit: max reports in last hour
                 var recentReportCount = await context.Reports
@@ -72,7 +76,10 @@ public class ReportService(
                         && r.CreatedAt > DateTime.UtcNow.AddHours(-1));
 
                 if (recentReportCount >= 5)
-                    throw new InvalidOperationException(DomainErrors.ReportRateLimited);
+                {
+                    businessError = DomainErrors.ReportRateLimited;
+                    return;
+                }
 
                 Report report = new()
                 {
@@ -100,6 +107,9 @@ public class ReportService(
                 await tx.CommitAsync();
             });
 
+            if (businessError != null)
+                return (false, null, businessError);
+
             logger.LogInformation(
                 "User {UserId} reported issue {IssueId} for {Reason}",
                 user.Id, issueId, request.Reason);
@@ -109,12 +119,6 @@ public class ReportService(
         catch (AccountDeletedException)
         {
             throw;
-        }
-        catch (InvalidOperationException ex) when (
-            ex.Message == DomainErrors.AlreadyReported ||
-            ex.Message == DomainErrors.ReportRateLimited)
-        {
-            return (false, null, ex.Message);
         }
         catch (DbUpdateException)
         {
@@ -157,6 +161,7 @@ public class ReportService(
 
             // Pre-generate ID for idempotency on retry
             Guid reportId = Guid.NewGuid();
+            string? businessError = null;
 
             // Execution strategy wrapper required for retry-enabled DbContext
             var strategy = context.Database.CreateExecutionStrategy();
@@ -179,7 +184,10 @@ public class ReportService(
                         && r.TargetId == commentId);
 
                 if (alreadyReported)
-                    throw new InvalidOperationException(DomainErrors.AlreadyReported);
+                {
+                    businessError = DomainErrors.AlreadyReported;
+                    return;
+                }
 
                 // DB-based rate limit: max reports in last hour
                 var recentReportCount = await context.Reports
@@ -187,7 +195,10 @@ public class ReportService(
                         && r.CreatedAt > DateTime.UtcNow.AddHours(-1));
 
                 if (recentReportCount >= 5)
-                    throw new InvalidOperationException(DomainErrors.ReportRateLimited);
+                {
+                    businessError = DomainErrors.ReportRateLimited;
+                    return;
+                }
 
                 Report report = new()
                 {
@@ -213,6 +224,9 @@ public class ReportService(
                 await tx.CommitAsync();
             });
 
+            if (businessError != null)
+                return (false, null, businessError);
+
             logger.LogInformation(
                 "User {UserId} reported comment {CommentId} for {Reason}",
                 user.Id, commentId, request.Reason);
@@ -222,12 +236,6 @@ public class ReportService(
         catch (AccountDeletedException)
         {
             throw;
-        }
-        catch (InvalidOperationException ex) when (
-            ex.Message == DomainErrors.AlreadyReported ||
-            ex.Message == DomainErrors.ReportRateLimited)
-        {
-            return (false, null, ex.Message);
         }
         catch (DbUpdateException)
         {
