@@ -91,6 +91,11 @@ public class ReportService(
         {
             throw;
         }
+        catch (DbUpdateException)
+        {
+            // Unique constraint violation from concurrent duplicate report
+            return (false, null, DomainErrors.AlreadyReported);
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error reporting issue: {IssueId}", issueId);
@@ -174,6 +179,11 @@ public class ReportService(
         catch (AccountDeletedException)
         {
             throw;
+        }
+        catch (DbUpdateException)
+        {
+            // Unique constraint violation from concurrent duplicate report
+            return (false, null, DomainErrors.AlreadyReported);
         }
         catch (Exception ex)
         {

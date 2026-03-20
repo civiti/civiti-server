@@ -132,7 +132,6 @@ public class BlockService(
 
             List<BlockedUserResponse> blockedUsers = await context.BlockedUsers
                 .Where(b => b.UserId == user.Id)
-                .Include(b => b.Blocked)
                 .OrderByDescending(b => b.CreatedAt)
                 .Take(500)
                 .Select(b => new BlockedUserResponse
