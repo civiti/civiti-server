@@ -102,7 +102,8 @@ public class ReportService(
                     .Where(i => i.Id == issueId)
                     .ExecuteUpdateAsync(s => s
                         .SetProperty(i => i.ReportCount, i => i.ReportCount + 1)
-                        .SetProperty(i => i.IsFlagged, i => i.IsFlagged || (i.ReportCount + 1) >= AutoFlagThreshold));
+                        .SetProperty(i => i.IsFlagged, i => i.IsFlagged || (i.ReportCount + 1) >= AutoFlagThreshold)
+                        .SetProperty(i => i.UpdatedAt, _ => DateTime.UtcNow));
 
                 await tx.CommitAsync();
             });
@@ -218,7 +219,8 @@ public class ReportService(
                     .Where(c => c.Id == commentId)
                     .ExecuteUpdateAsync(s => s
                         .SetProperty(c => c.ReportCount, c => c.ReportCount + 1)
-                        .SetProperty(c => c.IsHidden, c => c.IsHidden || (c.ReportCount + 1) >= AutoFlagThreshold));
+                        .SetProperty(c => c.IsHidden, c => c.IsHidden || (c.ReportCount + 1) >= AutoFlagThreshold)
+                        .SetProperty(c => c.UpdatedAt, _ => DateTime.UtcNow));
 
                 await tx.CommitAsync();
             });
