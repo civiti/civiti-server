@@ -42,6 +42,15 @@ public class CommentService(
                 .Include(c => c.User)
                 .Where(c => c.IssueId == issueId && !c.IsDeleted);
 
+            // Filter out comments from users blocked by the current viewer
+            if (currentUserId.HasValue)
+            {
+                query = query.Where(c =>
+                    !context.BlockedUsers.Any(b =>
+                        b.UserId == currentUserId.Value &&
+                        b.BlockedUserId == c.UserId));
+            }
+
             // Apply sorting
             query = request.SortBy.ToLowerInvariant() switch
             {

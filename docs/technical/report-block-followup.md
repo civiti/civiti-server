@@ -8,27 +8,9 @@
 
 ## P1 — High Priority
 
-### 1. Block-list enforcement absent from content queries
+### ~~1. Block-list enforcement absent from content queries~~ DONE
 
-**File:** `Civiti.Api/Services/CommentService.cs`, `IssueService.cs`
-**Impact:** The block feature is non-functional from the user's perspective — blocked users' content still appears in feeds.
-
-The `BlockService` stores block relationships correctly, but neither `GetIssueCommentsAsync` nor any issue-listing query filters out content from blocked users. The endpoint description states _"The blocked user's content will be hidden from the authenticated user"_ but this is not enforced.
-
-**Fix approach:** Add a `BlockedUsers` anti-join to content queries:
-
-```csharp
-// In comment/issue queries, filter out blocked authors
-if (currentUserId.HasValue)
-{
-    query = query.Where(c =>
-        !context.BlockedUsers.Any(b =>
-            b.UserId == currentUserId.Value &&
-            b.BlockedUserId == c.UserId));
-}
-```
-
-This affects multiple service methods across `CommentService` and `IssueService`. Consider a shared query extension method to avoid duplication.
+Implemented — block-list anti-join added to `GetIssueCommentsAsync` and `GetAllIssuesAsync`. Blocked users' content is hidden from feeds. Direct issue detail lookup by ID is intentionally not filtered (consistent with standard platform behavior).
 
 ---
 

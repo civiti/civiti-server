@@ -98,6 +98,15 @@ public class IssueService(
                 query = query.Where(i => i.Address.ToLower().Contains(addressLower));
             }
 
+            // Filter out issues from users blocked by the current viewer
+            if (currentUserId.HasValue)
+            {
+                query = query.Where(i =>
+                    !context.BlockedUsers.Any(b =>
+                        b.UserId == currentUserId.Value &&
+                        b.BlockedUserId == i.UserId));
+            }
+
             // Apply sorting
             query = request.SortBy?.ToLower() switch
             {

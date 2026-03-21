@@ -204,14 +204,15 @@ public static class TestDataBuilder
     public static BlockedUser CreateBlockedUser(
         Guid? id = null,
         Guid? userId = null,
-        Guid? blockedUserId = null)
+        Guid? blockedUserId = null,
+        DateTime? createdAt = null)
     {
         return new BlockedUser
         {
             Id = id ?? Guid.NewGuid(),
             UserId = userId ?? Guid.NewGuid(),
             BlockedUserId = blockedUserId ?? Guid.NewGuid(),
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = createdAt ?? DateTime.UtcNow
         };
     }
 
