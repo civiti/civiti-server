@@ -679,41 +679,29 @@ public class UserService(
 
                 if (issueTargetIds.Count > 0 || commentTargetIds.Count > 0)
                 {
-
                     await context.Reports
                         .Where(r => r.ReporterId == user.Id)
                         .ExecuteDeleteAsync(cancellationToken);
 
-                    // Batch count remaining reports per target (1 query per type instead of N)
-                    var issueCounts = await context.Reports
-                        .Where(r => r.TargetType == ReportTargetTypes.Issue && issueTargetIds.Contains(r.TargetId))
-                        .GroupBy(r => r.TargetId)
-                        .Select(g => new { TargetId = g.Key, Count = g.Count() })
-                        .ToDictionaryAsync(x => x.TargetId, x => x.Count, cancellationToken);
-
-                    foreach (var issueId in issueTargetIds)
+                    // Relative decrement — race-free with concurrent ReportService increments.
+                    // Each user has exactly 1 report per target (unique index), so decrement by 1.
+                    if (issueTargetIds.Count > 0)
                     {
-                        var count = issueCounts.GetValueOrDefault(issueId, 0);
-                        await context.Issues.Where(i => i.Id == issueId)
+                        await context.Issues
+                            .Where(i => issueTargetIds.Contains(i.Id))
                             .ExecuteUpdateAsync(s => s
-                                .SetProperty(i => i.ReportCount, count)
-                                .SetProperty(i => i.IsFlagged, count >= ReportService.AutoFlagThreshold)
+                                .SetProperty(i => i.ReportCount, i => i.ReportCount - 1)
+                                .SetProperty(i => i.IsFlagged, i => (i.ReportCount - 1) >= ReportService.AutoFlagThreshold)
                                 .SetProperty(i => i.UpdatedAt, _ => DateTime.UtcNow), cancellationToken);
                     }
 
-                    var commentCounts = await context.Reports
-                        .Where(r => r.TargetType == ReportTargetTypes.Comment && commentTargetIds.Contains(r.TargetId))
-                        .GroupBy(r => r.TargetId)
-                        .Select(g => new { TargetId = g.Key, Count = g.Count() })
-                        .ToDictionaryAsync(x => x.TargetId, x => x.Count, cancellationToken);
-
-                    foreach (var commentId in commentTargetIds)
+                    if (commentTargetIds.Count > 0)
                     {
-                        var count = commentCounts.GetValueOrDefault(commentId, 0);
-                        await context.Comments.Where(c => c.Id == commentId)
+                        await context.Comments
+                            .Where(c => commentTargetIds.Contains(c.Id))
                             .ExecuteUpdateAsync(s => s
-                                .SetProperty(c => c.ReportCount, count)
-                                .SetProperty(c => c.IsHidden, count >= ReportService.AutoFlagThreshold)
+                                .SetProperty(c => c.ReportCount, c => c.ReportCount - 1)
+                                .SetProperty(c => c.IsHidden, c => (c.ReportCount - 1) >= ReportService.AutoFlagThreshold)
                                 .SetProperty(c => c.UpdatedAt, _ => DateTime.UtcNow), cancellationToken);
                     }
                 }
