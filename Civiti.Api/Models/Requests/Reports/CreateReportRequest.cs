@@ -31,7 +31,7 @@ public class CreateReportRequest : IValidatableObject
         }
     }
 
-    public ReportReason ParsedReason => Enum.TryParse<ReportReason>(Reason, ignoreCase: true, out var r)
+    internal ReportReason ParsedReason => Enum.TryParse<ReportReason>(Reason, ignoreCase: true, out var r)
         ? r
         : throw new InvalidOperationException($"ParsedReason called with invalid Reason value '{Reason}'. Ensure Validate() runs before accessing this property.");
 }
