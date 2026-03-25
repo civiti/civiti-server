@@ -129,7 +129,7 @@ Add these packages to `Civica.Api.csproj`:
   },
   "Supabase": {
     "Url": "https://your-project.supabase.co",
-    "AnonKey": "your-anon-key",
+    "PublishableKey": "your-publishable-key",
     "ServiceRoleKey": "your-service-role-key"
   },
   "JwtSettings": {
@@ -155,7 +155,7 @@ Add these packages to `Civica.Api.csproj`:
 ```bash
 DATABASE_URL=postgresql://user:pass@host:port/database
 SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_ANON_KEY=xxx
+SUPABASE_PUBLISHABLE_KEY=xxx
 SUPABASE_SERVICE_KEY=xxx
 PORT=8080
 ASPNETCORE_ENVIRONMENT=Production
@@ -217,8 +217,8 @@ builder.Services.AddDbContext<CivicaDbContext>(options =>
 // Authentication with Supabase JWT
 var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") 
     ?? builder.Configuration["Supabase:Url"];
-var supabaseAnonKey = Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY") 
-    ?? builder.Configuration["Supabase:AnonKey"];
+var supabasePublishableKey = Environment.GetEnvironmentVariable("SUPABASE_PUBLISHABLE_KEY")
+    ?? builder.Configuration["Supabase:PublishableKey"];
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

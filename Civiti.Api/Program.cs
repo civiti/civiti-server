@@ -132,10 +132,11 @@ if (string.IsNullOrWhiteSpace(supabaseUrl))
     supabaseUrl = builder.Configuration["Supabase:Url"];
 }
 
-var supabaseAnonKey = Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY");
-if (string.IsNullOrWhiteSpace(supabaseAnonKey))
+var supabasePublishableKey = Environment.GetEnvironmentVariable("SUPABASE_PUBLISHABLE_KEY")
+    ?? Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY"); // legacy fallback
+if (string.IsNullOrWhiteSpace(supabasePublishableKey))
 {
-    supabaseAnonKey = builder.Configuration["Supabase:AnonKey"];
+    supabasePublishableKey = builder.Configuration["Supabase:PublishableKey"];
 }
 
 // Validate Supabase configuration early
@@ -147,10 +148,10 @@ if (string.IsNullOrWhiteSpace(supabaseUrl))
     throw new InvalidOperationException(errorMsg);
 }
 
-if (string.IsNullOrWhiteSpace(supabaseAnonKey))
+if (string.IsNullOrWhiteSpace(supabasePublishableKey))
 {
-    var errorMsg = $"Supabase Anon Key not configured. Environment: {builder.Environment.EnvironmentName}. " +
-                   "Please set SUPABASE_ANON_KEY environment variable or configure Supabase:AnonKey in appsettings.json/appsettings.Development.json. " +
+    var errorMsg = $"Supabase Publishable Key not configured. Environment: {builder.Environment.EnvironmentName}. " +
+                   "Please set SUPABASE_PUBLISHABLE_KEY environment variable or configure Supabase:PublishableKey in appsettings.json/appsettings.Development.json. " +
                    "Check launchSettings.json for environment variables when debugging.";
     throw new InvalidOperationException(errorMsg);
 }
@@ -292,7 +293,7 @@ if (string.IsNullOrWhiteSpace(supabaseServiceRoleKey))
 builder.Services.AddSingleton(new SupabaseConfiguration
 {
     Url = supabaseUrl,
-    AnonKey = supabaseAnonKey,
+    PublishableKey = supabasePublishableKey,
     ServiceRoleKey = supabaseServiceRoleKey ?? string.Empty
 });
 

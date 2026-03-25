@@ -171,7 +171,7 @@ public enum IssueStatus
   },
   "Supabase": {
     "Url": "https://your-project.supabase.co",
-    "AnonKey": "your-anon-key",
+    "PublishableKey": "your-publishable-key",
     "ServiceKey": "your-service-key"
   },
   "Logging": {
@@ -302,7 +302,7 @@ public class ErrorHandlingMiddleware
 ```env
 DATABASE_URL=postgresql://postgres:password@localhost:5432/civica
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 SUPABASE_SERVICE_KEY=your-service-key
 ASPNETCORE_ENVIRONMENT=Production
 PORT=8080

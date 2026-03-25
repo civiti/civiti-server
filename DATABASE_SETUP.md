@@ -72,7 +72,7 @@ Update `appsettings.Development.json` with your Supabase credentials:
 ```json
 "Supabase": {
   "Url": "https://your-project.supabase.co",
-  "AnonKey": "your-actual-anon-key"
+  "PublishableKey": "your-actual-publishable-key"
 }
 ```
 
