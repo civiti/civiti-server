@@ -113,38 +113,36 @@ public class ReportServiceTests : IDisposable
         var issueAuthor = TestDataBuilder.CreateUser();
         var issue = TestDataBuilder.CreateIssue(userId: issueAuthor.Id);
 
-        // Create 2 existing reports (threshold is 3)
-        var reporter1 = TestDataBuilder.CreateUser();
-        var reporter2 = TestDataBuilder.CreateUser();
-        issue.ReportCount = 2;
+        // Create 14 existing reports (threshold is 15)
+        var existingReporters = Enumerable.Range(0, 14).Select(_ => TestDataBuilder.CreateUser()).ToList();
+        issue.ReportCount = 14;
 
         using (var ctx = _dbFactory.CreateContext())
         {
-            ctx.UserProfiles.AddRange(issueAuthor, reporter1, reporter2);
+            ctx.UserProfiles.AddRange(new[] { issueAuthor }.Concat(existingReporters));
             ctx.Issues.Add(issue);
-            ctx.Reports.AddRange(
-                TestDataBuilder.CreateReport(reporterId: reporter1.Id, targetType: ReportTargetTypes.Issue, targetId: issue.Id),
-                TestDataBuilder.CreateReport(reporterId: reporter2.Id, targetType: ReportTargetTypes.Issue, targetId: issue.Id));
+            ctx.Reports.AddRange(existingReporters.Select(r =>
+                TestDataBuilder.CreateReport(reporterId: r.Id, targetType: ReportTargetTypes.Issue, targetId: issue.Id)));
             await ctx.SaveChangesAsync();
         }
 
-        // Third reporter triggers auto-flag
-        var reporter3 = TestDataBuilder.CreateUser();
+        // 15th reporter triggers auto-flag
+        var triggeringReporter = TestDataBuilder.CreateUser();
         using (var ctx = _dbFactory.CreateContext())
         {
-            ctx.UserProfiles.Add(reporter3);
+            ctx.UserProfiles.Add(triggeringReporter);
             await ctx.SaveChangesAsync();
         }
 
         var svc = CreateService();
-        var (success, _, _) = await svc.ReportIssueAsync(issue.Id, ValidRequest(), reporter3.SupabaseUserId);
+        var (success, _, _) = await svc.ReportIssueAsync(issue.Id, ValidRequest(), triggeringReporter.SupabaseUserId);
 
         success.Should().BeTrue();
 
         using var verifyCtx = _dbFactory.CreateContext();
         var flaggedIssue = await verifyCtx.Issues.FindAsync(issue.Id);
         flaggedIssue!.IsFlagged.Should().BeTrue();
-        flaggedIssue.ReportCount.Should().Be(3);
+        flaggedIssue.ReportCount.Should().Be(15);
     }
 
     [Fact]
@@ -292,38 +290,38 @@ public class ReportServiceTests : IDisposable
         var commentAuthor = TestDataBuilder.CreateUser();
         var issue = TestDataBuilder.CreateIssue(userId: commentAuthor.Id);
         var comment = TestDataBuilder.CreateComment(issueId: issue.Id, userId: commentAuthor.Id);
-        comment.ReportCount = 2;
+        comment.ReportCount = 14;
 
-        var reporter1 = TestDataBuilder.CreateUser();
-        var reporter2 = TestDataBuilder.CreateUser();
+        // Create 14 existing reports (threshold is 15)
+        var existingReporters = Enumerable.Range(0, 14).Select(_ => TestDataBuilder.CreateUser()).ToList();
 
         using (var ctx = _dbFactory.CreateContext())
         {
-            ctx.UserProfiles.AddRange(commentAuthor, reporter1, reporter2);
+            ctx.UserProfiles.AddRange(new[] { commentAuthor }.Concat(existingReporters));
             ctx.Issues.Add(issue);
             ctx.Comments.Add(comment);
-            ctx.Reports.AddRange(
-                TestDataBuilder.CreateReport(reporterId: reporter1.Id, targetType: ReportTargetTypes.Comment, targetId: comment.Id),
-                TestDataBuilder.CreateReport(reporterId: reporter2.Id, targetType: ReportTargetTypes.Comment, targetId: comment.Id));
+            ctx.Reports.AddRange(existingReporters.Select(r =>
+                TestDataBuilder.CreateReport(reporterId: r.Id, targetType: ReportTargetTypes.Comment, targetId: comment.Id)));
             await ctx.SaveChangesAsync();
         }
 
-        var reporter3 = TestDataBuilder.CreateUser();
+        // 15th reporter triggers auto-hide
+        var triggeringReporter = TestDataBuilder.CreateUser();
         using (var ctx = _dbFactory.CreateContext())
         {
-            ctx.UserProfiles.Add(reporter3);
+            ctx.UserProfiles.Add(triggeringReporter);
             await ctx.SaveChangesAsync();
         }
 
         var svc = CreateService();
-        var (success, _, _) = await svc.ReportCommentAsync(comment.Id, ValidRequest(), reporter3.SupabaseUserId);
+        var (success, _, _) = await svc.ReportCommentAsync(comment.Id, ValidRequest(), triggeringReporter.SupabaseUserId);
 
         success.Should().BeTrue();
 
         using var verifyCtx = _dbFactory.CreateContext();
         var hiddenComment = await verifyCtx.Comments.FindAsync(comment.Id);
         hiddenComment!.IsHidden.Should().BeTrue();
-        hiddenComment.ReportCount.Should().Be(3);
+        hiddenComment.ReportCount.Should().Be(15);
     }
 
     [Fact]
