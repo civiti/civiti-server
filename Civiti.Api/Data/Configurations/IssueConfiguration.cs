@@ -30,6 +30,12 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
         builder.Property(i => i.ReviewedBy)
             .HasMaxLength(255);
 
+        builder.Property(i => i.ReportCount)
+            .HasDefaultValue(0);
+
+        builder.Property(i => i.IsFlagged)
+            .HasDefaultValue(false);
+
         // Indexes
         builder.HasIndex(i => i.UserId);
         builder.HasIndex(i => i.Status);

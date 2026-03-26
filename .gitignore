@@ -28,3 +28,7 @@ riderModule.iml
 
 # Claude Code local settings
 .claude/settings.local.json
+.claude/pr-reviews/
+
+# MCP server config (contains API keys)
+.mcp.json

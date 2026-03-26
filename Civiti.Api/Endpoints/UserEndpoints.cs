@@ -1,7 +1,6 @@
 using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Infrastructure.Exceptions;
 using Civiti.Api.Infrastructure.Extensions;
-using Civiti.Api.Infrastructure.Filters;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Auth;
 using Civiti.Api.Models.Requests.Issues;
@@ -315,8 +314,6 @@ public static class UserEndpoints
         .WithName("DeleteUserAccount")
         .WithSummary("Delete user account (soft delete)")
         .WithDescription("Permanently soft-deletes the authenticated user's account. Requires a JSON body with confirmation=\"DELETE\". All personal data is anonymized and the Supabase Auth account is removed (best-effort). The user's issues and comments are preserved with author shown as 'Deleted User'. This action cannot be undone. Rate limited to 3 attempts per hour.")
-        .AddEndpointFilter<ValidationFilter<DeleteAccountRequest>>()
-        .DisableValidation()
         .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
@@ -479,9 +476,6 @@ public static class UserEndpoints
 
             return Results.Ok(issue);
         })
-        .AddEndpointFilter<ValidationFilter<UpdateIssueRequest>>()
-        // Disable ASP.NET Core 9's built-in model validation to avoid double-validation with our FluentValidation filter above
-        .DisableValidation()
         .WithName("UpdateUserIssue")
         .WithSummary("Update and resubmit an issue")
         .WithDescription("Allows the authenticated user to edit their own issue. Cannot edit Cancelled or Resolved issues. After editing, the issue status is set to 'UnderReview' for admin re-approval.")

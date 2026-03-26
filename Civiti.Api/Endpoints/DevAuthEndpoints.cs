@@ -22,10 +22,11 @@ public static class DevAuthEndpoints
                 // Get Supabase configuration
                 var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") 
                     ?? configuration["Supabase:Url"];
-                var supabaseAnonKey = Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY") 
-                    ?? configuration["Supabase:AnonKey"];
+                var supabasePublishableKey = Environment.GetEnvironmentVariable("SUPABASE_PUBLISHABLE_KEY")
+                    ?? Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY") // legacy fallback
+                    ?? configuration["Supabase:PublishableKey"];
 
-                if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(supabaseAnonKey))
+                if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(supabasePublishableKey))
                 {
                     return Results.BadRequest(new { Error = "Supabase configuration missing" });
                 }
@@ -52,7 +53,7 @@ public static class DevAuthEndpoints
                 {
                     Content = jsonContent
                 };
-                httpRequest.Headers.Add("apikey", supabaseAnonKey);
+                httpRequest.Headers.Add("apikey", supabasePublishableKey);
                 
                 HttpResponseMessage response = await httpClient.SendAsync(httpRequest);
                 var responseContent = await response.Content.ReadAsStringAsync();

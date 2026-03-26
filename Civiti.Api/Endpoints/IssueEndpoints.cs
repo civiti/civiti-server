@@ -1,7 +1,6 @@
 using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Infrastructure.Exceptions;
 using Civiti.Api.Infrastructure.Extensions;
-using Civiti.Api.Infrastructure.Filters;
 using Civiti.Api.Models.Domain;
 using Civiti.Api.Models.Requests.Issues;
 using Civiti.Api.Models.Responses.Auth;
@@ -188,9 +187,6 @@ public static class IssueEndpoints
         .WithName("CreateIssue")
         .WithSummary("Create a new issue (requires authentication)")
         .WithDescription("Creates a new civic issue report. The issue will be placed in pending status and requires admin approval before becoming publicly visible. Users earn gamification points for creating issues. Rate limited to 10 issues per hour per user to prevent spam.")
-        .AddEndpointFilter<ValidationFilter<CreateIssueRequest>>()
-        // Disable ASP.NET Core 9's built-in model validation to avoid double-validation with our FluentValidation filter above
-        .DisableValidation()
         .Produces<CreateIssueResponse>(201)
         .Produces(400)
         .Produces(401)

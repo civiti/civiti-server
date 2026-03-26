@@ -1,3 +1,4 @@
+using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Models.Domain;
 
 namespace Civiti.Tests.Helpers;
@@ -177,6 +178,41 @@ public static class TestDataBuilder
             CommentId = commentId ?? Guid.NewGuid(),
             UserId = userId ?? Guid.NewGuid(),
             CreatedAt = DateTime.UtcNow
+        };
+    }
+
+    public static Report CreateReport(
+        Guid? id = null,
+        Guid? reporterId = null,
+        string targetType = ReportTargetTypes.Issue,
+        Guid? targetId = null,
+        ReportReason reason = ReportReason.Spam,
+        DateTime? createdAt = null)
+    {
+        return new Report
+        {
+            Id = id ?? Guid.NewGuid(),
+            ReporterId = reporterId ?? Guid.NewGuid(),
+            TargetType = targetType,
+            TargetId = targetId ?? Guid.NewGuid(),
+            Reason = reason,
+            Status = ReportStatus.Pending,
+            CreatedAt = createdAt ?? DateTime.UtcNow
+        };
+    }
+
+    public static BlockedUser CreateBlockedUser(
+        Guid? id = null,
+        Guid? userId = null,
+        Guid? blockedUserId = null,
+        DateTime? createdAt = null)
+    {
+        return new BlockedUser
+        {
+            Id = id ?? Guid.NewGuid(),
+            UserId = userId ?? Guid.NewGuid(),
+            BlockedUserId = blockedUserId ?? Guid.NewGuid(),
+            CreatedAt = createdAt ?? DateTime.UtcNow
         };
     }
 

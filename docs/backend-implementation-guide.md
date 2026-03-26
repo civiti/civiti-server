@@ -104,7 +104,7 @@ Add these packages to `Civica.Api.csproj`:
 <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.0" />
 <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
 <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.1.2" />
-<PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
+<!-- Built-in validation via builder.Services.AddValidation() — no extra package needed -->
 <PackageReference Include="Serilog.AspNetCore" Version="8.0.0" />
 <PackageReference Include="Serilog.Sinks.Console" Version="5.0.0" />
 <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
@@ -129,7 +129,7 @@ Add these packages to `Civica.Api.csproj`:
   },
   "Supabase": {
     "Url": "https://your-project.supabase.co",
-    "AnonKey": "your-anon-key",
+    "PublishableKey": "your-publishable-key",
     "ServiceRoleKey": "your-service-role-key"
   },
   "JwtSettings": {
@@ -155,7 +155,7 @@ Add these packages to `Civica.Api.csproj`:
 ```bash
 DATABASE_URL=postgresql://user:pass@host:port/database
 SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_ANON_KEY=xxx
+SUPABASE_PUBLISHABLE_KEY=xxx
 SUPABASE_SERVICE_KEY=xxx
 PORT=8080
 ASPNETCORE_ENVIRONMENT=Production
@@ -172,7 +172,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Serilog;
-using FluentValidation;
+// Validation uses built-in DataAnnotations + IValidatableObject (no extra package)
 using Civica.Api.Data;
 using Civica.Api.Services.Interfaces;
 using Civica.Api.Services;
@@ -217,8 +217,8 @@ builder.Services.AddDbContext<CivicaDbContext>(options =>
 // Authentication with Supabase JWT
 var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") 
     ?? builder.Configuration["Supabase:Url"];
-var supabaseAnonKey = Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY") 
-    ?? builder.Configuration["Supabase:AnonKey"];
+var supabasePublishableKey = Environment.GetEnvironmentVariable("SUPABASE_PUBLISHABLE_KEY")
+    ?? builder.Configuration["Supabase:PublishableKey"];
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

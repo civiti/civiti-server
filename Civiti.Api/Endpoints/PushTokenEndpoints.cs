@@ -1,7 +1,6 @@
 using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Infrastructure.Exceptions;
 using Civiti.Api.Infrastructure.Extensions;
-using Civiti.Api.Infrastructure.Filters;
 using Civiti.Api.Models.Requests.Push;
 using Civiti.Api.Services.Interfaces;
 
@@ -52,8 +51,6 @@ public static class PushTokenEndpoints
                     title: "Account Deleted");
             }
         })
-        .AddEndpointFilter<ValidationFilter<RegisterPushTokenRequest>>()
-        .DisableValidation()
         .WithName("RegisterPushToken")
         .WithSummary("Register a device push token")
         .WithDescription("Associates an Expo push token with the authenticated user. Idempotent — safe to call on every sign-in. If the token is already registered to a different user, it will be reassigned.")
@@ -100,8 +97,6 @@ public static class PushTokenEndpoints
                     title: "Account Deleted");
             }
         })
-        .AddEndpointFilter<ValidationFilter<DeregisterPushTokenRequest>>()
-        .DisableValidation()
         .WithName("DeregisterPushToken")
         .WithSummary("Deregister a device push token")
         .WithDescription("Removes the association between an Expo push token and the authenticated user. Called on sign-out. Idempotent — returns success even if the token was not found.")

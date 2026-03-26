@@ -15,6 +15,8 @@ public class Issue
     public IssueStatus Status { get; set; } = IssueStatus.Submitted;
     public int EmailsSent { get; set; } = 0;
     public int CommunityVotes { get; set; } = 0;
+    public int ReportCount { get; set; } = 0;
+    public bool IsFlagged { get; set; } = false;
     public string? DesiredOutcome { get; set; }
     public string? CommunityImpact { get; set; }
     public string? AdminNotes { get; set; }

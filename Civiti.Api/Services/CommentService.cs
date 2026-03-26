@@ -42,6 +42,15 @@ public class CommentService(
                 .Include(c => c.User)
                 .Where(c => c.IssueId == issueId && !c.IsDeleted);
 
+            // Filter out comments from users blocked by the current viewer
+            if (currentUserId.HasValue)
+            {
+                query = query.Where(c =>
+                    !context.BlockedUsers.Any(b =>
+                        b.UserId == currentUserId.Value &&
+                        b.BlockedUserId == c.UserId));
+            }
+
             // Apply sorting
             query = request.SortBy.ToLowerInvariant() switch
             {
@@ -108,9 +117,20 @@ public class CommentService(
     {
         try
         {
-            Comment? comment = await context.Comments
+            IQueryable<Comment> commentQuery = context.Comments
                 .Include(c => c.User)
-                .FirstOrDefaultAsync(c => c.Id == commentId && !c.IsDeleted);
+                .Where(c => c.Id == commentId && !c.IsDeleted);
+
+            // Filter out comments from users blocked by the current viewer
+            if (currentUserId.HasValue)
+            {
+                commentQuery = commentQuery.Where(c =>
+                    !context.BlockedUsers.Any(b =>
+                        b.UserId == currentUserId.Value &&
+                        b.BlockedUserId == c.UserId));
+            }
+
+            Comment? comment = await commentQuery.FirstOrDefaultAsync();
 
             if (comment == null)
             {
@@ -871,7 +891,7 @@ public class CommentService(
         {
             Id = comment.Id,
             IssueId = comment.IssueId,
-            Content = comment.Content,
+            Content = comment.IsHidden ? string.Empty : comment.Content,
             HelpfulCount = comment.HelpfulCount,
             IsEdited = comment.IsEdited,
             IsDeleted = comment.IsDeleted,
@@ -894,7 +914,8 @@ public class CommentService(
                     PhotoUrl = null,
                     Level = 0
                 },
-            HasVoted = hasVoted
+            HasVoted = hasVoted,
+            IsHidden = comment.IsHidden
         };
     }
 }

@@ -12,6 +12,8 @@ public class Comment
     public int HelpfulCount { get; set; } = 0;
     public bool IsEdited { get; set; } = false;
     public bool IsDeleted { get; set; } = false;
+    public int ReportCount { get; set; } = 0;
+    public bool IsHidden { get; set; } = false;
     public Guid? DeletedByUserId { get; set; }
     public Guid? ParentCommentId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

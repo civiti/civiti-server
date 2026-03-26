@@ -2,8 +2,6 @@ using System.Net;
 using System.Text.Json;
 using Civiti.Api.Infrastructure.Middleware;
 using FluentAssertions;
-using FluentValidation;
-using FluentValidation.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -43,26 +41,6 @@ public class ErrorHandlingMiddlewareTests
         await middleware.InvokeAsync(context);
 
         context.Response.StatusCode.Should().Be(200);
-    }
-
-    [Fact]
-    public async Task Should_Return_400_For_ValidationException()
-    {
-        var failures = new List<ValidationFailure>
-        {
-            new("Title", "Title is required"),
-            new("Title", "Title must be at most 200 characters")
-        };
-        var context = CreateHttpContext();
-        var middleware = CreateMiddleware(_ => throw new ValidationException(failures));
-
-        await middleware.InvokeAsync(context);
-
-        context.Response.StatusCode.Should().Be((int)HttpStatusCode.BadRequest);
-        var body = await ReadResponseBody(context);
-        body.Code.Should().Be("VALIDATION_ERROR");
-        body.Details.Should().ContainKey("Title");
-        body.Details!["Title"].Should().HaveCount(2);
     }
 
     [Fact]

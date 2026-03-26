@@ -371,7 +371,7 @@ builder.Services.AddAuthentication()
     .AddJwtBearer(options =>
     {
         options.Authority = builder.Configuration["Supabase:Url"];
-        options.Audience = builder.Configuration["Supabase:AnonKey"];
+        options.Audience = builder.Configuration["Supabase:PublishableKey"];
     });
 ```
 
@@ -432,7 +432,7 @@ public class IssueService : IIssueService
 ```env
 DATABASE_URL=postgresql://...
 SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_ANON_KEY=xxx
+SUPABASE_PUBLISHABLE_KEY=xxx
 SUPABASE_SERVICE_KEY=xxx
 JWT_SECRET=xxx
 ```

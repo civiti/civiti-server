@@ -96,7 +96,7 @@ The csharp-expert has successfully implemented a comprehensive .NET 9 Minimal AP
 - Detailed logging for debugging and monitoring
 
 #### **Validation** ⭐⭐⭐⭐⭐
-- FluentValidation integration for request validation
+- Built-in DataAnnotations + IValidatableObject validation via `builder.Services.AddValidation()`
 - Database-level constraints for data integrity
 - Business rule validation in service layer
 - Comprehensive input sanitization

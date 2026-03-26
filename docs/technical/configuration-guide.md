@@ -20,7 +20,7 @@ The application uses dependency injection for Supabase configuration through the
 public class SupabaseConfiguration
 {
     public string Url { get; set; } = string.Empty;
-    public string AnonKey { get; set; } = string.Empty;
+    public string PublishableKey { get; set; } = string.Empty;
 }
 ```
 
@@ -49,7 +49,7 @@ if (string.IsNullOrWhiteSpace(supabaseUrl))
 builder.Services.AddSingleton(new SupabaseConfiguration 
 { 
     Url = supabaseUrl,
-    AnonKey = supabaseAnonKey
+    PublishableKey = supabasePublishableKey
 });
 
 // 4. Inject into services
@@ -68,7 +68,7 @@ DATABASE_URL=postgresql://user:password@host:port/database
 
 # Supabase configuration
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-publishable-anon-key
+SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 
 # Optional
 SUPABASE_SERVICE_KEY=your-service-role-key
@@ -85,7 +85,7 @@ DATABASE_URL=Host=localhost;Port=5433;Database=civica_dev;Username=civica;Passwo
 
 # Your Supabase project
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-publishable-anon-key
+SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 ```
 
 ## Configuration Files
@@ -98,7 +98,7 @@ The base configuration file intentionally has empty values for sensitive setting
 {
   "Supabase": {
     "Url": "",          // Empty to force env var usage
-    "AnonKey": "",      // Empty to force env var usage
+    "PublishableKey": "",      // Empty to force env var usage
     "ServiceRoleKey": ""
   }
 }
@@ -146,7 +146,7 @@ Contains production-specific settings like CORS origins:
 3. Go to the "Variables" tab
 4. Add the required environment variables:
    - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
+   - `SUPABASE_PUBLISHABLE_KEY`
    - `DATABASE_URL` (automatically provided by Railway PostgreSQL)
 
 ### Verifying Configuration
@@ -205,7 +205,7 @@ Check the startup logs for configuration sources:
 
 ## Security Notes
 
-- The `SUPABASE_ANON_KEY` is a "publishable" key - safe for client-side use
+- The `SUPABASE_PUBLISHABLE_KEY` is safe for client-side use (formerly called "Anon Key")
 - The `SUPABASE_SERVICE_KEY` should never be exposed to clients
 - Database passwords are masked in logs using regex patterns
 - JWT tokens are validated but never logged in full

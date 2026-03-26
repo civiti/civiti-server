@@ -23,6 +23,12 @@ public class CommentConfiguration : IEntityTypeConfiguration<Comment>
         builder.Property(c => c.IsDeleted)
             .HasDefaultValue(false);
 
+        builder.Property(c => c.ReportCount)
+            .HasDefaultValue(0);
+
+        builder.Property(c => c.IsHidden)
+            .HasDefaultValue(false);
+
         // Indexes
         builder.HasIndex(c => c.IssueId);
         builder.HasIndex(c => c.UserId);

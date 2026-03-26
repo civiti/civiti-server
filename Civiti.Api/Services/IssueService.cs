@@ -98,6 +98,15 @@ public class IssueService(
                 query = query.Where(i => i.Address.ToLower().Contains(addressLower));
             }
 
+            // Filter out issues from users blocked by the current viewer
+            if (currentUserId.HasValue)
+            {
+                query = query.Where(i =>
+                    !context.BlockedUsers.Any(b =>
+                        b.UserId == currentUserId.Value &&
+                        b.BlockedUserId == i.UserId));
+            }
+
             // Apply sorting
             query = request.SortBy?.ToLower() switch
             {
@@ -202,15 +211,25 @@ public class IssueService(
     {
         try
         {
-            Issue? issue = await context.Issues
+            IQueryable<Issue> issueQuery = context.Issues
                 .Include(i => i.Photos)
                 .Include(i => i.User)
                 .Include(i => i.IssueAuthorities)
                     .ThenInclude(ia => ia.Authority)
                 .Where(i => i.Id == id &&
                     (i.Status == IssueStatus.Active || i.Status == IssueStatus.Resolved ||
-                     (currentUserId.HasValue && i.UserId == currentUserId.Value)))
-                .FirstOrDefaultAsync();
+                     (currentUserId.HasValue && i.UserId == currentUserId.Value)));
+
+            // Filter out issues from users blocked by the current viewer
+            if (currentUserId.HasValue)
+            {
+                issueQuery = issueQuery.Where(i =>
+                    !context.BlockedUsers.Any(b =>
+                        b.UserId == currentUserId.Value &&
+                        b.BlockedUserId == i.UserId));
+            }
+
+            Issue? issue = await issueQuery.FirstOrDefaultAsync();
 
             if (issue == null)
             {

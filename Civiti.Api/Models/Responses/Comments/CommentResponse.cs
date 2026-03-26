@@ -33,4 +33,9 @@ public class CommentResponse
     /// Whether the current user has voted this comment as helpful
     /// </summary>
     public bool HasVoted { get; set; }
+
+    /// <summary>
+    /// Whether this comment has been hidden due to reports
+    /// </summary>
+    public bool IsHidden { get; set; }
 }

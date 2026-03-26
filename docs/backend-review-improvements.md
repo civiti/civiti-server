@@ -170,8 +170,8 @@ ResidenceType = request.ResidenceType.HasValue ?
 **Required**: Implement all DTOs referenced in services and endpoints
 
 ### 3. Add Validation
-**Status**: FluentValidation configured but no validators implemented
-**Required**: Create validators for all request models
+**Status**: ✅ Built-in validation (DataAnnotations + IValidatableObject) configured via `builder.Services.AddValidation()`
+**Required**: Add validation attributes to any new request models
 
 ### 4. Enhance Health Check
 **Current**: Basic health check

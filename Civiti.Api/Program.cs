@@ -13,7 +13,6 @@ using Civiti.Api.Models.Email;
 using Civiti.Api.Models.Push;
 using Civiti.Api.Services;
 using Civiti.Api.Services.Interfaces;
-using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -133,10 +132,11 @@ if (string.IsNullOrWhiteSpace(supabaseUrl))
     supabaseUrl = builder.Configuration["Supabase:Url"];
 }
 
-var supabaseAnonKey = Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY");
-if (string.IsNullOrWhiteSpace(supabaseAnonKey))
+var supabasePublishableKey = Environment.GetEnvironmentVariable("SUPABASE_PUBLISHABLE_KEY")
+    ?? Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY"); // legacy fallback
+if (string.IsNullOrWhiteSpace(supabasePublishableKey))
 {
-    supabaseAnonKey = builder.Configuration["Supabase:AnonKey"];
+    supabasePublishableKey = builder.Configuration["Supabase:PublishableKey"];
 }
 
 // Validate Supabase configuration early
@@ -148,10 +148,10 @@ if (string.IsNullOrWhiteSpace(supabaseUrl))
     throw new InvalidOperationException(errorMsg);
 }
 
-if (string.IsNullOrWhiteSpace(supabaseAnonKey))
+if (string.IsNullOrWhiteSpace(supabasePublishableKey))
 {
-    var errorMsg = $"Supabase Anon Key not configured. Environment: {builder.Environment.EnvironmentName}. " +
-                   "Please set SUPABASE_ANON_KEY environment variable or configure Supabase:AnonKey in appsettings.json/appsettings.Development.json. " +
+    var errorMsg = $"Supabase Publishable Key not configured. Environment: {builder.Environment.EnvironmentName}. " +
+                   "Please set SUPABASE_PUBLISHABLE_KEY environment variable or configure Supabase:PublishableKey in appsettings.json/appsettings.Development.json. " +
                    "Check launchSettings.json for environment variables when debugging.";
     throw new InvalidOperationException(errorMsg);
 }
@@ -293,7 +293,7 @@ if (string.IsNullOrWhiteSpace(supabaseServiceRoleKey))
 builder.Services.AddSingleton(new SupabaseConfiguration
 {
     Url = supabaseUrl,
-    AnonKey = supabaseAnonKey,
+    PublishableKey = supabasePublishableKey,
     ServiceRoleKey = supabaseServiceRoleKey ?? string.Empty
 });
 
@@ -447,9 +447,11 @@ builder.Services.AddScoped<IContentModerationService, OpenAIModerationService>()
 builder.Services.AddScoped<IPosterService, PosterService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IPushTokenService, PushTokenService>();
+builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IBlockService, BlockService>();
 
-// Validators
-builder.Services.AddValidatorsFromAssemblyContaining<Civiti.Api.Program>();
+// Built-in validation (DataAnnotations + IValidatableObject)
+builder.Services.AddValidation();
 
 
 // HttpClient for development endpoints
@@ -518,6 +520,8 @@ app.MapDevAuthEndpoints(); // Development-only endpoints for testing
 app.MapActivityEndpoints(); // Activity feed endpoints
 app.MapCommentEndpoints(); // Comment endpoints
 app.MapPushTokenEndpoints(); // Push notification token endpoints
+app.MapReportEndpoints(); // Report endpoints (issues + comments)
+app.MapBlockEndpoints(); // User block/unblock endpoints
 
 // Root endpoint redirects to Swagger UI
 app.MapGet("/", () => Results.Redirect("/swagger"))

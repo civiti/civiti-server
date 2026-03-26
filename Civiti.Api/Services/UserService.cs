@@ -632,8 +632,9 @@ public class UserService(
                     return;
                 }
 
-                // Explicit transaction ensures all PII scrub fields are committed atomically.
-                // Without this, a failure mid-SaveChangesAsync could leave partial PII intact.
+                // Explicit transaction ensures report cleanup, PII scrub, and soft-delete are
+                // committed atomically. ExecuteDeleteAsync/ExecuteUpdateAsync participate in this
+                // transaction, so a crash mid-deletion rolls back all three cleanup steps.
                 await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
                 // 1. Anonymize PII and soft-delete locally FIRST so the DB is always consistent.
@@ -661,6 +662,50 @@ public class UserService(
                 await context.PushTokens
                     .Where(pt => pt.UserId == user.Id)
                     .ExecuteDeleteAsync(cancellationToken);
+
+                // Clean up reports submitted by this user and recalculate target counters.
+                // Required because Reports.ReporterId FK uses Restrict to prevent orphaned counts.
+                // Project only TargetType + TargetId to avoid materialising full Report entities.
+                var issueTargetIds = await context.Reports
+                    .Where(r => r.ReporterId == user.Id && r.TargetType == ReportTargetTypes.Issue)
+                    .Select(r => r.TargetId)
+                    .Distinct()
+                    .ToListAsync(cancellationToken);
+
+                var commentTargetIds = await context.Reports
+                    .Where(r => r.ReporterId == user.Id && r.TargetType == ReportTargetTypes.Comment)
+                    .Select(r => r.TargetId)
+                    .Distinct()
+                    .ToListAsync(cancellationToken);
+
+                if (issueTargetIds.Count > 0 || commentTargetIds.Count > 0)
+                {
+                    await context.Reports
+                        .Where(r => r.ReporterId == user.Id)
+                        .ExecuteDeleteAsync(cancellationToken);
+
+                    // Relative decrement — race-free with concurrent ReportService increments.
+                    // Each user has exactly 1 report per target (unique index), so decrement by 1.
+                    // IsFlagged/IsHidden intentionally NOT cleared — once content is moderated,
+                    // only admin action should un-flag/un-hide to prevent re-exposing reported content.
+                    if (issueTargetIds.Count > 0)
+                    {
+                        await context.Issues
+                            .Where(i => issueTargetIds.Contains(i.Id))
+                            .ExecuteUpdateAsync(s => s
+                                .SetProperty(i => i.ReportCount, i => i.ReportCount > 0 ? i.ReportCount - 1 : 0)
+                                .SetProperty(i => i.UpdatedAt, _ => DateTime.UtcNow), cancellationToken);
+                    }
+
+                    if (commentTargetIds.Count > 0)
+                    {
+                        await context.Comments
+                            .Where(c => commentTargetIds.Contains(c.Id))
+                            .ExecuteUpdateAsync(s => s
+                                .SetProperty(c => c.ReportCount, c => c.ReportCount > 0 ? c.ReportCount - 1 : 0)
+                                .SetProperty(c => c.UpdatedAt, _ => DateTime.UtcNow), cancellationToken);
+                    }
+                }
 
                 // Mark as deleted
                 user.IsDeleted = true;

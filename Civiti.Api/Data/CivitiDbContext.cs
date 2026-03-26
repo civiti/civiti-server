@@ -21,6 +21,8 @@ public class CivitiDbContext(DbContextOptions<CivitiDbContext> options) : DbCont
     public DbSet<CommentVote> CommentVotes { get; set; } = null!;
     public DbSet<IssueVote> IssueVotes { get; set; } = null!;
     public DbSet<PushToken> PushTokens { get; set; } = null!;
+    public DbSet<Report> Reports { get; set; } = null!;
+    public DbSet<BlockedUser> BlockedUsers { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,6 +47,8 @@ public class CivitiDbContext(DbContextOptions<CivitiDbContext> options) : DbCont
         modelBuilder.ApplyConfiguration(new CommentVoteConfiguration());
         modelBuilder.ApplyConfiguration(new IssueVoteConfiguration());
         modelBuilder.ApplyConfiguration(new PushTokenConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportConfiguration());
+        modelBuilder.ApplyConfiguration(new BlockedUserConfiguration());
 
         // Note: Seed data is handled by StaticDataSeeder at runtime
     }

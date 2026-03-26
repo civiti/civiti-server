@@ -286,6 +286,31 @@ namespace Civiti.Api.Migrations
                     b.ToTable("Badges");
                 });
 
+            modelBuilder.Entity("Civiti.Api.Models.Domain.BlockedUser", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BlockedUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BlockedUserId");
+
+                    b.HasIndex("UserId", "BlockedUserId")
+                        .IsUnique();
+
+                    b.ToTable("BlockedUsers");
+                });
+
             modelBuilder.Entity("Civiti.Api.Models.Domain.Comment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -318,11 +343,21 @@ namespace Civiti.Api.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<bool>("IsHidden")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<Guid>("IssueId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("ParentCommentId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("ReportCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -414,6 +449,11 @@ namespace Civiti.Api.Migrations
                     b.Property<int>("EmailsSent")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("IsFlagged")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<double>("Latitude")
                         .HasColumnType("double precision");
 
@@ -422,6 +462,11 @@ namespace Civiti.Api.Migrations
 
                     b.Property<string>("RejectionReason")
                         .HasColumnType("text");
+
+                    b.Property<int>("ReportCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
 
                     b.Property<DateTime?>("ReviewedAt")
                         .HasColumnType("timestamp with time zone");
@@ -630,6 +675,51 @@ namespace Civiti.Api.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("PushTokens");
+                });
+
+            modelBuilder.Entity("Civiti.Api.Models.Domain.Report", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ReporterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReporterId", "CreatedAt");
+
+                    b.HasIndex("TargetType", "TargetId");
+
+                    b.HasIndex("ReporterId", "TargetType", "TargetId")
+                        .IsUnique();
+
+                    b.ToTable("Reports", t =>
+                        {
+                            t.HasCheckConstraint("CK_Reports_TargetType", "\"TargetType\" IN ('Issue', 'Comment')");
+                        });
                 });
 
             modelBuilder.Entity("Civiti.Api.Models.Domain.UserAchievement", b =>
@@ -915,6 +1005,25 @@ namespace Civiti.Api.Migrations
                     b.Navigation("Issue");
                 });
 
+            modelBuilder.Entity("Civiti.Api.Models.Domain.BlockedUser", b =>
+                {
+                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "Blocked")
+                        .WithMany()
+                        .HasForeignKey("BlockedUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Blocked");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Civiti.Api.Models.Domain.Comment", b =>
                 {
                     b.HasOne("Civiti.Api.Models.Domain.UserProfile", "DeletedByUser")
@@ -1035,6 +1144,17 @@ namespace Civiti.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Civiti.Api.Models.Domain.Report", b =>
+                {
+                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "Reporter")
+                        .WithMany()
+                        .HasForeignKey("ReporterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Reporter");
                 });
 
             modelBuilder.Entity("Civiti.Api.Models.Domain.UserAchievement", b =>
