@@ -14,6 +14,7 @@ public class IssueListResponse
     public int CommunityVotes { get; set; }
     public bool? HasVoted { get; set; }
     public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
     public string? MainPhotoUrl { get; set; }
     public double Latitude { get; set; }
     public double Longitude { get; set; }

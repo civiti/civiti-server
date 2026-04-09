@@ -116,6 +116,7 @@ public class IssueListResponseExample : IExamplesProvider<IssueListResponse>
             Urgency = UrgencyLevel.High,
             EmailsSent = 245,
             CreatedAt = DateTime.UtcNow.AddDays(-5),
+            UpdatedAt = DateTime.UtcNow.AddHours(-3),
             MainPhotoUrl = "https://storage.civiti.ro/photos/issue-123-photo1.jpg",
             Status = IssueStatus.Active
         };

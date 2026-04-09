@@ -144,6 +144,7 @@ public class IssueService(
                         EmailsSent = i.EmailsSent,
                         CommunityVotes = i.CommunityVotes,
                         CreatedAt = i.CreatedAt,
+                        UpdatedAt = i.UpdatedAt,
                         MainPhotoUrl = i.Photos
                             .Where(p => p.IsPrimary || i.Photos.Count == 1)
                             .OrderBy(p => p.CreatedAt)
