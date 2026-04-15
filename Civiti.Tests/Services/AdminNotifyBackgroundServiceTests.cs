@@ -199,6 +199,51 @@ public class AdminNotifyBackgroundServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Should_Not_Persist_Audit_When_Email_Channel_Is_Full()
+    {
+        // Regression guard: if the email channel is full, we must NOT write the audit
+        // row — otherwise a future retry sees "already notified" and the admin is
+        // permanently silenced. Enqueue first, persist after success.
+        //
+        // FullMode.Wait is required: it makes TryWrite return false on overflow.
+        // (DropWrite would silently drop the message AND return true, making the failure
+        // undetectable — which is why Program.cs was switched to Wait in this PR.)
+        var fullChannel = Channel.CreateBounded<EmailNotification>(
+            new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.Wait });
+        // Pre-fill to capacity; the next TryWrite will return false.
+        fullChannel.Writer.TryWrite(new EmailNotification(
+            "placeholder@example.com", "placeholder", "<p/>", EmailNotificationType.Welcome))
+            .Should().BeTrue();
+
+        // Rebuild the scope factory to hand out this pre-filled channel writer
+        var services = new ServiceCollection();
+        services.AddScoped(_ => _dbFactory.CreateContext());
+        services.AddSingleton(_adminClient.Object);
+        services.AddSingleton(_templateService.Object);
+        services.AddSingleton(fullChannel.Writer);
+        services.AddSingleton(_resendConfig);
+        var scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+
+        (Guid issueId, _) = SeedIssue();
+        _adminClient.Setup(c => c.ListAdminsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new SupabaseAdminUser(Guid.NewGuid(), "admin@example.com") });
+
+        var channel = Channel.CreateUnbounded<AdminNotifyRequest>();
+        await channel.Writer.WriteAsync(new AdminNotifyRequest(issueId, AdminNotifyEventType.NewIssueSubmitted));
+        channel.Writer.Complete();
+
+        var service = new AdminNotifyBackgroundService(channel.Reader, scopeFactory, _logger.Object);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await service.StartAsync(cts.Token);
+        service.ExecuteTask.Should().NotBeNull();
+        await service.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // No audit row was written (so a retry can try again later).
+        using CivitiDbContext db = _dbFactory.CreateContext();
+        db.AdminIssueNotifications.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Should_Not_Throw_When_Supabase_Client_Fails()
     {
         (Guid issueId, _) = SeedIssue();

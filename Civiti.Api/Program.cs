@@ -382,9 +382,13 @@ else
     Log.Warning("Resend API key is not configured. Email notifications will be skipped.");
 }
 
-// Email notification channel (bounded, drop-write if full)
+// Email notification channel (bounded).
+//   FullMode = Wait so that TryWrite returns false on overflow and callers can log/react.
+//   DropWrite would silently succeed-and-drop, making the drop-logging throughout the
+//   codebase dead code. Nobody calls WriteAsync/WaitToWriteAsync on this channel, so
+//   "Wait" here never actually blocks — it just changes TryWrite's overflow return to false.
 Channel<EmailNotification> emailChannel = Channel.CreateBounded<EmailNotification>(
-    new BoundedChannelOptions(resendConfig.ChannelCapacity) { FullMode = BoundedChannelFullMode.DropWrite });
+    new BoundedChannelOptions(resendConfig.ChannelCapacity) { FullMode = BoundedChannelFullMode.Wait });
 builder.Services.AddSingleton(emailChannel.Reader);
 builder.Services.AddSingleton(emailChannel.Writer);
 
@@ -419,8 +423,11 @@ if (adminNotifyConfig.SupabasePageSize is <= 0 or > 1_000)
 
 builder.Services.AddSingleton(adminNotifyConfig);
 
+// Wait mode: TryWrite returns false on overflow so the producer (AdminNotifier) can
+// actually log and react. DropWrite would silently succeed-and-drop. Nobody uses
+// WriteAsync on this channel, so Wait here never blocks.
 Channel<AdminNotifyRequest> adminNotifyChannel = Channel.CreateBounded<AdminNotifyRequest>(
-    new BoundedChannelOptions(adminNotifyConfig.ChannelCapacity) { FullMode = BoundedChannelFullMode.DropWrite });
+    new BoundedChannelOptions(adminNotifyConfig.ChannelCapacity) { FullMode = BoundedChannelFullMode.Wait });
 builder.Services.AddSingleton(adminNotifyChannel.Reader);
 builder.Services.AddSingleton(adminNotifyChannel.Writer);
 

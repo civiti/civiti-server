@@ -126,10 +126,7 @@ public sealed class AdminNotifyBackgroundService(
                 continue;
             }
 
-            // Per-recipient idempotency: check the audit row, insert if missing.
-            // The composite PK (IssueId, AdminEmail) is still the authoritative guard —
-            // if two workers race, whichever loses the insert will surface a DbUpdateException
-            // which we log and skip (treating it as "already notified").
+            // Per-recipient idempotency: skip if a prior dispatch already notified this admin.
             var alreadyNotified = await dbContext.AdminIssueNotifications
                 .AsNoTracking()
                 .AnyAsync(n => n.IssueId == issue.Id && n.AdminEmail == normalizedEmail, ct);
@@ -141,6 +138,23 @@ public sealed class AdminNotifyBackgroundService(
                 continue;
             }
 
+            // Step 1: try to enqueue the email *first*. If the channel is full (DropWrite),
+            // DO NOT persist the audit row — otherwise a future retry would see the audit
+            // and skip this admin permanently, silently losing the notification.
+            EmailNotification message = new(normalizedEmail, subject, htmlBody, EmailNotificationType.AdminNewIssue);
+            if (!emailWriter.TryWrite(message))
+            {
+                logger.LogError(
+                    "Email channel full — dropped admin-new-issue email: issue={IssueId} admin={AdminEmail}. "
+                    + "Increase Resend:ChannelCapacity if this persists. Audit row NOT persisted so a retry can re-attempt.",
+                    issue.Id, normalizedEmail);
+                continue;
+            }
+
+            // Step 2: enqueue succeeded — record the audit row so subsequent dispatches skip this admin.
+            // The composite PK (IssueId, AdminEmail) is the final backstop against concurrent workers;
+            // if another worker raced us we've already emitted one extra email (acceptable corner case,
+            // single-consumer channel in practice makes this vanishingly rare).
             try
             {
                 dbContext.AdminIssueNotifications.Add(new AdminIssueNotification
@@ -151,30 +165,19 @@ public sealed class AdminNotifyBackgroundService(
                 });
 
                 await dbContext.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateException ex)
-            {
-                // Either a concurrent worker won the race (unique violation on the composite PK)
-                // or some other insert failure. Either way: don't resend, don't throw.
-                logger.LogWarning(ex,
-                    "Failed to record admin-notify audit row for issue {IssueId}, admin {AdminEmail} — skipping send.",
-                    issue.Id, normalizedEmail);
-                dbContext.ChangeTracker.Clear();
-                continue;
-            }
 
-            EmailNotification message = new(normalizedEmail, subject, htmlBody, EmailNotificationType.AdminNewIssue);
-            if (emailWriter.TryWrite(message))
-            {
                 logger.LogInformation("Enqueued admin-new-issue email: issue={IssueId} admin={AdminEmail}",
                     issue.Id, normalizedEmail);
             }
-            else
+            catch (DbUpdateException ex)
             {
-                logger.LogError(
-                    "Email channel full — dropped admin-new-issue email: issue={IssueId} admin={AdminEmail}. "
-                    + "Increase Resend:ChannelCapacity if this persists.",
+                // Unique-violation (concurrent worker) or another insert failure. The email has already
+                // been enqueued; we just can't record it here. Next run's AnyAsync check will see the
+                // winner's row and skip.
+                logger.LogWarning(ex,
+                    "Audit row insert failed after email enqueue for issue {IssueId}, admin {AdminEmail}.",
                     issue.Id, normalizedEmail);
+                dbContext.ChangeTracker.Clear();
             }
         }
     }
