@@ -21,7 +21,8 @@ public class IssueService(
     IGamificationService gamificationService,
     IMemoryCache memoryCache,
     IActivityService activityService,
-    INotificationService notificationService)
+    INotificationService notificationService,
+    IAdminNotifier adminNotifier)
     : IIssueService
 {
     private static readonly TimeSpan EmailCooldownDuration = TimeSpan.FromHours(1);
@@ -497,6 +498,16 @@ public class IssueService(
             catch (Exception notifyEx)
             {
                 logger.LogError(notifyEx, "Failed to send submission notification for issue {IssueId}", issue.Id);
+            }
+
+            // Announce new issue to admins (async fanout — never blocks the response).
+            try
+            {
+                await adminNotifier.NotifyNewIssueAsync(issue.Id);
+            }
+            catch (Exception adminNotifyEx)
+            {
+                logger.LogError(adminNotifyEx, "Failed to enqueue admin notification for issue {IssueId}", issue.Id);
             }
 
             logger.LogInformation("Issue {IssueId} created successfully by user {UserId}",

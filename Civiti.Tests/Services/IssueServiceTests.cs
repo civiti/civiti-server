@@ -20,6 +20,7 @@ public class IssueServiceTests : IDisposable
     private readonly Mock<IGamificationService> _gamificationService = new();
     private readonly Mock<IActivityService> _activityService = new();
     private readonly Mock<INotificationService> _notificationService = new();
+    private readonly Mock<IAdminNotifier> _adminNotifier = new();
     private readonly IMemoryCache _memoryCache = new MemoryCache(new MemoryCacheOptions());
 
     private IssueService CreateService(CivitiDbContext? context = null)
@@ -28,7 +29,8 @@ public class IssueServiceTests : IDisposable
         return new IssueService(
             _logger.Object, context,
             _gamificationService.Object, _memoryCache,
-            _activityService.Object, _notificationService.Object);
+            _activityService.Object, _notificationService.Object,
+            _adminNotifier.Object);
     }
 
     public void Dispose()
