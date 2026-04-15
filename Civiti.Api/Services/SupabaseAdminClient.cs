@@ -56,7 +56,9 @@ public sealed class SupabaseAdminClient(
             {
                 return await FetchAdminsAsync(cancellationToken);
             }
-            catch (Exception ex) when (ShouldRetry(ex) && attempt <= notifyConfig.MaxSupabaseRetries)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested
+                                       && ShouldRetry(ex)
+                                       && attempt <= notifyConfig.MaxSupabaseRetries)
             {
                 // Exponential backoff: 500ms, 1s, 2s, ...
                 var delay = TimeSpan.FromMilliseconds(500 * Math.Pow(2, attempt - 1));
@@ -70,8 +72,8 @@ public sealed class SupabaseAdminClient(
 
     private async Task<IReadOnlyList<SupabaseAdminUser>> FetchAdminsAsync(CancellationToken cancellationToken)
     {
+        // Timeout is applied by the AddHttpClient registration in Program.cs (SupabaseTimeoutSeconds).
         using HttpClient httpClient = httpClientFactory.CreateClient(HttpClientName);
-        httpClient.Timeout = TimeSpan.FromSeconds(notifyConfig.SupabaseTimeoutSeconds);
 
         var admins = new List<SupabaseAdminUser>();
         var seenIds = new HashSet<Guid>();
@@ -136,7 +138,9 @@ public sealed class SupabaseAdminClient(
 
     private static bool ShouldRetry(Exception ex)
     {
-        // Retry on transient network errors and 5xx responses from Supabase.
+        // Caller-initiated cancellation is handled by the outer "when" filter
+        // (!cancellationToken.IsCancellationRequested) before reaching this method —
+        // so TaskCanceledException reaching here is an HTTP timeout, not a shutdown.
         if (ex is HttpRequestException http)
         {
             if (http.StatusCode is null) return true; // network / connection error
@@ -144,7 +148,7 @@ public sealed class SupabaseAdminClient(
             return status >= 500 || http.StatusCode == HttpStatusCode.RequestTimeout;
         }
 
-        return ex is TaskCanceledException; // timeout
+        return ex is TaskCanceledException; // HttpClient.Timeout elapsed
     }
 
     private static bool IsAdmin(ParsedUser user)
