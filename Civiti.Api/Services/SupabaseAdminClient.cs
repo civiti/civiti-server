@@ -105,7 +105,6 @@ public sealed class SupabaseAdminClient(
                 break;
             }
 
-            var pageAddedAdmins = 0;
             foreach (ParsedUser u in parsed.Users)
             {
                 if (!IsAdmin(u)) continue;
@@ -115,7 +114,6 @@ public sealed class SupabaseAdminClient(
                 if (!seenIds.Add(u.Id)) continue;
 
                 admins.Add(new SupabaseAdminUser(u.Id, u.Email.Trim().ToLowerInvariant()));
-                pageAddedAdmins++;
             }
 
             // Stop once a page is short — Supabase returned fewer than requested → last page.
