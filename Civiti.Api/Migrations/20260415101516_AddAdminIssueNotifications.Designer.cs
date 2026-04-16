@@ -3,6 +3,7 @@ using System;
 using Civiti.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Civiti.Api.Migrations
 {
     [DbContext(typeof(CivitiDbContext))]
-    partial class CivitiDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260415101516_AddAdminIssueNotifications")]
+    partial class AddAdminIssueNotifications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

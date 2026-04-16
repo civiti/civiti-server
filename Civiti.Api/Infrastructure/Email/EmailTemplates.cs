@@ -32,6 +32,7 @@ public static class EmailTemplates
             EmailNotificationType.BadgeEarned => BadgeEarned(data),
             EmailNotificationType.AchievementCompleted => AchievementCompleted(data),
             EmailNotificationType.Welcome => Welcome(data),
+            EmailNotificationType.AdminNewIssue => AdminNewIssue(data),
             _ => ("Notificare Civiti", "<p>Ai o notificare noua pe Civiti.</p>")
         };
     }
@@ -210,6 +211,34 @@ public static class EmailTemplates
             "<p>Felicitari, <strong>" + userName + "</strong>!</p>" +
             "<p>Ai completat realizarea: <strong style=\"color: #FCA311;\">" + achievementName + "</strong></p>" +
             "<p>Descopera ce alte realizari te asteapta pe Civiti.</p>"
+        );
+    }
+
+    private static (string, string) AdminNewIssue(Dictionary<string, string> d)
+    {
+        var rawTitle = d.GetValueOrDefault(IssueTitle, "");
+        var title = H(rawTitle);
+        var category = H(d.GetValueOrDefault(EmailDataKeys.IssueCategory, "-"));
+        var address = H(d.GetValueOrDefault(EmailDataKeys.IssueAddress, "-"));
+        var urgency = H(d.GetValueOrDefault(EmailDataKeys.IssueUrgency, "-"));
+        var submitter = H(d.GetValueOrDefault(UserName, "Anonim"));
+
+        return (
+            "Nouă problemă raportată: " + rawTitle,
+            "<p>O nouă problemă a fost trimisă pe Civiti și așteaptă revizuire.</p>" +
+            "<table style=\"border-collapse: collapse; margin: 16px 0; font-size: 14px;\">" +
+            "<tr><td style=\"padding: 4px 12px 4px 0; color: #6B7280;\">Titlu</td>" +
+            "<td style=\"padding: 4px 0;\"><strong>" + title + "</strong></td></tr>" +
+            "<tr><td style=\"padding: 4px 12px 4px 0; color: #6B7280;\">Categorie</td>" +
+            "<td style=\"padding: 4px 0;\">" + category + "</td></tr>" +
+            "<tr><td style=\"padding: 4px 12px 4px 0; color: #6B7280;\">Adresă</td>" +
+            "<td style=\"padding: 4px 0;\">" + address + "</td></tr>" +
+            "<tr><td style=\"padding: 4px 12px 4px 0; color: #6B7280;\">Urgență</td>" +
+            "<td style=\"padding: 4px 0;\">" + urgency + "</td></tr>" +
+            "<tr><td style=\"padding: 4px 12px 4px 0; color: #6B7280;\">Raportată de</td>" +
+            "<td style=\"padding: 4px 0;\">" + submitter + "</td></tr>" +
+            "</table>" +
+            "<p>Te rugăm să deschizi panoul admin pentru a o revizui.</p>"
         );
     }
 
