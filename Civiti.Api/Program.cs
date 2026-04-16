@@ -10,6 +10,7 @@ using Civiti.Api.Infrastructure.Constants;
 using Civiti.Api.Infrastructure.Extensions;
 using Civiti.Api.Infrastructure.Middleware;
 using Civiti.Api.Models.Email;
+using Civiti.Api.Models.Notifications;
 using Civiti.Api.Models.Push;
 using Civiti.Api.Services;
 using Civiti.Api.Services.Interfaces;
@@ -381,9 +382,13 @@ else
     Log.Warning("Resend API key is not configured. Email notifications will be skipped.");
 }
 
-// Email notification channel (bounded, drop-write if full)
+// Email notification channel (bounded).
+//   FullMode = Wait so that TryWrite returns false on overflow and callers can log/react.
+//   DropWrite would silently succeed-and-drop, making the drop-logging throughout the
+//   codebase dead code. Nobody calls WriteAsync/WaitToWriteAsync on this channel, so
+//   "Wait" here never actually blocks — it just changes TryWrite's overflow return to false.
 Channel<EmailNotification> emailChannel = Channel.CreateBounded<EmailNotification>(
-    new BoundedChannelOptions(resendConfig.ChannelCapacity) { FullMode = BoundedChannelFullMode.DropWrite });
+    new BoundedChannelOptions(resendConfig.ChannelCapacity) { FullMode = BoundedChannelFullMode.Wait });
 builder.Services.AddSingleton(emailChannel.Reader);
 builder.Services.AddSingleton(emailChannel.Writer);
 
@@ -400,6 +405,50 @@ builder.Services.AddTransient<IResend, ResendClient>();
 builder.Services.AddTransient<IEmailSenderService, EmailSenderService>();
 builder.Services.AddSingleton<IEmailTemplateService, EmailTemplateService>();
 builder.Services.AddHostedService<EmailSenderBackgroundService>();
+
+// Admin-on-new-issue notifications (Supabase-sourced admin list → email fanout)
+AdminNotifyConfiguration adminNotifyConfig = new()
+{
+    Enabled = GetEnvOrConfigBool("ADMIN_NOTIFY_ENABLED", "AdminNotify:Enabled", !builder.Environment.IsDevelopment()),
+    ChannelCapacity = GetEnvOrConfigInt("ADMIN_NOTIFY_CHANNEL_CAPACITY", "AdminNotify:ChannelCapacity", 1_000),
+    AdminListCacheSeconds = GetEnvOrConfigInt("ADMIN_NOTIFY_CACHE_SECONDS", "AdminNotify:AdminListCacheSeconds", 60),
+    MaxSupabaseRetries = GetEnvOrConfigInt("ADMIN_NOTIFY_MAX_RETRIES", "AdminNotify:MaxSupabaseRetries", 3),
+    SupabaseTimeoutSeconds = GetEnvOrConfigInt("ADMIN_NOTIFY_SUPABASE_TIMEOUT_SECONDS", "AdminNotify:SupabaseTimeoutSeconds", 10),
+    SupabasePageSize = GetEnvOrConfigInt("ADMIN_NOTIFY_SUPABASE_PAGE_SIZE", "AdminNotify:SupabasePageSize", 200),
+    MaxSupabasePages = GetEnvOrConfigInt("ADMIN_NOTIFY_MAX_PAGES", "AdminNotify:MaxSupabasePages", 50)
+};
+if (adminNotifyConfig.ChannelCapacity <= 0)
+    throw new InvalidOperationException($"AdminNotify:ChannelCapacity must be positive (got {adminNotifyConfig.ChannelCapacity}).");
+if (adminNotifyConfig.SupabasePageSize is <= 0 or > 1_000)
+    throw new InvalidOperationException($"AdminNotify:SupabasePageSize must be in (0, 1000] (got {adminNotifyConfig.SupabasePageSize}).");
+
+builder.Services.AddSingleton(adminNotifyConfig);
+
+// Wait mode: TryWrite returns false on overflow so the producer (AdminNotifier) can
+// actually log and react. DropWrite would silently succeed-and-drop. Nobody uses
+// WriteAsync on this channel, so Wait here never blocks.
+Channel<AdminNotifyRequest> adminNotifyChannel = Channel.CreateBounded<AdminNotifyRequest>(
+    new BoundedChannelOptions(adminNotifyConfig.ChannelCapacity) { FullMode = BoundedChannelFullMode.Wait });
+builder.Services.AddSingleton(adminNotifyChannel.Reader);
+builder.Services.AddSingleton(adminNotifyChannel.Writer);
+
+builder.Services.AddHttpClient(SupabaseAdminClient.HttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(adminNotifyConfig.SupabaseTimeoutSeconds);
+});
+builder.Services.AddSingleton<ISupabaseAdminClient, SupabaseAdminClient>();
+builder.Services.AddSingleton<IAdminNotifier, AdminNotifier>();
+
+if (adminNotifyConfig.Enabled)
+{
+    builder.Services.AddHostedService<AdminNotifyBackgroundService>();
+    Log.Information("Admin-on-new-issue notifications enabled (cache {CacheSec}s, channel capacity {Capacity}).",
+        adminNotifyConfig.AdminListCacheSeconds, adminNotifyConfig.ChannelCapacity);
+}
+else
+{
+    Log.Information("Admin-on-new-issue notifications disabled via ADMIN_NOTIFY_ENABLED=false.");
+}
 
 // Expo Push Notification Configuration
 ExpoPushConfiguration expoPushConfig = new()
@@ -716,6 +765,12 @@ string? GetEnvOrConfig(string envVar, string configKey)
 {
     var value = Environment.GetEnvironmentVariable(envVar);
     return !string.IsNullOrWhiteSpace(value) ? value : builder.Configuration[configKey];
+}
+
+bool GetEnvOrConfigBool(string envVar, string configKey, bool defaultValue)
+{
+    var envValue = Environment.GetEnvironmentVariable(envVar);
+    return bool.TryParse(envValue, out var result) ? result : builder.Configuration.GetValue(configKey, defaultValue);
 }
 
 namespace Civiti.Api

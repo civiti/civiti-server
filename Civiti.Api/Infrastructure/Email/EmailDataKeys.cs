@@ -21,4 +21,9 @@ public static class EmailDataKeys
     public const string Level = "Level";
     public const string BadgeName = "BadgeName";
     public const string AchievementName = "AchievementName";
+
+    // Admin-new-issue notification fields
+    public const string IssueCategory = "IssueCategory";
+    public const string IssueAddress = "IssueAddress";
+    public const string IssueUrgency = "IssueUrgency";
 }

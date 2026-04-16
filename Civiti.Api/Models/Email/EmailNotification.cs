@@ -27,5 +27,6 @@ public enum EmailNotificationType
     LevelUp,
     BadgeEarned,
     AchievementCompleted,
-    Welcome
+    Welcome,
+    AdminNewIssue
 }
