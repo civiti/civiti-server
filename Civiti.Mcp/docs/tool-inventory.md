@@ -91,9 +91,7 @@ Exposed on `/mcp` with `civiti.read` or `civiti.write` scope. All §1 public too
 | `report_content` | `civiti.write` | `ReportService.CreateAsync(userId, targetType, targetId, reason)` | `targetType: issue\|comment`, `targetId`, `reason`, `notes?` | `write.citizen` | report row |
 | `block_user` | `civiti.write` | `BlockService.BlockAsync(userId, blockedId)` | `blockedUserId` | `write.citizen` | block row |
 | `unblock_user` | `civiti.write` | `BlockService.UnblockAsync(userId, blockedId)` | `blockedUserId` | `write.citizen` | — |
-| `mark_email_sent_authenticated` | `civiti.write` | `IssueService.IncrementEmailCountAsync(id, clientIp)` + `ActivityService.LogEmailSentAsync(userId, id)` | `issueId` | `write.citizen` | activity |
-
-Note: `mark_email_sent` on `/mcp/public` is anonymous and only bumps the counter. The authenticated `/mcp` version (`mark_email_sent_authenticated`) additionally logs the activity against the user's profile for gamification / streak tracking.
+Note on `mark_email_sent`: there is only **one** tool name across both endpoints. On `/mcp/public` the handler is anonymous and only bumps the counter. On `/mcp` the same tool name is the authenticated variant — the handler receives the resolved `userId` and additionally logs an `Activity` row against the user's profile for gamification / streak tracking. Same MCP signature, enriched behavior when authenticated. **No second tool name.** This keeps the tool list free of overlapping names on `/mcp` so an agent cannot silently pick the wrong one and drop a gamification write.
 
 ### 2.3 Content-moderation note
 

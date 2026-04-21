@@ -155,8 +155,8 @@ Maintained as OpenIddict application entries, seeded from config at startup. Ill
 
 | `client_id` | `client_name` | `redirect_uris` | allowed scopes |
 | --- | --- | --- | --- |
-| `claude-desktop` | Claude Desktop | `http://127.0.0.1:*/callback` | `civiti.read`, `civiti.write`, `civiti.admin.*` |
-| `claude-code` | Claude Code | `http://127.0.0.1:*/callback` | `civiti.read`, `civiti.write`, `civiti.admin.*` |
+| `claude-desktop` | Claude Desktop | `http://127.0.0.1:*/callback` | `civiti.read`, `civiti.write`, `civiti.admin.read`, `civiti.admin.write` |
+| `claude-code` | Claude Code | `http://127.0.0.1:*/callback` | `civiti.read`, `civiti.write`, `civiti.admin.read`, `civiti.admin.write` |
 | `cursor` | Cursor | `cursor://anysphere.cursor-retrieval/callback` | `civiti.read`, `civiti.write` |
 | `chatgpt-connector` | ChatGPT | `https://chatgpt.com/connector_platform_oauth_redirect` | `civiti.read` |
 
@@ -212,6 +212,8 @@ Engineering owns the scaffold, the string keys, and the layout. **Final Romanian
 
 - `UserOnly` → requires `civiti.read` ∪ `civiti.write`.
 - `AdminOnly` → requires admin scope *and* token role-claim still `admin` (stamped at issue, re-validated on refresh per §4).
+
+> *Notation:* later sections use `civiti.admin.*` in prose as shorthand for "both `civiti.admin.read` and `civiti.admin.write`". **The string `civiti.admin.*` is never a literal scope value.** OpenIddict matches scopes by exact equality — allow-list rows, DCR requests, token claims, and enforcement checks always use the fully-qualified scope names.
 
 ## 9. Admin-specific hardening
 
