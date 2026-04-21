@@ -126,6 +126,31 @@ These tools return a pending-action id rather than mutating immediately. A secon
 | `confirm_admin_action` | `civiti.admin.write` | resolves pending action → `AdminService.*` | `pendingActionId` | `write.admin` | `AdminAction{Source=mcp, Tool=...}` |
 | `cancel_admin_action` | `civiti.admin.write` | drops pending action | `pendingActionId` | `write.admin` | — |
 
+### Pending-action storage
+
+Pending actions must survive across requests — `propose_*` and `confirm_admin_action` may hit different pods in a multi-process Railway deployment — and must expire cleanly. They live in PostgreSQL, not in-memory:
+
+```
+McpPendingAdminActions
+────────────────────────────────────────────────────────────────
+Id             uuid          PK
+AdminUserId    uuid          FK → UserProfile (the admin who proposed)
+McpSessionId   uuid          FK → McpSessions (the session that proposed)
+ActionType     text          approve | reject | request_changes | bulk_approve
+Payload        jsonb         tool-specific input (issueId, reason, issueIds[], …)
+CreatedAt      timestamptz
+ExpiresAt      timestamptz   CreatedAt + 5 min
+ConfirmedAt    timestamptz   (nullable)
+CanceledAt     timestamptz   (nullable)
+```
+
+Rules:
+
+- `confirm_admin_action(id)` must be invoked by the **same admin user** that created the pending action (`AdminUserId` match). Session match is not required — an admin who proposed from one Claude client and confirms from another is legitimate.
+- Expired or already-resolved rows return a structured error (`{ok: false, reason: "pending_action_expired"}` / `"pending_action_already_resolved"`) so the agent can explain the state.
+- A lightweight janitor job (part of the MCP-session revalidation sweep described in [`auth-design.md` §4](auth-design.md#4-trust-boundary-civitiauth-is-the-identity-edge)) deletes rows where `ExpiresAt < now() - 24h` for housekeeping.
+- **Not stored in-memory.** In-process storage would lose proposals on pod restart, break horizontal scale-out (confirm lands on a different pod than propose), and quietly drop actions during Railway deploys.
+
 ## 4. AI-assisted tools
 
 ### `draft_issue_description`

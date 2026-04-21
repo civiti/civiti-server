@@ -111,7 +111,7 @@ A user who loses `admin` in Supabase must not keep admin-scoped MCP sessions. Th
 
 - **Short access tokens (15 min).** Role claim is stamped at issue time; the worst-case stale-admin window is capped by the access-token TTL.
 - **Every refresh re-validates role** against the Supabase Admin API. Cheap — refreshes are rare.
-- **Background sweep every 5 min** re-validates the role of any active session carrying admin scopes. Mismatch → revoke.
+- **Background sweep every 5 min** re-validates both the Supabase role **and** `UserProfile.McpAdminAccessEnabled` for every active session carrying admin scopes. Either mismatch → revoke. See §9 for the admin-UI kill-switch path that revokes immediately and makes the sweep a fallback, not the primary mechanism.
 - **Deferred:** Supabase auth webhooks → push-based revocation on role change / user disable. Adds operational moving parts; defer until we see a case where 5-min latency is unacceptable.
 
 ## 5. Session storage
@@ -171,6 +171,8 @@ Each allow-list entry carries an `allowsAdminScopes` boolean. **For v1, only `cl
 **DCR is ON**, bounded by these guardrails:
 
 - **Loopback redirects only.** `redirect_uris` must match `http://127.0.0.1:*/callback` or `http://[::1]:*/callback` ([RFC 8252](https://datatracker.ietf.org/doc/html/rfc8252) native-app pattern). Non-loopback URIs are rejected at registration. This binds the authorization code return to the user's own machine and is what every native Claude client uses.
+
+  *Implementation note:* OpenIddict performs exact-string matching on `redirect_uri` by default — it does not treat `*` as a port wildcard. RFC 8252 §8.3 requires loopback URIs to treat the port as a don't-care value, since native apps bind to ephemeral ports. We implement this with a custom `IOpenIddictServerHandler` (or an `OpenIddict.Server.AspNetCore` event handler) that strips the port from loopback URIs before matching. Several community samples exist; pick one during implementation. This is the only non-trivial OpenIddict customization the design requires.
 - **Per-IP rate limit** on the `/register` endpoint (default: 20 registrations / IP / day).
 - **Scope ceiling for DCR-registered clients.** Automatically-registered clients may request `civiti.read` and `civiti.write` only. `civiti.admin.*` is **never** grantable to a DCR-registered client, regardless of the user's underlying role.
 - **Allow-list gates admin scopes.** Only pre-registered entries carrying the `allowsAdminScopes` flag can request admin scopes (currently `claude-desktop` and `claude-code`). Allow-listed entries are seeded from config at startup with fixed `client_id`s.
@@ -213,9 +215,9 @@ Engineering owns the scaffold, the string keys, and the layout. **Final Romanian
 
 ## 9. Admin-specific hardening
 
-See [`tool-inventory.md` §2](tool-inventory.md#2-admin-tools) for the two-step confirm mechanism.
+See [`tool-inventory.md` §3](tool-inventory.md#3-admin-tools) for the two-step confirm mechanism.
 
-1. **Opt-in per admin.** `UserProfile.McpAdminAccessEnabled` must be `true`. Default `false`. Set via the existing admin UI, never via MCP.
+1. **Opt-in per admin.** `UserProfile.McpAdminAccessEnabled` must be `true`. Default `false`. Set via the existing admin UI, never via MCP. **Flipping the flag from `true` to `false` is a kill-switch**: the write path in the admin UI immediately revokes every active MCP session carrying `civiti.admin.*` scopes for that user, so the stale-admin window on disable is zero (not the 5-minute sweep window). The background sweep in §4 is a belt-and-braces fallback — it also checks `McpAdminAccessEnabled`, not only the Supabase role — in case the kill-switch write path is ever bypassed (e.g. direct DB mutation during an incident).
 2. **Stricter rate limits** on admin write tools.
 3. **Two-step confirm for destructive actions.** Defense against prompt injection: an LLM context poisoned by user-generated content being moderated cannot mutate state on its own — the admin must explicitly invoke `confirm_admin_action(id)` in a fresh turn.
 4. **Content quarantine in tool results.** User-submitted text returned to an admin agent is wrapped with clear delimiters and a "this content is untrusted" note.
@@ -228,6 +230,7 @@ See [`tool-inventory.md` §2](tool-inventory.md#2-admin-tools) for the two-step 
 - **Automatic:**
   - On refresh, if the Supabase user is gone, disabled, or role changed.
   - On admin role loss for sessions carrying admin scopes (5-min background sweep).
+  - **On `McpAdminAccessEnabled` being flipped to `false`** — immediate revocation of the user's admin-scoped sessions from the admin-UI write path; the 5-min sweep also checks this flag as a fallback.
   - On soft-delete of `UserProfile`.
 
 ## 11. Open questions

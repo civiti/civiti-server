@@ -37,8 +37,8 @@ Claude Code, claude.ai.
 
 Before the MCP server can be implemented, the domain / services / data layers
 currently inside `Civiti.Api` must be extracted into standalone class libraries
-so both `Civiti.Api` and `Civiti.Mcp` can consume them without duplicating
-business rules.
+so `Civiti.Api`, `Civiti.Mcp`, and `Civiti.Auth` can all consume them
+without duplicating business rules.
 
 That refactor is a pure mechanical extraction with no behavior change, and will
 land in its own PR ahead of any MCP code. See
@@ -47,7 +47,7 @@ for the proposed split.
 
 ## Review flow
 
-1. Review these three design docs.
+1. Review these four design docs.
 2. Iterate on auth and tool inventory in particular — those are the two
    highest-risk decisions.
 3. Once approved, open the library-extraction PR.
