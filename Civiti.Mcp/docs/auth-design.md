@@ -111,7 +111,7 @@ A user who loses `admin` in Supabase must not keep admin-scoped MCP sessions. Th
 
 - **Short access tokens (15 min).** Role claim is stamped at issue time; the worst-case stale-admin window is capped by the access-token TTL.
 - **Every refresh re-validates role** against the Supabase Admin API. Cheap — refreshes are rare.
-- **Background sweep every 5 min** re-validates both the Supabase role **and** `UserProfile.McpAdminAccessEnabled` for every active session carrying admin scopes. Either mismatch → revoke. See §9 for the admin-UI kill-switch path that revokes immediately and makes the sweep a fallback, not the primary mechanism.
+- **Background sweep every 5 min** re-validates both the Supabase role **and** `UserProfile.McpAdminAccessEnabled` for every active session carrying admin scopes. Either mismatch → revoke. See §9 for the admin-UI kill-switch path that revokes immediately and makes the sweep a fallback, not the primary mechanism. The same scheduled job also garbage-collects expired rows from `McpPendingAdminActions` (see [`tool-inventory.md` §3.2](tool-inventory.md#pending-action-storage) — rows older than 24 h past `ExpiresAt`).
 - **Deferred:** Supabase auth webhooks → push-based revocation on role change / user disable. Adds operational moving parts; defer until we see a case where 5-min latency is unacceptable.
 
 ## 5. Session storage

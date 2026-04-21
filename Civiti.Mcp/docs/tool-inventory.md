@@ -157,7 +157,7 @@ Rules:
 
 | Field | Value |
 | --- | --- |
-| Scope | `civiti.write` (writes no data, but costs LLM budget) |
+| Scope | `civiti.read` (writes no data; LLM-budget cost is bounded by the rate limit below) |
 | Backing service | `ClaudeEnhancementService.EnhanceAsync(rawText, category)` |
 | Input | `rawText`, `category`, `locale?` |
 | Output | `{draft: string, suggestedCategory?: string, suggestedUrgency?: string}` |
