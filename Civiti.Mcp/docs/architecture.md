@@ -114,7 +114,7 @@ N host projects on top.
 1. **No behavior changes.** Pure `git mv` + namespace rewrites + csproj reference updates.
 2. **All existing tests pass unchanged.**
 3. **Civiti.Api remains the only host.** The refactor PR does *not* add Civiti.Mcp or Civiti.Auth. It only prepares the ground by splitting the libraries.
-4. **Civiti.Api remains the sole migration runner.** No other host touches migrations unless explicitly redesigned later.
+4. **Civiti.Api remains the sole migration runner.** All schema — including the new tables introduced by Civiti.Auth and Civiti.Mcp work (OpenIddict's tables via `options.UseOpenIddict()`, `McpSessions`, `McpPendingAdminActions`) — lives on the single shared `CivitiDbContext` in `Civiti.Infrastructure`. Migrations are generated from that one context and applied at Civiti.Api startup. Civiti.Auth and Civiti.Mcp use the same `CivitiDbContext` (via DI) to read and write these tables but never invoke `Database.Migrate()` themselves. Revisit only if deployment topology forces otherwise (e.g. a dedicated migration job).
 5. **ASP.NET-specific code stays in each host.** Error-handling middleware, Serilog enrichers, and similar live in each host project until we see enough duplication to justify a `Civiti.Web` shared library. **Don't create `Civiti.Web` speculatively.**
 
 ### Background services per host (post-refactor)
@@ -185,5 +185,5 @@ Three kinds of capability:
 - **2026-04-21** — **"Application" naming over "Services".** Aligns with Clean Architecture convention; avoids collision with ASP.NET's "hosted services" terminology.
 - **2026-04-21** — **Admin access via MCP is in scope, gated.** See [`auth-design.md` §9](auth-design.md#9-admin-specific-hardening) and [`tool-inventory.md` §3](tool-inventory.md#3-admin-tools). Opt-in flag + two-step confirm + stricter rate limits + Verified/Unverified trust badge on consent.
 - **2026-04-21** — **Anonymous read path in scope** via dedicated `/mcp/public` endpoint. See [`tool-inventory.md` §1](tool-inventory.md#1-public-anonymous-tools).
-- **2026-04-21** — **Civiti.Api remains the sole migration runner.** No other host invokes migrations. Revisit only if deployment topology forces otherwise (e.g. dedicated migration job).
+- **2026-04-21** — **Civiti.Api remains the sole migration runner; single shared `CivitiDbContext`.** OpenIddict tables, `McpSessions`, `McpPendingAdminActions`, and any other schema introduced by Civiti.Auth / Civiti.Mcp live on the one context in `Civiti.Infrastructure`. Civiti.Api runs `Database.Migrate()` at startup; other hosts read/write via DI but never migrate. Revisit only if deployment topology forces a dedicated migration job.
 - **2026-04-21** — **No speculative `Civiti.Web` shared library.** ASP.NET-specific code (error-handling middleware, Serilog enrichers) stays duplicated across hosts until duplication pain justifies extraction. YAGNI.

@@ -12,7 +12,7 @@
    descriptions outperforms a 1:1 mirror of the REST API. Agents struggle
    when two tools overlap.
 2. **Tools wrap services, not endpoints.** Each handler calls an existing
-   method on `Civiti.Services` so business rules, moderation, and audit
+   method on `Civiti.Application` so business rules, moderation, and audit
    trails are identical to the REST path. No logic duplication.
 3. **Every write tool has a rate-limit class and an audit tag.** The audit
    record stamps `Source = "mcp"` and the MCP tool name.
@@ -30,7 +30,7 @@ Two MCP endpoints are exposed:
 - **`/mcp/public`** — no auth. Serves §1 Public tools. Rate-limited per source IP.
 - **`/mcp`** — OAuth 2.1 bearer required (see [`auth-design.md`](auth-design.md)). Serves the §1 Public tools *with enriched authenticated responses* (e.g. `HasVoted` on issue lookups), plus §2–§4 tools scoped by the granted OAuth scope.
 
-The same tool name (`search_issues`, `get_issue`, `list_authorities`, …) appears on both endpoints. The handler lives in `Civiti.Services`; `Civiti.Mcp` passes `currentUserId: null` on the public path and the resolved user on the authenticated path. No divergent logic.
+The same tool name (`search_issues`, `get_issue`, `list_authorities`, …) appears on both endpoints. The handler lives in `Civiti.Application`; `Civiti.Mcp` passes `currentUserId: null` on the public path and the resolved user on the authenticated path. No divergent logic.
 
 ## Rate-limit classes
 
