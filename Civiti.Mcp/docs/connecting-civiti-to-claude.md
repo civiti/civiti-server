@@ -57,6 +57,16 @@ Custom connectors in claude.ai follow the same pattern: paste the server URL, lo
 
 The full set of capabilities is in [`tool-inventory.md`](tool-inventory.md).
 
+## For Civiti admins
+
+If you are a Civiti admin and want to use Claude for moderation work (reviewing pending issues, approving / rejecting, bulk-approving), two extra conditions apply:
+
+1. **`McpAdminAccessEnabled` must be turned on for your account.** A super-admin flips this flag in the admin UI (it is off by default for every admin). This is an explicit, account-level opt-in to using MCP for privileged actions — it exists so that a compromised admin account cannot be escalated into MCP-mediated moderation without a human turning the flag on.
+2. **Use Claude Desktop or Claude Code only.** For v1, admin scopes (`civiti.admin.read`, `civiti.admin.write`) are only offered to Anthropic's first-party clients. Other MCP clients (Cursor, ChatGPT connectors, DCR-registered third parties) can still connect, but the admin checkboxes will not appear on the consent screen.
+3. **Grant admin scopes explicitly.** When you connect, the consent screen shows admin scopes as separate, opt-in toggles. Approve them only for the clients where you intend to do moderation work. You can revoke them at any time from civiti.app → Settings → Connected AI Assistants.
+
+**Important moderation safety note:** destructive admin actions (approve, reject, bulk-approve, request-changes) use a two-step confirmation flow — Claude first calls a `propose_*` tool, and a second tool call (`confirm_admin_action`) within 5 minutes commits the change. This is a deliberate defense against prompt-injection: if a pending issue's description contains hostile text that tries to manipulate Claude into approving itself, the two-step confirmation gives you the chance to catch it before anything changes. Every admin tool call also fires an email to your inbox immediately.
+
 ## Managing and revoking access
 
 Everything is controlled from **civiti.app → Settings → Connected AI Assistants**:
