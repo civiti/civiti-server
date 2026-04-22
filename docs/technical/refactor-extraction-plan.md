@@ -187,8 +187,9 @@ Rationale for Civiti.Tests: existing tests target services, entities, and valida
 | `Anthropic.SDK` | ✓ | | | ✓ | |
 | `OpenAI` | ✓ | | | ✓ | |
 | `Supabase` | ✓ | | | ✓ | |
-| `Microsoft.EntityFrameworkCore.*` | ✓ | | | ✓ | |
-| `Npgsql.EntityFrameworkCore.PostgreSQL` | ✓ | | | ✓ | |
+| `Microsoft.EntityFrameworkCore` (runtime) | ✓ | | | ✓ | — (transitive via Infrastructure) |
+| `Microsoft.EntityFrameworkCore.Design` (tooling) | ✓ | | | | ✓ (must stay — `dotnet ef` CLI requires it in the startup project) |
+| `Npgsql.EntityFrameworkCore.PostgreSQL` | ✓ | | | ✓ | — (transitive via Infrastructure) |
 | `Resend` | ✓ | | | ✓ | |
 | `QRCoder` | ✓ | | | ✓ | |
 | `QuestPDF` | ✓ | | | ✓ | |
@@ -224,7 +225,7 @@ At each commit, the build is green and `dotnet test` passes. Use `git bisect` if
 - [ ] No existing endpoint's behaviour changes (spot-check: one authed POST, one anonymous GET, one admin POST).
 - [ ] The Railway deploy (staging) completes migrations and boots.
 - [ ] Every file moved has had its namespace updated; no orphan `using Civiti.Api.Models.Domain;` statements remain anywhere.
-- [ ] `Civiti.Api.csproj` no longer references NuGet packages that moved (Anthropic.SDK, OpenAI, Supabase, EF Core, Resend, QRCoder, QuestPDF).
+- [ ] `Civiti.Api.csproj` no longer references NuGet packages that moved: Anthropic.SDK, OpenAI, Supabase, `Microsoft.EntityFrameworkCore` (runtime), `Npgsql.EntityFrameworkCore.PostgreSQL`, Resend, QRCoder, QuestPDF. **`Microsoft.EntityFrameworkCore.Design` must remain** in `Civiti.Api.csproj` — EF CLI tooling (`dotnet ef migrations list|add|update`) requires it in the designated startup project, and the very DoD item above relies on it.
 
 ## 8. Risks and mitigations
 
