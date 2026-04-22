@@ -7,6 +7,7 @@ using Civiti.Api.Data;
 using Civiti.Api.Endpoints;
 using Civiti.Api.Infrastructure.Configuration;
 using Civiti.Api.Infrastructure.Constants;
+using Civiti.Domain.Constants;
 using Civiti.Api.Infrastructure.Extensions;
 using Civiti.Api.Infrastructure.Middleware;
 using Civiti.Api.Models.Email;

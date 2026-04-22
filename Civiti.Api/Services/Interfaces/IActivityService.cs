@@ -1,4 +1,4 @@
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Requests.Activity;
 using Civiti.Api.Models.Responses.Activity;
 using Civiti.Api.Models.Responses.Common;

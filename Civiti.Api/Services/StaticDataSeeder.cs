@@ -1,5 +1,5 @@
 using Civiti.Api.Data;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Civiti.Api.Services;

@@ -1,4 +1,4 @@
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Responses.Authority;
 
 namespace Civiti.Api.Models.Responses.Admin;

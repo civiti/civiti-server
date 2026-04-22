@@ -16,6 +16,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\Civiti.Domain\Civiti.Domain.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Anthropic.SDK" Version="5.8.0" />
         <PackageReference Include="OpenAI" Version="2.8.0" />
         <PackageReference Include="Supabase" Version="1.1.1" />

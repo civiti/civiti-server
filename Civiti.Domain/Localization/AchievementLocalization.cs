@@ -1,4 +1,4 @@
-namespace Civiti.Api.Infrastructure.Localization;
+namespace Civiti.Domain.Localization;
 
 /// <summary>
 /// Provides Romanian localization for achievements

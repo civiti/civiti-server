@@ -1,5 +1,5 @@
 using Civiti.Api.Infrastructure.Extensions;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Requests.Auth;
 using Civiti.Api.Models.Responses.Auth;
 using Civiti.Api.Models.Responses.Gamification;

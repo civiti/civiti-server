@@ -2,7 +2,7 @@ using System.Threading.Channels;
 using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Configuration;
 using Civiti.Api.Infrastructure.Email;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Email;
 using Civiti.Api.Models.Notifications;
 using Civiti.Api.Services.Interfaces;

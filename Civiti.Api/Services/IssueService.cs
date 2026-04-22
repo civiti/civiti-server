@@ -2,8 +2,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Infrastructure.Exceptions;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Exceptions;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Requests.Issues;
 using Civiti.Api.Models.Responses.Authority;
 using Civiti.Api.Models.Responses.Common;
@@ -480,7 +481,7 @@ public class IssueService(
             try
             {
                 await activityService.RecordActivityAsync(
-                    Models.Domain.ActivityType.IssueCreated,
+                    ActivityType.IssueCreated,
                     issue.Id,
                     userProfile.Id);
             }
@@ -830,8 +831,8 @@ public class IssueService(
                 try
                 {
                     ActivityType activityType = request.Status == IssueStatus.Resolved
-                        ? Models.Domain.ActivityType.IssueResolved
-                        : Models.Domain.ActivityType.StatusChange;
+                        ? ActivityType.IssueResolved
+                        : ActivityType.StatusChange;
 
                     var metadata = JsonSerializer.Serialize(new { previousStatus, newStatus = request.Status }, JsonOptions);
 

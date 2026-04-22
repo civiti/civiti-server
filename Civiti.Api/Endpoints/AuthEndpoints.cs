@@ -1,4 +1,5 @@
 using Civiti.Api.Infrastructure.Constants;
+using Civiti.Domain.Constants;
 using Civiti.Api.Infrastructure.Extensions;
 using Civiti.Api.Models.Responses.Auth;
 using Microsoft.AspNetCore.Authorization;

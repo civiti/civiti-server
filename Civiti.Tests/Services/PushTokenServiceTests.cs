@@ -1,5 +1,5 @@
 using Civiti.Api.Data;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 using Civiti.Api.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;

@@ -1,6 +1,7 @@
 using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Requests.Admin;
 using Civiti.Api.Models.Responses.Admin;
 using Civiti.Api.Models.Responses.Authority;

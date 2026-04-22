@@ -1,4 +1,4 @@
-namespace Civiti.Api.Models.Domain;
+namespace Civiti.Domain.Entities;
 
 /// <summary>
 /// Represents a user's upvote on an issue to show community support

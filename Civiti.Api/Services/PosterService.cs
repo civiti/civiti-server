@@ -1,7 +1,7 @@
 using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Configuration;
-using Civiti.Api.Infrastructure.Localization;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Localization;
+using Civiti.Domain.Entities;
 using Civiti.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;

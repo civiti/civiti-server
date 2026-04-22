@@ -1,5 +1,6 @@
 using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Requests.Comments;
 using Civiti.Api.Models.Responses.Moderation;
 using Civiti.Api.Services;

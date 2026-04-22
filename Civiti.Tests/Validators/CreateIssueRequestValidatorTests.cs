@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Requests.Issues;
 using FluentAssertions;
 

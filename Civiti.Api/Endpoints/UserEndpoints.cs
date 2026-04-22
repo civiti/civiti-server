@@ -1,7 +1,8 @@
 using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Infrastructure.Exceptions;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Exceptions;
 using Civiti.Api.Infrastructure.Extensions;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Requests.Auth;
 using Civiti.Api.Models.Requests.Issues;
 using Civiti.Api.Models.Responses.Auth;

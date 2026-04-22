@@ -1,4 +1,5 @@
 using Civiti.Api.Infrastructure.Constants;
+using Civiti.Domain.Constants;
 using Civiti.Api.Models.Responses.Jwks;
 using Civiti.Api.Services.Interfaces;
 using Microsoft.IdentityModel.Tokens;

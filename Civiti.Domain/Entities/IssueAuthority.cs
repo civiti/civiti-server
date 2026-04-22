@@ -1,4 +1,4 @@
-namespace Civiti.Api.Models.Domain;
+namespace Civiti.Domain.Entities;
 
 /// <summary>
 /// Join table linking issues to their target authorities.

@@ -1,4 +1,4 @@
-namespace Civiti.Api.Infrastructure.Constants;
+namespace Civiti.Domain.Constants;
 
 public static class IssueValidationLimits
 {

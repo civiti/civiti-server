@@ -1,6 +1,6 @@
-using Civiti.Api.Infrastructure.Constants;
+using Civiti.Domain.Constants;
 
-namespace Civiti.Api.Infrastructure.Exceptions;
+namespace Civiti.Domain.Exceptions;
 
 /// <summary>
 /// Thrown when an operation is attempted against a soft-deleted user account.

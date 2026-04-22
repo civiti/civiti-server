@@ -1,4 +1,4 @@
-namespace Civiti.Api.Infrastructure.Constants;
+namespace Civiti.Domain.Constants;
 
 /// <summary>
 /// Centralised domain error messages used in services and endpoints.

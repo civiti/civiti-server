@@ -25,7 +25,7 @@ namespace Civiti.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Achievement", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Achievement", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -77,7 +77,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("Achievements");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Activity", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Activity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -134,7 +134,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("Activities");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.AdminAction", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.AdminAction", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -182,7 +182,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("AdminActions");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Authority", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Authority", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -234,7 +234,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("Authorities");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Badge", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Badge", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -289,7 +289,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("Badges");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.BlockedUser", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.BlockedUser", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -314,7 +314,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("BlockedUsers");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Comment", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Comment", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -386,7 +386,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("Comments");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.CommentVote", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.CommentVote", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -411,7 +411,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("CommentVotes");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Issue", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Issue", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -523,7 +523,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("Issues");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.IssueAuthority", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.IssueAuthority", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -566,7 +566,7 @@ namespace Civiti.Api.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.IssuePhoto", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.IssuePhoto", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -622,7 +622,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("IssuePhotos");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.IssueVote", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.IssueVote", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -647,7 +647,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("IssueVotes");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.PushToken", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.PushToken", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -680,7 +680,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("PushTokens");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Report", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Report", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -725,7 +725,7 @@ namespace Civiti.Api.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.UserAchievement", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.UserAchievement", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -764,7 +764,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("UserAchievements");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.UserBadge", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.UserBadge", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -794,7 +794,7 @@ namespace Civiti.Api.Migrations
                     b.ToTable("UserBadges");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.UserProfile", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.UserProfile", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -954,9 +954,9 @@ namespace Civiti.Api.Migrations
                     b.ToTable("UserProfiles");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Achievement", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Achievement", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.Badge", "RewardBadge")
+                    b.HasOne("Civiti.Domain.Entities.Badge", "RewardBadge")
                         .WithMany()
                         .HasForeignKey("RewardBadgeId")
                         .OnDelete(DeleteBehavior.SetNull);
@@ -964,20 +964,20 @@ namespace Civiti.Api.Migrations
                     b.Navigation("RewardBadge");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Activity", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Activity", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "ActorUser")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "ActorUser")
                         .WithMany()
                         .HasForeignKey("ActorUserId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("Civiti.Api.Models.Domain.Issue", "Issue")
+                    b.HasOne("Civiti.Domain.Entities.Issue", "Issue")
                         .WithMany("Activities")
                         .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "IssueOwner")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "IssueOwner")
                         .WithMany()
                         .HasForeignKey("IssueOwnerUserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -990,14 +990,14 @@ namespace Civiti.Api.Migrations
                     b.Navigation("IssueOwner");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.AdminAction", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.AdminAction", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "AdminUser")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "AdminUser")
                         .WithMany()
                         .HasForeignKey("AdminUserId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("Civiti.Api.Models.Domain.Issue", "Issue")
+                    b.HasOne("Civiti.Domain.Entities.Issue", "Issue")
                         .WithMany("AdminActions")
                         .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1008,15 +1008,15 @@ namespace Civiti.Api.Migrations
                     b.Navigation("Issue");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.BlockedUser", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.BlockedUser", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "Blocked")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "Blocked")
                         .WithMany()
                         .HasForeignKey("BlockedUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "User")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1027,25 +1027,25 @@ namespace Civiti.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Comment", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Comment", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "DeletedByUser")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "DeletedByUser")
                         .WithMany()
                         .HasForeignKey("DeletedByUserId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("Civiti.Api.Models.Domain.Issue", "Issue")
+                    b.HasOne("Civiti.Domain.Entities.Issue", "Issue")
                         .WithMany("Comments")
                         .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Civiti.Api.Models.Domain.Comment", "ParentComment")
+                    b.HasOne("Civiti.Domain.Entities.Comment", "ParentComment")
                         .WithMany("Replies")
                         .HasForeignKey("ParentCommentId")
                         .OnDelete(DeleteBehavior.Cascade);
 
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "User")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1060,15 +1060,15 @@ namespace Civiti.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.CommentVote", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.CommentVote", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.Comment", "Comment")
+                    b.HasOne("Civiti.Domain.Entities.Comment", "Comment")
                         .WithMany("Votes")
                         .HasForeignKey("CommentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "User")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1079,9 +1079,9 @@ namespace Civiti.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Issue", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Issue", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "User")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "User")
                         .WithMany("Issues")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1090,14 +1090,14 @@ namespace Civiti.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.IssueAuthority", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.IssueAuthority", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.Authority", "Authority")
+                    b.HasOne("Civiti.Domain.Entities.Authority", "Authority")
                         .WithMany("IssueAuthorities")
                         .HasForeignKey("AuthorityId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Civiti.Api.Models.Domain.Issue", "Issue")
+                    b.HasOne("Civiti.Domain.Entities.Issue", "Issue")
                         .WithMany("IssueAuthorities")
                         .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1108,9 +1108,9 @@ namespace Civiti.Api.Migrations
                     b.Navigation("Issue");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.IssuePhoto", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.IssuePhoto", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.Issue", "Issue")
+                    b.HasOne("Civiti.Domain.Entities.Issue", "Issue")
                         .WithMany("Photos")
                         .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1119,15 +1119,15 @@ namespace Civiti.Api.Migrations
                     b.Navigation("Issue");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.IssueVote", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.IssueVote", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.Issue", "Issue")
+                    b.HasOne("Civiti.Domain.Entities.Issue", "Issue")
                         .WithMany("Votes")
                         .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "User")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1138,9 +1138,9 @@ namespace Civiti.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.PushToken", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.PushToken", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "User")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1149,9 +1149,9 @@ namespace Civiti.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Report", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Report", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "Reporter")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "Reporter")
                         .WithMany()
                         .HasForeignKey("ReporterId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1160,15 +1160,15 @@ namespace Civiti.Api.Migrations
                     b.Navigation("Reporter");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.UserAchievement", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.UserAchievement", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.Achievement", "Achievement")
+                    b.HasOne("Civiti.Domain.Entities.Achievement", "Achievement")
                         .WithMany("UserAchievements")
                         .HasForeignKey("AchievementId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "User")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "User")
                         .WithMany("UserAchievements")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1179,15 +1179,15 @@ namespace Civiti.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.UserBadge", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.UserBadge", b =>
                 {
-                    b.HasOne("Civiti.Api.Models.Domain.Badge", "Badge")
+                    b.HasOne("Civiti.Domain.Entities.Badge", "Badge")
                         .WithMany("UserBadges")
                         .HasForeignKey("BadgeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Civiti.Api.Models.Domain.UserProfile", "User")
+                    b.HasOne("Civiti.Domain.Entities.UserProfile", "User")
                         .WithMany("UserBadges")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1198,29 +1198,29 @@ namespace Civiti.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Achievement", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Achievement", b =>
                 {
                     b.Navigation("UserAchievements");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Authority", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Authority", b =>
                 {
                     b.Navigation("IssueAuthorities");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Badge", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Badge", b =>
                 {
                     b.Navigation("UserBadges");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Comment", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Comment", b =>
                 {
                     b.Navigation("Replies");
 
                     b.Navigation("Votes");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.Issue", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.Issue", b =>
                 {
                     b.Navigation("Activities");
 
@@ -1235,7 +1235,7 @@ namespace Civiti.Api.Migrations
                     b.Navigation("Votes");
                 });
 
-            modelBuilder.Entity("Civiti.Api.Models.Domain.UserProfile", b =>
+            modelBuilder.Entity("Civiti.Domain.Entities.UserProfile", b =>
                 {
                     b.Navigation("Issues");
 

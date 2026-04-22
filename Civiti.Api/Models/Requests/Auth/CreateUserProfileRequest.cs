@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 
 namespace Civiti.Api.Models.Requests.Auth;
 

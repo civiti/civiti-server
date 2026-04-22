@@ -1,7 +1,8 @@
 using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Infrastructure.Exceptions;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Exceptions;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Responses.User;
 using Civiti.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;

@@ -3,7 +3,7 @@ using System.Threading.RateLimiting;
 using Anthropic.SDK;
 using Anthropic.SDK.Messaging;
 using Civiti.Api.Infrastructure.Configuration;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Requests.Issues;
 using Civiti.Api.Models.Responses.Issues;
 using Civiti.Api.Services.Interfaces;

@@ -1,4 +1,4 @@
-namespace Civiti.Api.Models.Domain;
+namespace Civiti.Domain.Entities;
 
 /// <summary>
 /// Represents a predefined government authority that can be contacted about civic issues

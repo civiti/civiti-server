@@ -2,7 +2,7 @@ using System.Net;
 using System.Threading.Channels;
 using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Configuration;
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Push;
 using Civiti.Api.Services;
 using Civiti.Tests.Helpers;

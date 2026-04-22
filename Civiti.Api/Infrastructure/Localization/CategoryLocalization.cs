@@ -1,4 +1,4 @@
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Responses.Common;
 
 namespace Civiti.Api.Infrastructure.Localization;

@@ -1,4 +1,5 @@
 using Civiti.Api.Infrastructure.Constants;
+using Civiti.Domain.Constants;
 using Civiti.Api.Infrastructure.Localization;
 using Civiti.Api.Models.Responses.Common;
 

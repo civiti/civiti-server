@@ -1,4 +1,4 @@
-using Civiti.Api.Models.Domain;
+using Civiti.Domain.Entities;
 using Civiti.Api.Models.Requests.Admin;
 using Civiti.Api.Services;
 using Civiti.Api.Services.Interfaces;

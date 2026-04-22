@@ -1,4 +1,4 @@
-namespace Civiti.Api.Models.Domain;
+namespace Civiti.Domain.Entities;
 
 /// <summary>
 /// Represents a user's helpful vote on a comment

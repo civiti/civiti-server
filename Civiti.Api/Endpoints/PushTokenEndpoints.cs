@@ -1,5 +1,6 @@
 using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Infrastructure.Exceptions;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Exceptions;
 using Civiti.Api.Infrastructure.Extensions;
 using Civiti.Api.Models.Requests.Push;
 using Civiti.Api.Services.Interfaces;

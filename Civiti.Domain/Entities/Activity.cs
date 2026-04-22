@@ -1,4 +1,4 @@
-namespace Civiti.Api.Models.Domain;
+namespace Civiti.Domain.Entities;
 
 /// <summary>
 /// Represents a user-facing activity event for issues (new supporters, status changes, approvals)
