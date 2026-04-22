@@ -1,4 +1,3 @@
-using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Entities;
 

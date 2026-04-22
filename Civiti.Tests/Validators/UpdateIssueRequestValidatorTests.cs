@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Application.Requests.Issues;
 using FluentAssertions;

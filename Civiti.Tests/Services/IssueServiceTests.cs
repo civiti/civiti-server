@@ -1,5 +1,4 @@
 using Civiti.Infrastructure.Data;
-using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Entities;
 using Civiti.Application.Requests.Issues;
