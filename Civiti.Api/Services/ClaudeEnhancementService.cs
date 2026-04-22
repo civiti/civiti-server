@@ -4,9 +4,9 @@ using Anthropic.SDK;
 using Anthropic.SDK.Messaging;
 using Civiti.Api.Infrastructure.Configuration;
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Requests.Issues;
-using Civiti.Api.Models.Responses.Issues;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Requests.Issues;
+using Civiti.Application.Responses.Issues;
+using Civiti.Application.Services;
 
 namespace Civiti.Api.Services;
 

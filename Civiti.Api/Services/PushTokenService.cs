@@ -1,6 +1,6 @@
 using Civiti.Api.Data;
 using Civiti.Domain.Entities;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 

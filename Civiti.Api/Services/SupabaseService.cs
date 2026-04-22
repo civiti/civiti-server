@@ -1,6 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using Civiti.Api.Infrastructure.Configuration;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Services;
 
 namespace Civiti.Api.Services;
 

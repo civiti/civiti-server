@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Civiti.Application.Requests.Auth;
 
 namespace Civiti.Api.Infrastructure.Extensions;
 

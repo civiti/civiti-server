@@ -1,4 +1,4 @@
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;

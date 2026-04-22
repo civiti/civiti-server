@@ -2,9 +2,9 @@ using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Api.Infrastructure.Extensions;
-using Civiti.Api.Models.Requests.Reports;
-using Civiti.Api.Models.Responses.Reports;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Requests.Reports;
+using Civiti.Application.Responses.Reports;
+using Civiti.Application.Services;
 
 namespace Civiti.Api.Endpoints;
 

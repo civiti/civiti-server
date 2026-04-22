@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Configuration;
-using Civiti.Api.Models.Push;
+using Civiti.Application.Push.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace Civiti.Api.Services;

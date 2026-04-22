@@ -3,8 +3,8 @@ using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Responses.User;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Responses.User;
+using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Civiti.Api.Services;

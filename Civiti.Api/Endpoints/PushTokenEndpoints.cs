@@ -2,8 +2,8 @@ using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Api.Infrastructure.Extensions;
-using Civiti.Api.Models.Requests.Push;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Requests.Push;
+using Civiti.Application.Services;
 
 namespace Civiti.Api.Endpoints;
 

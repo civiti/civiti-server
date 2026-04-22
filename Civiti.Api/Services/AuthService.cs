@@ -1,4 +1,4 @@
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Services;
 
 namespace Civiti.Api.Services;
 

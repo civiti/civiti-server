@@ -2,11 +2,11 @@ using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Requests.Admin;
-using Civiti.Api.Models.Responses.Admin;
-using Civiti.Api.Models.Responses.Authority;
-using Civiti.Api.Models.Responses.Common;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Requests.Admin;
+using Civiti.Application.Responses.Admin;
+using Civiti.Application.Responses.Authority;
+using Civiti.Application.Responses.Common;
+using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 

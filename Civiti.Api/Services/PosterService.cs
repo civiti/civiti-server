@@ -2,7 +2,7 @@ using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Configuration;
 using Civiti.Domain.Localization;
 using Civiti.Domain.Entities;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using QRCoder;

@@ -1,6 +1,6 @@
 using Civiti.Api.Infrastructure.Email;
-using Civiti.Api.Models.Email;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Email.Models;
+using Civiti.Application.Services;
 using static Civiti.Api.Infrastructure.Email.EmailDataKeys;
 
 namespace Civiti.Api.Services;

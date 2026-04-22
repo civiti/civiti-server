@@ -1,5 +1,5 @@
 using System.Net;
-using Civiti.Api.Models.Email;
+using Civiti.Application.Email.Models;
 using static Civiti.Api.Infrastructure.Email.EmailDataKeys;
 
 namespace Civiti.Api.Infrastructure.Email;

@@ -1,7 +1,7 @@
 using Civiti.Api.Data;
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Responses.Authority;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Responses.Authority;
+using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Civiti.Api.Services;

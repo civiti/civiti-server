@@ -4,11 +4,11 @@ using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Requests.Comments;
-using Civiti.Api.Models.Responses.Comments;
-using Civiti.Api.Models.Responses.Common;
-using Civiti.Api.Models.Responses.Moderation;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Requests.Comments;
+using Civiti.Application.Responses.Comments;
+using Civiti.Application.Responses.Common;
+using Civiti.Application.Responses.Moderation;
+using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 

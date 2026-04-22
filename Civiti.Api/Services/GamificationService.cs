@@ -1,8 +1,8 @@
 using Civiti.Api.Data;
 using Civiti.Domain.Localization;
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Responses.Gamification;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Responses.Gamification;
+using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Civiti.Api.Services;

@@ -3,9 +3,9 @@ using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Configuration;
 using Civiti.Api.Infrastructure.Email;
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Email;
-using Civiti.Api.Models.Notifications;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Email.Models;
+using Civiti.Application.Notifications;
+using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 
 // Intentionally not "using static EmailDataKeys" here — EmailDataKeys.IssueCategory

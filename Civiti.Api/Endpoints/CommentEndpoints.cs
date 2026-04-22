@@ -2,11 +2,11 @@ using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Api.Infrastructure.Extensions;
-using Civiti.Api.Models.Requests.Comments;
-using Civiti.Api.Models.Responses.Auth;
-using Civiti.Api.Models.Responses.Comments;
-using Civiti.Api.Models.Responses.Common;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Requests.Comments;
+using Civiti.Application.Responses.Auth;
+using Civiti.Application.Responses.Comments;
+using Civiti.Application.Responses.Common;
+using Civiti.Application.Services;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Civiti.Api.Endpoints;

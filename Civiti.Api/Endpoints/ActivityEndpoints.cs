@@ -3,11 +3,11 @@ using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Api.Infrastructure.Extensions;
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Requests.Activity;
-using Civiti.Api.Models.Responses.Activity;
-using Civiti.Api.Models.Responses.Auth;
-using Civiti.Api.Models.Responses.Common;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Requests.Activity;
+using Civiti.Application.Responses.Activity;
+using Civiti.Application.Responses.Auth;
+using Civiti.Application.Responses.Common;
+using Civiti.Application.Services;
 
 namespace Civiti.Api.Endpoints;
 

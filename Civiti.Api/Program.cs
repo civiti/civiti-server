@@ -10,11 +10,11 @@ using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Api.Infrastructure.Extensions;
 using Civiti.Api.Infrastructure.Middleware;
-using Civiti.Api.Models.Email;
-using Civiti.Api.Models.Notifications;
-using Civiti.Api.Models.Push;
+using Civiti.Application.Email.Models;
+using Civiti.Application.Notifications;
+using Civiti.Application.Push.Models;
 using Civiti.Api.Services;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -592,7 +592,7 @@ app.MapGet("/swagger-debug", async (HttpContext context) =>
 
 app.MapGet("/api/health", async (CivitiDbContext context, ISupabaseService supabaseService) =>
     {
-        Civiti.Api.Models.Responses.Health.HealthCheckResponse health = new()
+        Civiti.Application.Responses.Health.HealthCheckResponse health = new()
         {
             Status = "Healthy",
             Timestamp = DateTime.UtcNow,
@@ -643,7 +643,7 @@ app.MapGet("/api/health", async (CivitiDbContext context, ISupabaseService supab
     .WithSummary("Health check endpoint with connectivity tests")
     .WithDescription(
         "Performs health checks on critical dependencies including PostgreSQL database and Supabase authentication service. Returns detailed connectivity status for each component.")
-    .Produces<Civiti.Api.Models.Responses.Health.HealthCheckResponse>();
+    .Produces<Civiti.Application.Responses.Health.HealthCheckResponse>();
 
 // Database migration on startup (Railway compatible with retry logic)
 var skipMigration = Environment.GetEnvironmentVariable("SKIP_DB_MIGRATION") == "true";

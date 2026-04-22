@@ -3,7 +3,7 @@ using System.Threading.Channels;
 using Civiti.Api.Data;
 using Civiti.Api.Infrastructure.Configuration;
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Push;
+using Civiti.Application.Push.Models;
 using Civiti.Api.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;

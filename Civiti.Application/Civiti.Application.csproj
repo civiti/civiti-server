@@ -12,4 +12,19 @@
         <ProjectReference Include="..\Civiti.Domain\Civiti.Domain.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <!-- CreateReportRequest.ParsedReason is internal; the service implementations that    -->
+        <!-- consume it live in Civiti.Api today and will move to Civiti.Infrastructure in C4. -->
+        <InternalsVisibleTo Include="Civiti.Api" />
+        <InternalsVisibleTo Include="Civiti.Infrastructure" />
+        <InternalsVisibleTo Include="Civiti.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- IJwksManager's contract exposes JsonWebKey / JsonWebKeySet / SecurityKey types    -->
+        <!-- directly. Those live in Microsoft.IdentityModel.Tokens, so the package lands in   -->
+        <!-- Civiti.Application to keep the interface resolvable. See refactor plan §5.        -->
+        <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.2.1" />
+    </ItemGroup>
+
 </Project>

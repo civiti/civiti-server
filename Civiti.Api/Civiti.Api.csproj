@@ -17,6 +17,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Civiti.Domain\Civiti.Domain.csproj" />
+        <ProjectReference Include="..\Civiti.Application\Civiti.Application.csproj" />
     </ItemGroup>
 
     <ItemGroup>

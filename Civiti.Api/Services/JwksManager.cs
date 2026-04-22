@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Civiti.Api.Infrastructure.Configuration;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Services;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;

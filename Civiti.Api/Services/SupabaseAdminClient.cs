@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using Civiti.Api.Infrastructure.Configuration;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Services;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Civiti.Api.Services;

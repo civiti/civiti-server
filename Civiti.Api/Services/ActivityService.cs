@@ -1,10 +1,10 @@
 using System.Text.Json;
 using Civiti.Api.Data;
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Requests.Activity;
-using Civiti.Api.Models.Responses.Activity;
-using Civiti.Api.Models.Responses.Common;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Requests.Activity;
+using Civiti.Application.Responses.Activity;
+using Civiti.Application.Responses.Common;
+using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 

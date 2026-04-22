@@ -1,7 +1,7 @@
 using System.Threading.Channels;
 using Civiti.Api.Infrastructure.Configuration;
-using Civiti.Api.Models.Notifications;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Notifications;
+using Civiti.Application.Services;
 
 namespace Civiti.Api.Services;
 

@@ -1,6 +1,6 @@
 using System.Threading.Channels;
-using Civiti.Api.Models.Email;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Email.Models;
+using Civiti.Application.Services;
 
 namespace Civiti.Api.Services;
 

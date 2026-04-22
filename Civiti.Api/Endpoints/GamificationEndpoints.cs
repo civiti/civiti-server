@@ -2,9 +2,9 @@ using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Api.Infrastructure.Extensions;
-using Civiti.Api.Models.Responses.Auth;
-using Civiti.Api.Models.Responses.Gamification;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Responses.Auth;
+using Civiti.Application.Responses.Gamification;
+using Civiti.Application.Services;
 
 namespace Civiti.Api.Endpoints;
 

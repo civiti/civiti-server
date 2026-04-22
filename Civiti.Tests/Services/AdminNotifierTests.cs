@@ -1,6 +1,6 @@
 using System.Threading.Channels;
 using Civiti.Api.Infrastructure.Configuration;
-using Civiti.Api.Models.Notifications;
+using Civiti.Application.Notifications;
 using Civiti.Api.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;

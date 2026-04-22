@@ -4,8 +4,8 @@ using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Requests.Reports;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Requests.Reports;
+using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Civiti.Api.Services;

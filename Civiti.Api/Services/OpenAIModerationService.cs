@@ -1,7 +1,7 @@
 using System.ClientModel;
 using Civiti.Api.Infrastructure.Configuration;
-using Civiti.Api.Models.Responses.Moderation;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Responses.Moderation;
+using Civiti.Application.Services;
 using OpenAI.Moderations;
 
 namespace Civiti.Api.Services;

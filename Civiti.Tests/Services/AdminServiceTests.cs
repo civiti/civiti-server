@@ -1,7 +1,7 @@
 using Civiti.Domain.Entities;
-using Civiti.Api.Models.Requests.Admin;
+using Civiti.Application.Requests.Admin;
 using Civiti.Api.Services;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
