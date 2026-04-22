@@ -7,7 +7,7 @@ using Civiti.Application.Requests.Issues;
 using Civiti.Application.Responses.Auth;
 using Civiti.Application.Responses.Common;
 using Civiti.Application.Responses.Issues;
-using Civiti.Api.Services;
+using Civiti.Infrastructure.Services;
 using Civiti.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;

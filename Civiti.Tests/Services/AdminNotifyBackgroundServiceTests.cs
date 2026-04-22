@@ -1,10 +1,11 @@
 using System.Threading.Channels;
-using Civiti.Api.Data;
-using Civiti.Api.Infrastructure.Configuration;
+using Civiti.Infrastructure.Data;
+using Civiti.Infrastructure.Configuration;
 using Civiti.Domain.Entities;
 using Civiti.Application.Email.Models;
 using Civiti.Application.Notifications;
-using Civiti.Api.Services;
+using Civiti.Infrastructure.Services;
+using Civiti.Infrastructure.Services.AdminNotify;
 using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;

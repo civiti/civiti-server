@@ -116,6 +116,7 @@ There is no `Models/DTOs/` folder in the current tree; request/response records 
 | `Infrastructure/Configuration/PosterConfiguration.cs` | `Configuration/**` | 1 | |
 | `Infrastructure/Configuration/ResendConfiguration.cs` | `Configuration/**` | 1 | |
 | `Infrastructure/Configuration/SupabaseConfiguration.cs` | `Configuration/**` | 1 | |
+| `Infrastructure/Configuration/JwtValidationOptions.cs` | `Configuration/JwtValidationOptions.cs` | 1 | Consumed by `JwksManager` + `JwksBackgroundService` (both Infrastructure). Originally classified as "Stays in Civiti.Api" — corrected during commit-4 execution. `JwtBearerPostConfigureOptions.cs` stays because it's referenced only by Civiti.Api's `Program.cs`. |
 
 ### Stays in `Civiti.Api` (shrunk host)
 
@@ -129,7 +130,6 @@ There is no `Models/DTOs/` folder in the current tree; request/response records 
 | `Infrastructure/Configuration/SwaggerConfiguration.cs` | 1 | |
 | `Infrastructure/Configuration/SwaggerExamples.cs` | 1 | |
 | `Infrastructure/Configuration/JwtBearerPostConfigureOptions.cs` | 1 | |
-| `Infrastructure/Configuration/JwtValidationOptions.cs` | 1 | |
 | `Infrastructure/Constants/ApiRoutes.cs` | 1 | HTTP routes. |
 | `Infrastructure/Constants/AuthorizationPolicies.cs` | 1 | Policy-name constants; tied to the JWT policies registered in `Program.cs`. |
 | `Infrastructure/Extensions/ClaimsPrincipalExtensions.cs` | 1 | JWT-claim helpers. |

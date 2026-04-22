@@ -1,9 +1,9 @@
-using Civiti.Api.Data;
+using Civiti.Infrastructure.Data;
 using Civiti.Api.Infrastructure.Constants;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Entities;
 using Civiti.Application.Requests.Issues;
-using Civiti.Api.Services;
+using Civiti.Infrastructure.Services;
 using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;

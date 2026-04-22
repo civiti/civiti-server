@@ -3,7 +3,7 @@ using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Domain.Entities;
 using Civiti.Application.Requests.Auth;
-using Civiti.Api.Services;
+using Civiti.Infrastructure.Services;
 using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;

@@ -1,6 +1,6 @@
 using Civiti.Domain.Entities;
 using Civiti.Application.Requests.Admin;
-using Civiti.Api.Services;
+using Civiti.Infrastructure.Services;
 using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;

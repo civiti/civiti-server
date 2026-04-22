@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using System.Threading.RateLimiting;
-using Civiti.Api.Data;
+using Civiti.Infrastructure.Data;
 using Civiti.Api.Endpoints;
 using Civiti.Api.Infrastructure.Configuration;
 using Civiti.Api.Infrastructure.Constants;
@@ -13,7 +13,16 @@ using Civiti.Api.Infrastructure.Middleware;
 using Civiti.Application.Email.Models;
 using Civiti.Application.Notifications;
 using Civiti.Application.Push.Models;
-using Civiti.Api.Services;
+using Civiti.Infrastructure.Configuration;
+using Civiti.Infrastructure.Services;
+using Civiti.Infrastructure.Services.AdminNotify;
+using Civiti.Infrastructure.Services.Claude;
+using Civiti.Infrastructure.Services.Email;
+using Civiti.Infrastructure.Services.Jwks;
+using Civiti.Infrastructure.Services.Moderation;
+using Civiti.Infrastructure.Services.Poster;
+using Civiti.Infrastructure.Services.Push;
+using Civiti.Infrastructure.Services.Supabase;
 using Civiti.Application.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -115,6 +124,10 @@ if (connectionString?.StartsWith("postgres://") == true || connectionString?.Sta
 builder.Services.AddDbContext<CivitiDbContext>(options =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
         {
+            // CivitiDbContext lives in Civiti.Infrastructure; the matching migrations live
+            // alongside it. MigrationsAssembly() pins EF to that assembly so `dotnet ef`
+            // (invoked with Civiti.Api as the startup project) finds them.
+            npgsqlOptions.MigrationsAssembly(typeof(CivitiDbContext).Assembly.FullName);
             npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory");
             npgsqlOptions.CommandTimeout(30);
             npgsqlOptions.EnableRetryOnFailure(

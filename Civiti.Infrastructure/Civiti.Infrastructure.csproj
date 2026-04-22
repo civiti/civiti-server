@@ -8,9 +8,46 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <!--
+        The Microsoft.Extensions.* namespaces are ambient in the Microsoft.NET.Sdk.Web SDK
+        that Civiti.Api uses but not in the plain Microsoft.NET.Sdk this project uses.
+        Promoting them to global usings here keeps service implementations source-compatible
+        with their shape in Civiti.Api — the refactor is meant to be mechanical.
+    -->
+    <ItemGroup>
+        <Using Include="Microsoft.Extensions.Logging" />
+        <Using Include="Microsoft.Extensions.Hosting" />
+        <Using Include="Microsoft.Extensions.Options" />
+        <Using Include="Microsoft.Extensions.DependencyInjection" />
+        <Using Include="Microsoft.Extensions.Caching.Memory" />
+    </ItemGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\Civiti.Domain\Civiti.Domain.csproj" />
         <ProjectReference Include="..\Civiti.Application\Civiti.Application.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- SupabaseAdminClient exposes internal records (UsersPage, ParsedUser) consumed by  -->
+        <!-- Civiti.Tests. The attribute rides with the class from Civiti.Api.csproj.         -->
+        <InternalsVisibleTo Include="Civiti.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Anthropic.SDK" Version="5.8.0" />
+        <PackageReference Include="OpenAI" Version="2.8.0" />
+        <PackageReference Include="Supabase" Version="1.1.1" />
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+        <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.2.1" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.3" />
+        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.3" />
+        <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.3" />
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.3" />
+        <PackageReference Include="System.Threading.RateLimiting" Version="10.0.3" />
+        <PackageReference Include="QRCoder" Version="1.6.0" />
+        <PackageReference Include="QuestPDF" Version="2024.10.2" />
+        <PackageReference Include="Resend" Version="0.2.1" />
     </ItemGroup>
 
 </Project>

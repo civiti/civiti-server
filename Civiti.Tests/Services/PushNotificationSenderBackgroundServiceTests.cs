@@ -1,10 +1,11 @@
 using System.Net;
 using System.Threading.Channels;
-using Civiti.Api.Data;
-using Civiti.Api.Infrastructure.Configuration;
+using Civiti.Infrastructure.Data;
+using Civiti.Infrastructure.Configuration;
 using Civiti.Domain.Entities;
 using Civiti.Application.Push.Models;
-using Civiti.Api.Services;
+using Civiti.Infrastructure.Services;
+using Civiti.Infrastructure.Services.Push;
 using Civiti.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;

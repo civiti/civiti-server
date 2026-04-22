@@ -1,6 +1,6 @@
-using Civiti.Api.Data;
+using Civiti.Infrastructure.Data;
 using Civiti.Domain.Entities;
-using Civiti.Api.Services;
+using Civiti.Infrastructure.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;

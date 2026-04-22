@@ -1,5 +1,6 @@
 using System.Text.Json;
-using Civiti.Api.Services;
+using Civiti.Infrastructure.Services;
+using Civiti.Infrastructure.Services.Supabase;
 using FluentAssertions;
 
 namespace Civiti.Tests.Services;

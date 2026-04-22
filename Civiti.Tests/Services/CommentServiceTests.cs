@@ -3,7 +3,7 @@ using Civiti.Domain.Constants;
 using Civiti.Domain.Entities;
 using Civiti.Application.Requests.Comments;
 using Civiti.Application.Responses.Moderation;
-using Civiti.Api.Services;
+using Civiti.Infrastructure.Services;
 using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;
