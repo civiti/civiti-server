@@ -18,13 +18,20 @@
 solution
 ├── Civiti.Domain            ← entities, enums, domain errors, localization,
 │                              value objects. Pure POCOs. No dependencies.
-├── Civiti.Application       ← service interfaces + implementations (pure),
-│                              DTOs / Requests / Responses / Notifications.
+├── Civiti.Application       ← service interfaces + DTOs / Requests /
+│                              Responses / Notifications. No concrete
+│                              service implementations (see §12 decision
+│                              log — every service injects DbContext or
+│                              an SDK, so the impls all belong in
+│                              Infrastructure).
 │                              Depends on: Civiti.Domain.
 ├── Civiti.Infrastructure    ← EF DbContext + configurations + migrations,
-│                              external-world adapters (Anthropic, OpenAI,
-│                              Supabase Admin, Resend, Expo, QuestPDF,
-│                              JWKS cache), email templates.
+│                              **all service implementations** (both
+│                              business-logic and external-client —
+│                              they share DbContext coupling), external
+│                              adapters (Anthropic, OpenAI, Supabase
+│                              Admin, Resend, Expo, QuestPDF, JWKS cache),
+│                              email templates.
 │                              Depends on: Civiti.Application + Civiti.Domain.
 ├── Civiti.Api               ← shrunk HTTP host. Program.cs, Endpoints/**,
 │                              HTTP-specific middleware, Swagger + JWT
@@ -60,40 +67,45 @@ master; tally before executing to confirm nothing drifts.
 | `Models/Notifications/**` | `Notifications/**` | — | In-process notification payloads. |
 | `Models/Email/**` | `Email/Models/**` | — | Email data-payload types (not templates). Templates go to Infrastructure. |
 | `Models/Push/**` | `Push/Models/**` | — | Push data-payload types. |
-| `Services/ActivityService.cs` *(+ interface)* | `Services/**` | 2 | Pure business logic. |
-| `Services/AdminService.cs` *(+ interface)* | `Services/**` | 2 | |
-| `Services/AuthService.cs` *(+ interface)* | `Services/**` | 2 | |
-| `Services/AuthorityService.cs` *(+ interface)* | `Services/**` | 2 | |
-| `Services/BlockService.cs` *(+ interface)* | `Services/**` | 2 | |
-| `Services/CommentService.cs` *(+ interface)* | `Services/**` | 2 | |
-| `Services/GamificationService.cs` *(+ interface)* | `Services/**` | 2 | |
-| `Services/IssueService.cs` *(+ interface)* | `Services/**` | 2 | |
-| `Services/PushTokenService.cs` *(+ interface)* | `Services/**` | 2 | |
-| `Services/ReportService.cs` *(+ interface)* | `Services/**` | 2 | |
-| `Services/UserService.cs` *(+ interface)* | `Services/**` | 2 | |
+| `Services/Interfaces/**` | `Services/**` | 21 | **All** service interfaces — both the ones whose implementations stay DbContext-free and the ones whose implementations use external clients. Application is the layer where every service *contract* lives; every concrete implementation lives in Infrastructure (see below and §12). |
+
+**No concrete `*Service.cs` classes land in `Civiti.Application`.** Every service today injects either `CivitiDbContext` (an Infrastructure type) or an external SDK client. With no repository pattern in place and no plan to introduce one (§10), every implementation is Infrastructure by Clean Architecture's definition — the interface is the layer boundary.
 
 ### → `Civiti.Infrastructure`
 
 | From `Civiti.Api/` | To `Civiti.Infrastructure/` | Count | Notes |
 | --- | --- | --- | --- |
+> Interface files (`Services/Interfaces/**`) for every row below move to `Civiti.Application` (see that section). Only the `*.cs` implementation files move to `Civiti.Infrastructure`.
+
 | `Data/CivitiDbContext.cs` | `Data/CivitiDbContext.cs` | 1 | |
 | `Data/Configurations/**` | `Data/Configurations/**` | 18 | Fluent EF configurations. |
 | `Migrations/**` | `Migrations/**` | 15 | |
-| `Services/StaticDataSeeder.cs` *(+ interface)* | `Services/**` | 2 | Touches DbContext directly, classifying as infrastructure even though logic is seed-centric. |
-| `Services/ClaudeEnhancementService.cs` *(+ interface)* | `Services/Claude/**` | 2 | Anthropic SDK client. |
-| `Services/OpenAIModerationService.cs` *(+ interface)* | `Services/Moderation/**` | 2 | OpenAI SDK client. |
-| `Services/SupabaseService.cs` *(+ interface)* | `Services/Supabase/**` | 2 | Supabase SDK client. |
-| `Services/SupabaseAdminClient.cs` *(+ interface)* | `Services/Supabase/**` | 2 | Supabase Admin API. |
-| `Services/EmailSenderService.cs` *(+ interface)* | `Services/Email/**` | 2 | Resend SMTP client. |
+| `Services/ActivityService.cs` | `Services/**` | 1 | Injects `CivitiDbContext`. |
+| `Services/AdminService.cs` | `Services/**` | 1 | Injects `CivitiDbContext`. |
+| `Services/AuthService.cs` | `Services/**` | 1 | Currently an empty stub; lands here for consistency — will gain DbContext coupling as it's fleshed out. |
+| `Services/AuthorityService.cs` | `Services/**` | 1 | Injects `CivitiDbContext`. |
+| `Services/BlockService.cs` | `Services/**` | 1 | Injects `CivitiDbContext`. |
+| `Services/CommentService.cs` | `Services/**` | 1 | Injects `CivitiDbContext` and `IContentModerationService`. |
+| `Services/GamificationService.cs` | `Services/**` | 1 | Injects `CivitiDbContext`. |
+| `Services/IssueService.cs` | `Services/**` | 1 | Injects `CivitiDbContext`. |
+| `Services/NotificationService.cs` | `Services/**` | 1 | Injects `CivitiDbContext`. |
+| `Services/PushTokenService.cs` | `Services/**` | 1 | Injects `CivitiDbContext`. |
+| `Services/ReportService.cs` | `Services/**` | 1 | Injects `CivitiDbContext`. |
+| `Services/UserService.cs` | `Services/**` | 1 | Injects `CivitiDbContext`. |
+| `Services/StaticDataSeeder.cs` | `Services/**` | 1 | Injects `CivitiDbContext`; seed-focused but infrastructure by coupling. |
+| `Services/ClaudeEnhancementService.cs` | `Services/Claude/**` | 1 | Anthropic SDK client. |
+| `Services/OpenAIModerationService.cs` | `Services/Moderation/**` | 1 | OpenAI SDK client. Interface `IContentModerationService` is consumed by `CommentService` — goes to Application. |
+| `Services/SupabaseService.cs` | `Services/Supabase/**` | 1 | Supabase SDK client. |
+| `Services/SupabaseAdminClient.cs` | `Services/Supabase/**` | 1 | Supabase Admin API. |
+| `Services/EmailSenderService.cs` | `Services/Email/**` | 1 | Resend SMTP client. |
 | `Services/EmailSenderBackgroundService.cs` | `Services/Email/**` | 1 | `IHostedService` implementation. |
-| `Services/EmailTemplateService.cs` *(+ interface)* | `Services/Email/**` | 2 | Template rendering. |
+| `Services/EmailTemplateService.cs` | `Services/Email/**` | 1 | Template rendering. |
 | `Services/PushNotificationSenderBackgroundService.cs` | `Services/Push/**` | 1 | Expo push sender. |
-| `Services/PosterService.cs` *(+ interface)* | `Services/Poster/**` | 2 | QuestPDF + QRCoder. |
-| `Services/JwksManager.cs` *(+ interface)* | `Services/Jwks/**` | 2 | Supabase JWKS cache. |
+| `Services/PosterService.cs` | `Services/Poster/**` | 1 | QuestPDF + QRCoder. |
+| `Services/JwksManager.cs` | `Services/Jwks/**` | 1 | Supabase JWKS cache. |
 | `Services/JwksBackgroundService.cs` | `Services/Jwks/**` | 1 | `IHostedService`. |
-| `Services/AdminNotifier.cs` *(+ interface)* | `Services/AdminNotify/**` | 2 | Channels-based in-process pub/sub; lives here because it couples to email/push infrastructure. |
-| `Services/AdminNotifyBackgroundService.cs` | `Services/AdminNotify/**` | 1 | `IHostedService`. |
-| `Services/NotificationService.cs` *(+ interface)* | `Services/**` | 2 | In-process notifier; leave in infra to keep DI wiring uniform. Revisit if test coverage wants it in Application. |
+| `Services/AdminNotifier.cs` | `Services/AdminNotify/**` | 1 | Channels-based in-process pub/sub; lives here because it couples to email/push infrastructure. |
+| `Services/AdminNotifyBackgroundService.cs` | `Services/AdminNotify/**` | 1 | `IHostedService`; injects `CivitiDbContext`. |
 | `Infrastructure/Email/**` | `Email/Templates/**` | 3 | `EmailLayout`, `EmailTemplates`, `EmailDataKeys`. |
 | `Infrastructure/Configuration/AdminNotifyConfiguration.cs` | `Configuration/**` | 1 | |
 | `Infrastructure/Configuration/ClaudeConfiguration.cs` | `Configuration/**` | 1 | |
@@ -126,8 +138,8 @@ master; tally before executing to confirm nothing drifts.
 
 Pure mechanical regex. Apply across every moved file.
 
-| Pattern (old) | Replacement (new) |
-| --- | --- |
+| Pattern (old) | Replacement (new) | Notes |
+| --- | --- | --- |
 | `Civiti\.Api\.Models\.Domain` | `Civiti.Domain.Entities` |
 | `Civiti\.Api\.Infrastructure\.Localization` | `Civiti.Domain.Localization` |
 | `Civiti\.Api\.Infrastructure\.Exceptions` | `Civiti.Domain.Exceptions` |
@@ -138,9 +150,16 @@ Pure mechanical regex. Apply across every moved file.
 | `Civiti\.Api\.Models\.Notifications` | `Civiti.Application.Notifications` |
 | `Civiti\.Api\.Models\.Email` | `Civiti.Application.Email.Models` |
 | `Civiti\.Api\.Models\.Push` | `Civiti.Application.Push.Models` |
-| `Civiti\.Api\.Services\.Interfaces` | `Civiti.Application.Services` *(for the pure-Application subset)* **or** `Civiti.Infrastructure.Services` *(for the external-dep subset)* — split by file per §2. |
-| `Civiti\.Api\.Services\.(ActivityService\|AdminService\|…)` | `Civiti.Application.Services.$1` *(pure subset)* |
-| `Civiti\.Api\.Services\.(ClaudeEnhancementService\|Resend…\|…)` | `Civiti.Infrastructure.Services.<Category>.$1` *(external subset)* |
+| `Civiti\.Api\.Services\.Interfaces` | `Civiti.Application.Services` | (All interfaces land in Application, full stop.) |
+| `Civiti\.Api\.Services\.(ActivityService\|AdminService\|AuthService\|AuthorityService\|BlockService\|CommentService\|GamificationService\|IssueService\|NotificationService\|PushTokenService\|ReportService\|UserService\|StaticDataSeeder)` | `Civiti.Infrastructure.Services.$1` | DbContext-coupled services. |
+| `Civiti\.Api\.Services\.(ClaudeEnhancementService)` | `Civiti.Infrastructure.Services.Claude.$1` | |
+| `Civiti\.Api\.Services\.(OpenAIModerationService)` | `Civiti.Infrastructure.Services.Moderation.$1` | |
+| `Civiti\.Api\.Services\.(SupabaseService\|SupabaseAdminClient)` | `Civiti.Infrastructure.Services.Supabase.$1` | |
+| `Civiti\.Api\.Services\.(EmailSenderService\|EmailSenderBackgroundService\|EmailTemplateService)` | `Civiti.Infrastructure.Services.Email.$1` | |
+| `Civiti\.Api\.Services\.(PushNotificationSenderBackgroundService)` | `Civiti.Infrastructure.Services.Push.$1` | |
+| `Civiti\.Api\.Services\.(PosterService)` | `Civiti.Infrastructure.Services.Poster.$1` | |
+| `Civiti\.Api\.Services\.(JwksManager\|JwksBackgroundService)` | `Civiti.Infrastructure.Services.Jwks.$1` | |
+| `Civiti\.Api\.Services\.(AdminNotifier\|AdminNotifyBackgroundService)` | `Civiti.Infrastructure.Services.AdminNotify.$1` | |
 | `Civiti\.Api\.Data` | `Civiti.Infrastructure.Data` |
 | `Civiti\.Api\.Migrations` | `Civiti.Infrastructure.Migrations` |
 | `Civiti\.Api\.Infrastructure\.Configuration\.(AdminNotify\|Claude\|ExpoPush\|OpenAI\|Poster\|Resend\|Supabase)Configuration` | `Civiti.Infrastructure.Configuration.$1Configuration` |
@@ -189,8 +208,8 @@ Single PR, multiple commits, each one compilable and test-green. This gives us b
 | --- | --- | --- |
 | 1 | `chore: add empty Civiti.Domain / Civiti.Application / Civiti.Infrastructure projects to solution` | Three empty csprojs, updated `.sln`, no code movement. CI green trivially. |
 | 2 | `refactor: move entities and domain constants to Civiti.Domain` | Execute the Domain move + namespace rewrite. Civiti.Api picks up ProjectReference to Civiti.Domain. Tests pass. |
-| 3 | `refactor: move DTOs and pure services to Civiti.Application` | Execute the Application move. Civiti.Api picks up ProjectReference to Civiti.Application. Tests pass. |
-| 4 | `refactor: move EF DbContext, migrations, and external clients to Civiti.Infrastructure` | Execute the Infrastructure move. Migrate NuGet packages. Civiti.Api picks up ProjectReference to Civiti.Infrastructure; drops the packages that moved. Tests pass. |
+| 3 | `refactor: move DTOs and service interfaces to Civiti.Application` | Execute the Application move — DTOs, Requests, Responses, Notifications, Email/Push models, and all 21 service interfaces. **No service implementations move in this commit.** Civiti.Api picks up ProjectReference to Civiti.Application. Tests pass. |
+| 4 | `refactor: move EF DbContext, migrations, all service implementations, and external clients to Civiti.Infrastructure` | Execute the Infrastructure move. This commit is the largest — it carries the DbContext, 15 migrations, 18 fluent configurations, all 26 service implementations (business-logic + external-client alike), email templates, and external configuration classes. Migrate NuGet packages. Civiti.Api picks up ProjectReference to Civiti.Infrastructure; drops the packages that moved. Tests pass. |
 | 5 | `refactor: shrink Civiti.Api and update Civiti.Tests references` | Clean up any straggler `using` statements in Civiti.Api, update Civiti.Tests' ProjectReferences, delete the now-empty `Civiti.Api/Models/`, `Civiti.Api/Data/`, `Civiti.Api/Services/`, `Civiti.Api/Migrations/` folders. Tests pass. |
 
 At each commit, the build is green and `dotnet test` passes. Use `git bisect` if something breaks later.
@@ -217,7 +236,8 @@ At each commit, the build is green and `dotnet test` passes. Use `git bisect` if
 | Serilog configuration breaks | Low | Sink setup stays in `Program.cs`; service-layer `ILogger<T>` injection works identically. |
 | Namespace collisions after rewrite (e.g., two `Services` folders under different top-level namespaces both claim the same short name) | Low | Rewrite script is fully-qualified. Build will fail loudly on collision; no silent drift possible. |
 | Circular project references (e.g., Civiti.Domain accidentally references Civiti.Application) | Medium | Enforce via csproj review — Civiti.Domain has zero `<ProjectReference>`. A CI step adding `<PackageReference>` and `<ProjectReference>` validation is out of scope; the reviewer is the gate. |
-| `Infrastructure/Constants/IssueValidationLimits` used both from endpoints (Civiti.Api) and services (Civiti.Application) creates a Domain-is-referenced-by-both case | None (works) | That's exactly what putting it in Civiti.Domain is for — both referencing projects already depend on Domain. |
+| A service implementation classified as Application-layer ends up needing an Infrastructure type (e.g. `CivitiDbContext`, an SDK client), which would require `Application → Infrastructure` and invert the dependency arrow | Caught in review | Resolved at plan-stage (Greptile PR #83 review): **no service implementations live in Application**; only interfaces + DTOs do. The execution PR's reviewer should spot-check the Application project for any accidentally-added `*Service.cs` file. |
+| `Infrastructure/Constants/IssueValidationLimits` used both from endpoints (Civiti.Api) and services (Civiti.Infrastructure) creates a Domain-is-referenced-by-both case | None (works) | That's exactly what putting it in Civiti.Domain is for — both referencing projects already depend on Domain. |
 
 ## 9. Rollback plan
 
@@ -236,6 +256,7 @@ Explicitly **not** part of this PR:
 - Any new feature or endpoint.
 - Renaming anything outside the top-level namespace change (e.g. method renames, file re-grouping within a library beyond what §2 specifies).
 - Introducing FluentValidation, MediatR, AutoMapper, or any other new library.
+- **Introducing a repository pattern** (`IIssueRepository`, etc.) to decouple service implementations from `CivitiDbContext`. This is why every service implementation lands in Infrastructure rather than Application — see §12. A later refactor can add repositories if we decide the Application layer should hold concrete services; until then, "interfaces in Application, impls in Infrastructure" is the correct Clean-Architecture split.
 - Changing Program.cs's DI registration structure beyond swapping `using` imports.
 - Adding `<InternalsVisibleTo>` or `<AssemblyAttribute>` anywhere.
 - Creating Civiti.Auth or Civiti.Mcp host projects.
@@ -261,4 +282,6 @@ Approve this plan before the mechanical PR is opened. The review on the mechanic
 - **2026-04-22** — Single PR, five staged commits (one per library + cleanup). Rejected alternative: one PR per library. The four libraries are interdependent enough that a partial merge would leave master in an awkward state; bisectable-commits-in-one-PR gives us review granularity without exposing master to intermediate states.
 - **2026-04-22** — `Models/DTOs|Requests|Responses|Notifications|Email|Push` all move to Civiti.Application. Rejected alternative: DTOs in Civiti.Domain. DTOs are application-layer contracts, not domain truths; keeping Domain pure of DTOs is the standard Clean Architecture shape and prevents the library from accidentally growing serialization attributes later.
 - **2026-04-22** — `IssueValidationLimits`, `DomainErrors`, `ReportTargetTypes` land in Civiti.Domain. Rejected alternative: keep in Civiti.Api or Civiti.Application. They are stable facts about the domain that both HTTP endpoints and services reference; Domain is where they belong.
-- **2026-04-22** — `NotificationService` (in-process) is classified as Infrastructure despite having no external deps, because it lives alongside `AdminNotifier` in the notification-coordination stack. Revisit during implementation if test coverage benefits from moving it to Application.
+- **2026-04-22** — `NotificationService` (in-process) is classified as Infrastructure despite having no external deps, because it lives alongside `AdminNotifier` in the notification-coordination stack. Revisit during implementation if test coverage benefits from moving it to Application. *(Moot post-Greptile review: `NotificationService.cs` injects `CivitiDbContext` too, so it would land in Infrastructure regardless — see the decision below.)*
+- **2026-04-22** — **All service implementations live in Civiti.Infrastructure; Civiti.Application holds only service interfaces + DTOs + payload types.** (Supersedes an earlier pass of this plan which classified 10 "business-logic" services as Application.) Rationale: every service in the current `Civiti.Api/Services/` directory injects `CivitiDbContext` directly (confirmed by grep against all service files). Because `CivitiDbContext` lives in Infrastructure, any implementation that depends on it also lives in Infrastructure — otherwise we'd need `Application → Infrastructure`, which inverts Clean Architecture's dependency direction. A repository pattern could break this coupling and allow impls in Application, but introducing one is explicitly out of scope (§10). The resulting split matches the textbook Clean Architecture shape when direct DbContext access is used: Application is the contract layer (interfaces + DTOs only); Infrastructure owns every class that concretely touches a framework or external system. Caught by Greptile review on PR #83.
+- **2026-04-22** — **`IContentModerationService` interface lives in Civiti.Application**, not Infrastructure. The concrete `OpenAIModerationService` is Infrastructure (OpenAI SDK client), but the interface is an application-layer contract consumed by other services (notably `CommentService`). This is the general rule: every service interface moves to Application regardless of where its implementation lives. Caught by Greptile review on PR #83.
