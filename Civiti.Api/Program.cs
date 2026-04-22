@@ -127,7 +127,7 @@ builder.Services.AddDbContext<CivitiDbContext>(options =>
             // CivitiDbContext lives in Civiti.Infrastructure; the matching migrations live
             // alongside it. MigrationsAssembly() pins EF to that assembly so `dotnet ef`
             // (invoked with Civiti.Api as the startup project) finds them.
-            npgsqlOptions.MigrationsAssembly(typeof(CivitiDbContext).Assembly.FullName);
+            npgsqlOptions.MigrationsAssembly(typeof(CivitiDbContext).Assembly.GetName().Name);
             npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory");
             npgsqlOptions.CommandTimeout(30);
             npgsqlOptions.EnableRetryOnFailure(
