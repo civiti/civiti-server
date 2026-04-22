@@ -114,7 +114,19 @@ N host projects on top.
 1. **No behavior changes.** Pure `git mv` + namespace rewrites + csproj reference updates.
 2. **All existing tests pass unchanged.**
 3. **Civiti.Api remains the only host.** The refactor PR does *not* add Civiti.Mcp or Civiti.Auth. It only prepares the ground by splitting the libraries.
-4. **Civiti.Api remains the sole migration runner.** All schema — including the new tables introduced by Civiti.Auth and Civiti.Mcp work (OpenIddict's tables via `options.UseOpenIddict()`, `McpSessions`, `McpPendingAdminActions`) — lives on the single shared `CivitiDbContext` in `Civiti.Infrastructure`. Migrations are generated from that one context and applied at Civiti.Api startup. Civiti.Auth and Civiti.Mcp use the same `CivitiDbContext` (via DI) to read and write these tables but never invoke `Database.Migrate()` themselves. Revisit only if deployment topology forces otherwise (e.g. a dedicated migration job).
+4. **Civiti.Api remains the sole migration runner.** All schema — including the new tables introduced by Civiti.Auth and Civiti.Mcp work (OpenIddict's tables via `options.UseOpenIddict()`, `McpSessions`, `McpPendingAdminActions`) — lives on the single shared `CivitiDbContext` in `Civiti.Infrastructure`. Migrations are generated from that one context and applied by Civiti.Api. Civiti.Auth and Civiti.Mcp use the same `CivitiDbContext` (via DI) to read and write these tables but never invoke `Database.Migrate()` themselves. See the "Migration ordering on Railway" subsection below for the actual deploy sequence.
+
+### Migration ordering on Railway
+
+Railway boots services in parallel; "Civiti.Api runs migrations at startup" is not a deploy-ordering guarantee on its own — Civiti.Auth and Civiti.Mcp could come up and accept traffic against a DB whose schema hasn't been updated yet. The design is:
+
+1. **Civiti.Api gains a `--migrate-only` CLI mode.** Running `dotnet Civiti.Api.dll --migrate-only` applies pending migrations and exits 0; no HTTP listener binds, no background services start. Idempotent and safe to run concurrently with a live Civiti.Api instance (EF Core's migration lock serialises).
+2. **Railway "pre-deploy command"** on the Civiti.Api service runs `--migrate-only` before the new Civiti.Api revision replaces the live one. If migrations fail, the deploy aborts and Civiti.Api stays on the previous revision — so schema and code always match on the API side.
+3. **Civiti.Auth and Civiti.Mcp depend on Civiti.Api in the Railway deploy graph.** They re-deploy only after Civiti.Api's pre-deploy + release completes successfully. Railway's service-dependency feature is the enforcement mechanism.
+4. **Belt-and-braces: startup schema check.** At startup, Civiti.Auth and Civiti.Mcp query `__EFMigrationsHistory` for the expected "floor" migration id (a constant compiled into the build). If it's missing, they retry with bounded exponential backoff for up to 60 s before failing the container. This catches misconfigured deploy graphs without allowing a silent data-loss window.
+5. **Civiti.Api's own startup `Database.Migrate()` is kept as a safety net**, not removed. If the pre-deploy command was skipped (dev / local / unexpected path), the live service will still self-heal — but the pre-deploy path is the intended production route so the two other services can rely on schema being current by the time they start.
+
+The "floor migration id" mentioned in (4) is baked per build: each host project's Program.cs carries a const `RequiredMigrationId` that bumps only when that host starts depending on a new table or column. Civiti.Auth bumps it when `McpSessions` is added; Civiti.Mcp bumps it when `McpPendingAdminActions` is added; otherwise stable. This keeps the startup check cheap (one index lookup) and meaningful.
 5. **ASP.NET-specific code stays in each host.** Error-handling middleware, Serilog enrichers, and similar live in each host project until we see enough duplication to justify a `Civiti.Web` shared library. **Don't create `Civiti.Web` speculatively.**
 
 ### Background services per host (post-refactor)

@@ -102,6 +102,7 @@ own tokens, the upstream Supabase session is forgotten.
 - OpenIddict validates rotation state (hash match, not revoked, not expired).
 - `Civiti.Auth` **re-validates the user** by querying the Supabase Admin API: does `SupabaseUserId` still exist, and what is the current role? If disabled / missing → revoke the session.
 - New access + refresh tokens issued; old refresh token marked consumed.
+- **`McpSessions` row is updated in the same transaction** — `OpenIddictTokenId` is repointed to the newly-issued refresh token entry and `LastSeenAt` is bumped to `now()`. The old `OpenIddictTokenId` has already been marked consumed by OpenIddict's rotation logic; our FK simply moves forward. Done atomically so the "Connected AI Assistants" UI never shows a row with a dangling FK.
 
 No Supabase refresh token is ever held at rest. The authoritative user record lives in Supabase; we only ever cache what we need for the current token's lifetime.
 
@@ -132,8 +133,17 @@ LastSeenAt          timestamptz
 RevokedAt           timestamptz (nullable)
 ```
 
-All token hashing, issuance, rotation, and revocation are handled by
-OpenIddict's built-in stores — we do not re-implement.
+All token hashing, issuance, rotation, and revocation are handled by OpenIddict's built-in stores — we do not re-implement.
+
+### `McpSessions` lifecycle sync
+
+`McpSessions` is a view-model table for the "Connected AI Assistants" UI; OpenIddict's own tables remain the source of truth for token state. To prevent the UI from showing stale rows as active, we keep the two stores in sync at three event points:
+
+- **On token rotation (refresh handler):** atomically update `OpenIddictTokenId` to the new refresh-token entry and bump `LastSeenAt`. See §4's Refresh subsection.
+- **On explicit revocation:** the admin-UI kill-switch (§9) and the user-initiated revoke (§10) both call OpenIddict's `TryRevokeAsync` **and** set `McpSessions.RevokedAt = now()` in the same transaction.
+- **On natural expiry (30-day refresh token TTL reached without a refresh):** the background revalidation job described in §4 also sweeps `McpSessions` rows whose `OpenIddictTokenId` no longer resolves to a valid, unexpired, unrevoked OpenIddict token entry; these are marked `RevokedAt = now()` with reason `"expired"`. This runs in the same 5-minute cadence as the admin-role sweep.
+
+Net effect: `WHERE RevokedAt IS NULL` on `McpSessions` is always a truthful "active sessions" query; the UI never needs to JOIN into OpenIddict to figure out liveness.
 
 ## 6. Client identification and allow-list
 
@@ -157,8 +167,11 @@ Maintained as OpenIddict application entries, seeded from config at startup. Ill
 | --- | --- | --- | --- |
 | `claude-desktop` | Claude Desktop | `http://127.0.0.1:*/callback` | `civiti.read`, `civiti.write`, `civiti.admin.read`, `civiti.admin.write` |
 | `claude-code` | Claude Code | `http://127.0.0.1:*/callback` | `civiti.read`, `civiti.write`, `civiti.admin.read`, `civiti.admin.write` |
+| `claude-ai` | Claude (claude.ai) | `https://claude.ai/api/mcp/auth_callback` †  | `civiti.read`, `civiti.write` |
 | `cursor` | Cursor | `cursor://anysphere.cursor-retrieval/callback` | `civiti.read`, `civiti.write` |
 | `chatgpt-connector` | ChatGPT | `https://chatgpt.com/connector_platform_oauth_redirect` | `civiti.read` |
+
+† claude.ai is a browser-based client and cannot self-register via DCR (DCR is loopback-only — see §6's Dynamic Client Registration subsection). It must therefore be pre-registered here with the exact HTTPS callback URL Anthropic publishes for custom connectors. **The URL above is a placeholder** — confirm against [Anthropic's claude.ai connector documentation](https://docs.anthropic.com) before launch and update this row. Admin scopes are intentionally not offered to claude.ai for v1 because the in-browser consent surface differs from the native clients.
 
 Actual values to be confirmed from each client's published docs before launch.
 
