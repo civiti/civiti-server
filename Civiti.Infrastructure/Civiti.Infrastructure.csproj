@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>Civiti.Infrastructure</RootNamespace>
+        <AssemblyName>Civiti.Infrastructure</AssemblyName>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Civiti.Domain\Civiti.Domain.csproj" />
+        <ProjectReference Include="..\Civiti.Application\Civiti.Application.csproj" />
+    </ItemGroup>
+
+</Project>
