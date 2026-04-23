@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using System.Threading.RateLimiting;
+using Anthropic.SDK;
 using Civiti.Infrastructure.Data;
 using Civiti.Api.Endpoints;
 using Civiti.Api.Infrastructure.Configuration;
@@ -107,8 +108,14 @@ if (connectionString?.StartsWith("postgres://") == true || connectionString?.Sta
         Log.Information("Parsed DATABASE_URL - Host: {Host}, Port: {Port}, Database: {Database}, Username: {Username}",
             uri.Host, uri.Port, uri.AbsolutePath.TrimStart('/'), username);
 
+        // Include Error Detail embeds PostgreSQL-internal error strings (table/column names,
+        // constraint details, partial row data) into Npgsql exception messages. Useful in
+        // development for debugging; an information-disclosure risk in production where those
+        // messages can end up in exception responses or forwarded logs.
+        var includeErrorDetail = builder.Environment.IsDevelopment() ? ";Include Error Detail=true" : string.Empty;
+
         connectionString =
-            $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;Timeout=30;Command Timeout=30;Connection Idle Lifetime=300;Maximum Pool Size=100;Include Error Detail=true";
+            $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;Timeout=30;Command Timeout=30;Connection Idle Lifetime=300;Maximum Pool Size=100{includeErrorDetail}";
 
         Log.Information("Converted Railway DATABASE_URL to Npgsql format successfully");
     }
@@ -322,6 +329,14 @@ ClaudeConfiguration claudeConfig = new()
     RateLimitPerMinute = GetEnvOrConfigInt("CLAUDE_RATE_LIMIT_PER_MINUTE", "Claude:RateLimitPerMinute", ClaudeConfiguration.DefaultRateLimitPerMinute)
 };
 builder.Services.AddSingleton(claudeConfig);
+
+// AnthropicClient wraps a SocketsHttpHandler-backed HttpClient. Register as a
+// singleton so the connection pool is shared across all ClaudeEnhancementService
+// calls — constructing a new client per request exhausts sockets under load.
+// When Claude is not configured, the client is still registered but never exercised:
+// ClaudeEnhancementService short-circuits on ClaudeConfiguration.IsConfigured before
+// calling it.
+builder.Services.AddSingleton<AnthropicClient>(_ => new AnthropicClient(claudeConfig.ApiKey));
 
 // Configure rate limiter for Claude AI requests using sliding window algorithm
 builder.Services.AddSingleton<PartitionedRateLimiter<Guid>>(sp =>
@@ -558,7 +573,15 @@ app.UseSwaggerUI(options =>
     options.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.List);
     options.EnableDeepLinking();
     options.DisplayRequestDuration();
-    options.EnableTryItOutByDefault();
+
+    // Swagger UI is intentionally kept public on Railway for API discoverability,
+    // but pre-arming the try-it-out form invites reconnaissance of protected
+    // endpoints. Dev keeps the one-click try-it-out flow; prod requires an explicit
+    // click to switch a given endpoint into execution mode.
+    if (app.Environment.IsDevelopment())
+    {
+        options.EnableTryItOutByDefault();
+    }
 
     // Add custom CSS for better styling
     options.InjectStylesheet("/swagger-ui/custom.css");

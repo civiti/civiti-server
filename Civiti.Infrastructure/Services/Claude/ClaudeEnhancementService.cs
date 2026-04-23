@@ -16,7 +16,8 @@ namespace Civiti.Infrastructure.Services.Claude;
 public class ClaudeEnhancementService(
     ILogger<ClaudeEnhancementService> logger,
     ClaudeConfiguration configuration,
-    PartitionedRateLimiter<Guid> rateLimiter)
+    PartitionedRateLimiter<Guid> rateLimiter,
+    AnthropicClient anthropicClient)
     : IClaudeEnhancementService
 {
     private const string SystemPrompt = """
@@ -55,8 +56,6 @@ public class ClaudeEnhancementService(
 
         try
         {
-            using AnthropicClient client = new(configuration.ApiKey);
-
             var userPrompt = BuildUserPrompt(request);
 
             MessageParameters messageRequest = new()
@@ -68,7 +67,7 @@ public class ClaudeEnhancementService(
             };
 
             using CancellationTokenSource cts = new(TimeSpan.FromSeconds(configuration.TimeoutSeconds));
-            MessageResponse? response = await client.Messages.GetClaudeMessageAsync(messageRequest, cts.Token);
+            MessageResponse? response = await anthropicClient.Messages.GetClaudeMessageAsync(messageRequest, cts.Token);
 
             if (response?.Content == null || response.Content.Count == 0)
             {
