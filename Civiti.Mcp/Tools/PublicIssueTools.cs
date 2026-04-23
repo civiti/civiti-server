@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Civiti.Application.Requests.Issues;
+using Civiti.Application.Responses.Issues;
 using Civiti.Application.Services;
 using Civiti.Domain.Entities;
 using ModelContextProtocol.Server;
@@ -75,9 +76,9 @@ public sealed class PublicIssueTools(IIssueService issues, IHttpContextAccessor 
 
     [McpServerTool(Name = "get_issue")]
     [Description("Get full details for a single issue by id. Returns null if the issue is not found or not publicly visible.")]
-    public Task<object?> GetIssue(
+    public Task<IssueDetailResponse?> GetIssue(
         [Description("Issue id (uuid).")] Guid id)
-        => issues.GetIssueByIdAsync(id, currentUserId: null).ContinueWith<object?>(t => t.Result);
+        => issues.GetIssueByIdAsync(id, currentUserId: null);
 
     [McpServerTool(Name = "mark_email_sent")]
     [Description("Increment the public petition-email counter for an issue. The petition itself is sent by the citizen from their own inbox; this tool only records that one was sent. Rate-limited to 1 per IP per issue per hour on the service side.")]

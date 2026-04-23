@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
+using System.Threading.RateLimiting;
 using Civiti.Application.Email.Models;
 using Civiti.Application.Notifications;
 using Civiti.Application.Push.Models;
@@ -12,6 +13,7 @@ using Civiti.Infrastructure.Services.AdminNotify;
 using Civiti.Infrastructure.Services.Email;
 using Civiti.Mcp.Tools;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -93,6 +95,25 @@ builder.Services.AddSingleton<IAdminNotifier, AdminNotifier>();
 builder.Services.AddScoped<IIssueService, IssueService>();
 builder.Services.AddScoped<IAuthorityService, AuthorityService>();
 
+// Rate limiting per tool-inventory.md §1 `read.public` class: 30 requests / min per source IP.
+// Defense-in-depth on top of the service-layer per-IP cooldowns — an attacker still has to pay
+// the request cost of every spoofed header rotation, and legitimate bursts get a clean 429 with
+// Retry-After instead of silent degradation.
+const string McpPublicRateLimitPolicy = "mcp-public";
+builder.Services.AddRateLimiter(rateLimiter =>
+{
+    rateLimiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    rateLimiter.AddPolicy(McpPublicRateLimitPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
+
 // MCP server with the six §1 public tools (see Civiti.Mcp/docs/tool-inventory.md).
 // Stateless transport: the public endpoint has no session, no client state; every request
 // carries all the context the handler needs.
@@ -106,6 +127,15 @@ builder.Services.AddMcpServer()
 var app = builder.Build();
 
 // Mirror Civiti.Api's proxy handling so RemoteIpAddress is the real client IP, not Railway's hop.
+//
+// SECURITY — known limitation: clearing KnownIPNetworks + KnownProxies trusts X-Forwarded-For from
+// any upstream. In practice traffic reaches this service only through Railway's edge, which appends
+// (not overwrites) the header chain — but a caller who can reach the container can still inflate
+// the counter keyed on the spoofed value. Mitigations in this PR: (a) middleware rate limiter above
+// caps total requests per observed IP, and (b) service-layer 1/IP/issue/hour cooldown still fires.
+// Follow-up in the Railway deployment PR: replace the clears with explicit KnownNetworks covering
+// Railway's actual forward range, once we can observe it from a running service. Matches Civiti.Api's
+// current config for consistency in the meantime.
 var forwardedHeaders = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
@@ -115,22 +145,31 @@ forwardedHeaders.KnownIPNetworks.Clear();
 forwardedHeaders.KnownProxies.Clear();
 app.UseForwardedHeaders(forwardedHeaders);
 
-app.MapGet("/api/health", async (CivitiDbContext ctx) =>
+app.UseRateLimiter();
+
+app.MapGet("/api/health", async (CivitiDbContext ctx, IHostEnvironment env) =>
 {
     try
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var connected = await ctx.Database.CanConnectAsync(cts.Token);
-        return Results.Ok(new { status = connected ? "Healthy" : "Degraded", database = connected ? "connected" : "disconnected" });
+        return connected
+            ? Results.Ok(new { status = "Healthy", database = "connected" })
+            : Results.Json(new { status = "Degraded", database = "disconnected" }, statusCode: StatusCodes.Status503ServiceUnavailable);
     }
     catch (Exception ex)
     {
+        // Log the full detail but only surface ex.Message to callers in Development. Npgsql errors
+        // routinely include host/port/connection-string fragments that must not leak to the public.
         Log.Warning(ex, "Health check failed");
-        return Results.Ok(new { status = "Degraded", database = "disconnected", error = ex.Message });
+        object body = env.IsDevelopment()
+            ? new { status = "Degraded", database = "disconnected", error = ex.Message }
+            : new { status = "Degraded", database = "disconnected" };
+        return Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 }).ExcludeFromDescription();
 
-app.MapMcp("/mcp/public");
+app.MapMcp("/mcp/public").RequireRateLimiting(McpPublicRateLimitPolicy);
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8081";
 Log.Information("Civiti.Mcp starting on port {Port}; /mcp/public (anonymous, {ToolCount} tools)", port, 6);
