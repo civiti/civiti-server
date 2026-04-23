@@ -7,7 +7,6 @@ using Civiti.Application.Requests.Issues;
 using Civiti.Application.Responses.Auth;
 using Civiti.Application.Responses.Common;
 using Civiti.Application.Responses.Issues;
-using Civiti.Infrastructure.Services;
 using Civiti.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -212,7 +211,7 @@ public static class IssueEndpoints
                 return error switch
                 {
                     DomainErrors.IssueNotFound => TypedResults.NotFound(),
-                    IssueService.RateLimitedError => TypedResults.StatusCode(429),
+                    IIssueService.RateLimitedError => TypedResults.StatusCode(429),
                     _ => TypedResults.BadRequest(error)
                 };
             }

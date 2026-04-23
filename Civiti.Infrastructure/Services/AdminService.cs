@@ -751,12 +751,24 @@ public class AdminService(
             DateTime weekStart = DateTime.SpecifyKind(now.AddDays(-(int)now.DayOfWeek).Date, DateTimeKind.Utc);
             DateTime monthStart = DateTime.SpecifyKind(new DateTime(now.Year, now.Month, 1), DateTimeKind.Utc);
 
-            // Calculate average review time
-            List<Issue> reviewedIssues = await context.Issues
-                .Where(i => i.ReviewedBy == adminUser.DisplayName && i.ReviewedAt.HasValue)
-                .ToListAsync();
+            // Calculate average review time. `Issue.ReviewedBy` is a display-name snapshot
+            // that goes stale when an admin renames themselves, so we can't filter by it
+            // safely. Instead, walk the AdminActions we already loaded (filtered by the
+            // stable AdminUserId FK) and look up the matching Issues — an admin's reviews
+            // are exactly the set of Issues that have an Approve or Reject AdminAction
+            // authored by them.
+            HashSet<Guid> reviewedIssueIds = adminActions
+                .Where(aa => aa.ActionType is AdminActionType.Approve or AdminActionType.Reject)
+                .Select(aa => aa.IssueId)
+                .ToHashSet();
 
-            var avgReviewTime = reviewedIssues.Any()
+            List<Issue> reviewedIssues = reviewedIssueIds.Count == 0
+                ? []
+                : await context.Issues
+                    .Where(i => reviewedIssueIds.Contains(i.Id) && i.ReviewedAt.HasValue)
+                    .ToListAsync();
+
+            var avgReviewTime = reviewedIssues.Count > 0
                 ? reviewedIssues.Average(i => (i.ReviewedAt!.Value - i.CreatedAt).TotalHours)
                 : 0;
 
