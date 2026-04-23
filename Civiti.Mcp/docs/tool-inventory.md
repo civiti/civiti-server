@@ -53,9 +53,9 @@ Exposed on `/mcp/public`. No authentication. Rate-limited per source IP. They mi
 | --- | --- | --- | --- |
 | `search_issues` | `IssueService.GetAllIssuesAsync(request, null)` | `page?` (int, default 1), `pageSize?` (int, 1–100, default 12), `category?` (enum: Infrastructure, Environment, Transportation, PublicServices, Safety, Other), `urgency?` (enum: UrgencyLevel), `status?` (comma-separated list of IssueStatus; defaults to `Active`), `district?` (string), `address?` (string), `sortBy?` (`date`\|`popularity`\|`votes`\|`urgency`, default `date`), `sortDescending?` (bool, default `true`) | `read.public` |
 | `get_issue` | `IssueService.GetIssueByIdAsync(id, null)` | `id: uuid` | `read.public` |
-| `list_authorities` | `AuthorityService.ListForLocationAsync(city, district?)` | `city`, `district?` | `read.public` |
-| `get_categories` | `StaticDataService.GetCategoriesAsync()` | none | `read.public` (cached) |
-| `get_leaderboard` | `GamificationService.GetLeaderboardAsync(scope, city?, take)` | `scope: global\|city`, `city?` (required if `scope=city`), `take` | `read.public` |
+| `list_authorities` | `AuthorityService.GetActiveAuthoritiesAsync(city?, district?, search?)` | `city?`, `district?`, `search?` | `read.public` |
+| `get_categories` | `CategoryLocalization.GetAll()` (static, from `Civiti.Application.Localization`) | none | `read.public` (cached) |
+| `get_leaderboard` | `GamificationService.GetLeaderboardAsync(period, category, limit)` | `period?` (`all`\|`month`\|`week`, default `all`), `category?` (`points`\|`issues`\|..., default `points`), `limit?` (1–50, default 50) | `read.public` |
 | `mark_email_sent` | `IssueService.IncrementEmailCountAsync(id, clientIp)` | `id: uuid` | Bound by the existing service-layer rule: **1 / IP / issue / hour** (same as REST `POST /api/issues/{id}/email-sent`). |
 
 ### Filter surface and safety
@@ -204,9 +204,14 @@ Prompts are low priority for v1 — ship tools + resources first, iterate on pro
 1. **Naming conventions:** `create_issue` vs. `report_issue` vs. `submit_issue`. REST uses "create". Agents read these names directly — which is clearest to an LLM?
 2. **Pagination style:** cursor-based (opaque token, ordering stable) vs. take/skip. REST uses take/skip (and we've mirrored it for `search_issues`); agents handle cursor tokens fine, but the divergence from REST adds cognitive load. Recommend: keep take/skip to stay aligned with REST; revisit if we hit ordering-instability bugs in practice.
 3. **Bulk tools beyond admin:** is there value in `vote_on_issues (ids[])` for citizens, or does that invite spam? Recommend: no — keep citizen writes one-at-a-time.
+4. **City-scoped `get_leaderboard`.** An earlier draft of §1 called for `get_leaderboard(scope: global|city, city?, take)`. The underlying `IGamificationService.GetLeaderboardAsync` exposes `(period, category, limit)` only — there is no city dimension in the service or on the REST endpoint. §1 now mirrors the existing signature. If the city-scoped leaderboard turns out to matter for MCP agents (e.g. "who's leading in Cluj this month?"), add it on the REST side first and then expose the extra filter through the MCP tool — same guiding principle as "public tools mirror the public REST surface exactly".
 
 ## 9. Resolved decisions (log)
 
 - **2026-04-21** — **Public (anonymous) MCP surface in scope for v1.** Mirrors the existing public REST endpoints (`GET /api/issues`, `GET /api/issues/{id}`, `GET /api/issues/{id}/poster`, `POST /api/issues/{id}/email-sent`). Exposed on a dedicated `/mcp/public` endpoint with IP-based rate limiting. Petition-sending is still citizen-originated from their own inbox; Civiti only counts via `mark_email_sent`.
 - **2026-04-21** — **`search_issues` filter signature aligned with REST.** Filters: `page`, `pageSize` (1–100), `category`, `urgency`, `status` (comma-separated), `district`, `address`, `sortBy`, `sortDescending`. No invented `city`, `county`, or `query` params; if we want those, they go on the REST endpoint first.
 - **2026-04-21** — **Rollout order: public first, authenticated second.** Public endpoint is the simpler smoke test (no OAuth dependencies) and validates the transport + service-wrapping shape before we layer auth on top.
+- **2026-04-23** — **§1 backing-service references corrected to match the actual `Civiti.Application` surface** (caught during the v0 skeleton audit, ahead of opening the Civiti.Mcp scaffolding PR):
+  - `list_authorities` → `IAuthorityService.GetActiveAuthoritiesAsync(city?, district?, search?)` (the earlier `ListForLocationAsync(city, district?)` reference was aspirational; the real method is a superset and we now pass `search: null` from the MCP handler).
+  - `get_leaderboard` → `IGamificationService.GetLeaderboardAsync(period, category, limit)`. The earlier `(scope, city?, take)` signature imagined a city dimension that neither the service nor the REST endpoint exposes. City-scoped leaderboards deferred to §8 open question #4; if needed, ship on REST first.
+  - `get_categories` → `CategoryLocalization.GetAll()` (static helper in `Civiti.Application.Localization`). No `IStaticDataService` exists; the data is already in a static class. If a second static-data tool lands later, wrap in a service at that point.
