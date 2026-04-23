@@ -17,17 +17,22 @@ Per [`Civiti.Mcp/docs/architecture.md §2`](../../Civiti.Mcp/docs/architecture.m
 
 ## Dashboard setup
 
-1. **Create service.** Railway project → **+ New** → **GitHub Repo** → select `civiti/civiti-server` → **Deploy**.
-2. **Config path.** Service **Settings → Config-as-code Path**: `Civiti.Mcp/railway.json`. That file points at `Civiti.Mcp/Dockerfile` and sets `/api/health` as the healthcheck.
-3. **Env vars.** Set under **Variables**:
+**Step order matters.** Connecting the GitHub source triggers an immediate first deploy; if the Config Path isn't set yet, Railway falls back to the repo-root `railway.json` and builds `Civiti.Api` into the new service. Create the service *empty*, configure it, *then* connect the source.
+
+1. **Create empty service.** Railway project → **+ New** → **Empty Service**. Name it `Civiti.Mcp`.
+2. **Set Config Path first.** Service **Settings → Config-as-code Path**: `Civiti.Mcp/railway.json`. That file points at `Civiti.Mcp/Dockerfile` and sets `/api/health` as the healthcheck. Doing this before any source is connected means the first build picks up the right config.
+3. **Env vars.** Set under **Variables** (before first deploy so the build has them):
    | Variable | Value | Source |
    | --- | --- | --- |
    | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Service reference to the shared Postgres instance |
    | `ASPNETCORE_ENVIRONMENT` | `Production` | Static |
    | `PORT` | *(do not set — Railway injects automatically)* | — |
    `Program.cs` reads `PORT` and binds `0.0.0.0:$PORT`; if `DATABASE_URL` arrives in the URI format (`postgresql://…`) it's converted to the Npgsql key/value form inline. No other v0 vars are required — Supabase creds are only needed from v1 onward.
-4. **Public domain.** Service **Settings → Domains → Generate Domain**. For production, add a custom domain (e.g. `mcp.civiti.app`) and point the DNS CNAME at the Railway-provided target. The connector URL users paste into Claude is `https://<domain>/mcp/public`.
-5. **Deploy-order dependency.** Service **Settings → Deploy Triggers** → add a dependency on the `Civiti.Api` service. This ensures schema migrations (run by Civiti.Api per [`architecture.md §3`](../../Civiti.Mcp/docs/architecture.md#3-library-extraction-prerequisite)) complete before Civiti.Mcp re-deploys. Civiti.Mcp never runs migrations itself.
+4. **Connect GitHub source.** Service **Settings → Source → Connect Repo** → `civiti/civiti-server` → branch `master`. This triggers the first build, which now uses the Config Path from step 2 and the env vars from step 3.
+5. **Public domain.** Service **Settings → Domains → Generate Domain**. For production, add a custom domain (e.g. `mcp.civiti.app`) and point the DNS CNAME at the Railway-provided target. The connector URL users paste into Claude is `https://<domain>/mcp/public`.
+6. **Deploy-order dependency.** Service **Settings → Deploy Triggers** → add a dependency on the `Civiti.Api` service. This ensures schema migrations (run by Civiti.Api per [`architecture.md §3`](../../Civiti.Mcp/docs/architecture.md#3-library-extraction-prerequisite)) complete before Civiti.Mcp re-deploys. Civiti.Mcp never runs migrations itself.
+
+**If you connected the repo before setting the Config Path by mistake:** the first build will fail or deploy `Civiti.Api`'s binary into this service. Set the Config Path (step 2), then **Deployments → Redeploy** to rebuild with the correct Dockerfile. No data loss — this is just a cold start.
 
 ## Verification
 
