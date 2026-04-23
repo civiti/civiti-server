@@ -66,7 +66,7 @@ public class JwksBackgroundService : BackgroundService
 
     private async Task LoadJwksWithRetryAsync(CancellationToken cancellationToken)
     {
-        const int maxAttempts = 3;
+        int maxAttempts = _options.MaxRetries;
         var attempt = 0;
 
         while (attempt < maxAttempts && !cancellationToken.IsCancellationRequested)
