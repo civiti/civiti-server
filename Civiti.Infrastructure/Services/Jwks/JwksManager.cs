@@ -67,13 +67,13 @@ public class JwksManager : IJwksManager
     /// <inheritdoc />
     public async Task<JsonWebKeySet> GetJwksAsync(bool forceRefresh = false, CancellationToken cancellationToken = default)
     {
-        _totalRequests++;
+        Interlocked.Increment(ref _totalRequests);
         UpdateCacheStats();
 
         // Try to get from cache first (unless force refresh)
         if (!forceRefresh && _cache.TryGetValue(JwksCacheKey, out JsonWebKeySet? cached) && cached != null)
         {
-            _cacheHits++;
+            Interlocked.Increment(ref _cacheHits);
             UpdateCacheStats();
             _logger.LogDebug("JWKS retrieved from cache");
             return cached;
