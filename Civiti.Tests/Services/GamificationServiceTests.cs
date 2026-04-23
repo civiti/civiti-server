@@ -1,6 +1,6 @@
-using Civiti.Api.Models.Domain;
-using Civiti.Api.Services;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Domain.Entities;
+using Civiti.Infrastructure.Services;
+using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;

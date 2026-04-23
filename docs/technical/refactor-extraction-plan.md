@@ -51,7 +51,7 @@ master; tally before executing to confirm nothing drifts.
 | From `Civiti.Api/` | To `Civiti.Domain/` | Count | Notes |
 | --- | --- | --- | --- |
 | `Models/Domain/**` | `Entities/**` | 19 | All entities are pure POCOs — zero EF attributes. Move as-is. |
-| `Infrastructure/Localization/**` | `Localization/**` | 4 | `AchievementLocalization`, `BadgeLocalization`, `CategoryLocalization`, `PosterLocalization` — domain value tables. |
+| `Infrastructure/Localization/{Achievement,Badge,Poster}Localization.cs` | `Localization/**` | 3 | Pure domain label tables. `CategoryLocalization` is excluded from this move because it references `CategoryResponse` (a Response DTO that moves to Civiti.Application in commit 3) — letting it land in Civiti.Domain would require `Domain → Application`, which inverts the dependency arrow. It moves to `Civiti.Application/Localization/` in commit 3 alongside `CategoryResponse`. See the §12 decision logged against this split. |
 | `Infrastructure/Exceptions/AccountDeletedException.cs` | `Exceptions/AccountDeletedException.cs` | 1 | Domain-level exception. |
 | `Infrastructure/Constants/DomainErrors.cs` | `Constants/DomainErrors.cs` | 1 | Domain error code table. |
 | `Infrastructure/Constants/ReportTargetTypes.cs` | `Constants/ReportTargetTypes.cs` | 1 | Stable enum-like constants. |
@@ -61,13 +61,15 @@ master; tally before executing to confirm nothing drifts.
 
 | From `Civiti.Api/` | To `Civiti.Application/` | Count | Notes |
 | --- | --- | --- | --- |
-| `Models/DTOs/**` | `DTOs/**` | — | All DTOs. |
-| `Models/Requests/**` | `Requests/**` | — | Request records. |
-| `Models/Responses/**` | `Responses/**` | — | Response records. |
-| `Models/Notifications/**` | `Notifications/**` | — | In-process notification payloads. |
-| `Models/Email/**` | `Email/Models/**` | — | Email data-payload types (not templates). Templates go to Infrastructure. |
-| `Models/Push/**` | `Push/Models/**` | — | Push data-payload types. |
+| `Models/Requests/**` | `Requests/**` | 7 | Request records, grouped by feature folder (`Activity`, `Admin`, `Auth`, `Comments`, `Issues`, `Push`, `Reports`). |
+| `Infrastructure/Extensions/SignupMetadata.cs` | `Requests/Auth/SignupMetadata.cs` | 1 | Pure data record (Supabase sign-up metadata). Referenced by `IUserService` — an Application contract — so it must live in Civiti.Application despite being parsed from a JWT by `ClaimsPrincipalExtensions` (which stays in Civiti.Api and picks up a `using Civiti.Application.Requests.Auth;`). Originally classified under "Stays in Civiti.Api"; corrected during commit-3 execution. |
+| `Models/Responses/**` | `Responses/**` | 13 | Response records, grouped by feature folder. |
+| `Models/Notifications/**` | `Notifications/**` | 1 | `AdminNotifyRequest`. |
+| `Models/Email/**` | `Email/Models/**` | 1 | `EmailNotification` payload type. Templates go to Infrastructure. |
+| `Models/Push/**` | `Push/Models/**` | 1 | `PushNotificationMessage` payload type. |
 | `Services/Interfaces/**` | `Services/**` | 21 | **All** service interfaces — both the ones whose implementations stay DbContext-free and the ones whose implementations use external clients. Application is the layer where every service *contract* lives; every concrete implementation lives in Infrastructure (see below and §12). |
+
+There is no `Models/DTOs/` folder in the current tree; request/response records under `Models/Requests/**` and `Models/Responses/**` fill the DTO role. The §3 rewrite table reflects this — no `Civiti.Api.Models.DTOs` namespace exists to rewrite.
 
 **No concrete `*Service.cs` classes land in `Civiti.Application`.** Every service today injects either `CivitiDbContext` (an Infrastructure type) or an external SDK client. With no repository pattern in place and no plan to introduce one (§10), every implementation is Infrastructure by Clean Architecture's definition — the interface is the layer boundary.
 
@@ -114,6 +116,7 @@ master; tally before executing to confirm nothing drifts.
 | `Infrastructure/Configuration/PosterConfiguration.cs` | `Configuration/**` | 1 | |
 | `Infrastructure/Configuration/ResendConfiguration.cs` | `Configuration/**` | 1 | |
 | `Infrastructure/Configuration/SupabaseConfiguration.cs` | `Configuration/**` | 1 | |
+| `Infrastructure/Configuration/JwtValidationOptions.cs` | `Configuration/JwtValidationOptions.cs` | 1 | Consumed by `JwksManager` + `JwksBackgroundService` (both Infrastructure). Originally classified as "Stays in Civiti.Api" — corrected during commit-4 execution. `JwtBearerPostConfigureOptions.cs` stays because it's referenced only by Civiti.Api's `Program.cs`. |
 
 ### Stays in `Civiti.Api` (shrunk host)
 
@@ -127,12 +130,10 @@ master; tally before executing to confirm nothing drifts.
 | `Infrastructure/Configuration/SwaggerConfiguration.cs` | 1 | |
 | `Infrastructure/Configuration/SwaggerExamples.cs` | 1 | |
 | `Infrastructure/Configuration/JwtBearerPostConfigureOptions.cs` | 1 | |
-| `Infrastructure/Configuration/JwtValidationOptions.cs` | 1 | |
 | `Infrastructure/Constants/ApiRoutes.cs` | 1 | HTTP routes. |
 | `Infrastructure/Constants/AuthorizationPolicies.cs` | 1 | Policy-name constants; tied to the JWT policies registered in `Program.cs`. |
 | `Infrastructure/Extensions/ClaimsPrincipalExtensions.cs` | 1 | JWT-claim helpers. |
 | `Infrastructure/Extensions/JwtBearerExtensions.cs` | 1 | |
-| `Infrastructure/Extensions/SignupMetadata.cs` | 1 | Supabase sign-up metadata parser; HTTP-request-bound. |
 
 ## 3. Namespace rewrite rules
 
@@ -144,7 +145,6 @@ Pure mechanical regex. Apply across every moved file.
 | `Civiti\.Api\.Infrastructure\.Localization` | `Civiti.Domain.Localization` |
 | `Civiti\.Api\.Infrastructure\.Exceptions` | `Civiti.Domain.Exceptions` |
 | `Civiti\.Api\.Infrastructure\.Constants\.(DomainErrors|ReportTargetTypes|IssueValidationLimits)` | `Civiti.Domain.Constants.$1` |
-| `Civiti\.Api\.Models\.DTOs` | `Civiti.Application.DTOs` |
 | `Civiti\.Api\.Models\.Requests` | `Civiti.Application.Requests` |
 | `Civiti\.Api\.Models\.Responses` | `Civiti.Application.Responses` |
 | `Civiti\.Api\.Models\.Notifications` | `Civiti.Application.Notifications` |
@@ -174,11 +174,10 @@ Civiti.Domain          → (no project refs)
 Civiti.Application     → Civiti.Domain
 Civiti.Infrastructure  → Civiti.Application, Civiti.Domain
 Civiti.Api             → Civiti.Application, Civiti.Infrastructure
-Civiti.Tests           → Civiti.Application, Civiti.Infrastructure, Civiti.Domain
-                          (drop ProjectReference to Civiti.Api)
+Civiti.Tests           → Civiti.Domain, Civiti.Application, Civiti.Infrastructure, Civiti.Api
 ```
 
-Rationale for Civiti.Tests: existing tests target services, entities, and validators — all of which live in the three new libraries. The one area worth spot-checking is `Middleware/ErrorHandlingMiddlewareTests.cs` which might need to stay referencing Civiti.Api if the middleware stays there. Add a Civiti.Api project reference back only if this test fails to compile.
+Rationale for Civiti.Tests: existing tests target services (Infrastructure), entities + localization (Domain), validators + request records (Application), **and middleware** (Civiti.Api). Confirmed: `Civiti.Tests/Middleware/ErrorHandlingMiddlewareTests.cs` and `RequestLoggingMiddlewareTests.cs` both `using Civiti.Api.Infrastructure.Middleware;` — those middleware classes stay in Civiti.Api per §2, so Civiti.Tests keeps its `ProjectReference` to Civiti.Api. The reference graph grows, not shrinks.
 
 ## 5. NuGet package split
 
@@ -187,19 +186,19 @@ Rationale for Civiti.Tests: existing tests target services, entities, and valida
 | `Anthropic.SDK` | ✓ | | | ✓ | |
 | `OpenAI` | ✓ | | | ✓ | |
 | `Supabase` | ✓ | | | ✓ | |
-| `Microsoft.EntityFrameworkCore` (runtime) | ✓ | | | ✓ | — (transitive via Infrastructure) |
+| `Npgsql.EntityFrameworkCore.PostgreSQL` | ✓ | | | ✓ | — (transitive via Infrastructure; also transitively pulls `Microsoft.EntityFrameworkCore` runtime — no separate runtime PackageReference exists today or is needed after the split) |
 | `Microsoft.EntityFrameworkCore.Design` (tooling) | ✓ | | | | ✓ (must stay — `dotnet ef` CLI requires it in the startup project) |
-| `Npgsql.EntityFrameworkCore.PostgreSQL` | ✓ | | | ✓ | — (transitive via Infrastructure) |
+| `Microsoft.EntityFrameworkCore.Tools` (tooling) | ✓ | | | | ✓ (same rationale as `.Design`; tooling-only, `PrivateAssets=all`) |
 | `Resend` | ✓ | | | ✓ | |
 | `QRCoder` | ✓ | | | ✓ | |
 | `QuestPDF` | ✓ | | | ✓ | |
 | `Serilog` (+ sinks) | ✓ | | | ✓ | ✓ (for host config) |
 | `Swashbuckle.AspNetCore*` | ✓ | | | | ✓ |
 | `Microsoft.AspNetCore.Authentication.JwtBearer` | ✓ | | | | ✓ |
-| `Microsoft.IdentityModel.Tokens` | ✓ | | | | ✓ |
+| `Microsoft.IdentityModel.Tokens` | ✓ | | ✓ | ✓ | ✓ |
 | `System.IdentityModel.Tokens.Jwt` | ✓ | | | | ✓ |
 
-`Civiti.Domain` and `Civiti.Application` take zero NuGet packages. They compile against the .NET 10 BCL and each other only. If any validator or service turns out to need a small helper package, add it at that time with a note in the PR.
+`Civiti.Domain` takes zero NuGet packages. `Civiti.Application` takes exactly one — `Microsoft.IdentityModel.Tokens`, because `IJwksManager`'s method signatures expose `JsonWebKey`, `JsonWebKeySet`, and `SecurityKey` from that package directly. Hiding those types behind a neutral Application-layer abstraction would be a useful follow-up, but it's a behaviour-adjacent change out of scope for this mechanical refactor. The package also lands in `Civiti.Infrastructure` (for `JwksManager`'s implementation) and stays in `Civiti.Api` (for `JwtBearer` host config). Logged in §12. If any other validator or service turns out to need a small helper package, add it at that time with a note in the PR.
 
 ## 6. Phase order (one PR, staged commits)
 
@@ -225,14 +224,14 @@ At each commit, the build is green and `dotnet test` passes. Use `git bisect` if
 - [ ] No existing endpoint's behaviour changes (spot-check: one authed POST, one anonymous GET, one admin POST).
 - [ ] The Railway deploy (staging) completes migrations and boots.
 - [ ] Every file moved has had its namespace updated; no orphan `using Civiti.Api.Models.Domain;` statements remain anywhere.
-- [ ] `Civiti.Api.csproj` no longer references NuGet packages that moved: Anthropic.SDK, OpenAI, Supabase, `Microsoft.EntityFrameworkCore` (runtime), `Npgsql.EntityFrameworkCore.PostgreSQL`, Resend, QRCoder, QuestPDF. **`Microsoft.EntityFrameworkCore.Design` must remain** in `Civiti.Api.csproj` — EF CLI tooling (`dotnet ef migrations list|add|update`) requires it in the designated startup project, and the very DoD item above relies on it.
+- [ ] `Civiti.Api.csproj` no longer references NuGet packages that moved: Anthropic.SDK, OpenAI, Supabase, `Npgsql.EntityFrameworkCore.PostgreSQL`, Resend, QRCoder, QuestPDF. **`Microsoft.EntityFrameworkCore.Design` and `Microsoft.EntityFrameworkCore.Tools` must remain** in `Civiti.Api.csproj` — EF CLI tooling (`dotnet ef migrations list|add|update`) requires them in the designated startup project, and the very DoD item above relies on it. Both are `PrivateAssets=all`, so they don't leak into transitive consumers.
 
 ## 8. Risks and mitigations
 
 | Risk | Likelihood | Mitigation |
 | --- | --- | --- |
 | EF migrations break because `CivitiDbContext` is in a different assembly | Medium | Use `dotnet ef migrations list` and a full local DB reset before opening the PR. EF Core handles cross-assembly contexts via `MigrationsAssembly()` — set it explicitly on the context's registration in Civiti.Api's `Program.cs`. |
-| Tests fail on a missing `InternalsVisibleTo` | Low | No `InternalsVisibleTo` is currently used. If any test turns out to reach an `internal` method, add the attribute to the target library rather than reverting the move. |
+| Tests fail on a missing `InternalsVisibleTo` | Addressed by plan | `Civiti.Api.csproj` currently declares `<InternalsVisibleTo Include="Civiti.Tests" />`, and `Civiti.Tests/Services/SupabaseAdminClientTests.cs` reaches `SupabaseAdminClient.UsersPage` and `SupabaseAdminClient.ParsedUser` (both `internal sealed record`). When `SupabaseAdminClient.cs` moves to `Civiti.Infrastructure` in commit 4, the `InternalsVisibleTo` attribute moves to `Civiti.Infrastructure.csproj`. `Civiti.Api.csproj` keeps its own attribute for any future `internal` types it retains (middleware, extensions). No other test reaches `internal` members today — grep before commit 4 to confirm no new drift. |
 | Generic-host DI ordering changes | Low | `Program.cs` is the only DI registration point, and it's staying in Civiti.Api. Registration logic doesn't move. |
 | Serilog configuration breaks | Low | Sink setup stays in `Program.cs`; service-layer `ILogger<T>` injection works identically. |
 | Namespace collisions after rewrite (e.g., two `Services` folders under different top-level namespaces both claim the same short name) | Low | Rewrite script is fully-qualified. Build will fail loudly on collision; no silent drift possible. |
@@ -286,3 +285,7 @@ Approve this plan before the mechanical PR is opened. The review on the mechanic
 - **2026-04-22** — `NotificationService` (in-process) is classified as Infrastructure despite having no external deps, because it lives alongside `AdminNotifier` in the notification-coordination stack. Revisit during implementation if test coverage benefits from moving it to Application. *(Moot post-Greptile review: `NotificationService.cs` injects `CivitiDbContext` too, so it would land in Infrastructure regardless — see the decision below.)*
 - **2026-04-22** — **All service implementations live in Civiti.Infrastructure; Civiti.Application holds only service interfaces + DTOs + payload types.** (Supersedes an earlier pass of this plan which classified 10 "business-logic" services as Application.) Rationale: every service in the current `Civiti.Api/Services/` directory injects `CivitiDbContext` directly (confirmed by grep against all service files). Because `CivitiDbContext` lives in Infrastructure, any implementation that depends on it also lives in Infrastructure — otherwise we'd need `Application → Infrastructure`, which inverts Clean Architecture's dependency direction. A repository pattern could break this coupling and allow impls in Application, but introducing one is explicitly out of scope (§10). The resulting split matches the textbook Clean Architecture shape when direct DbContext access is used: Application is the contract layer (interfaces + DTOs only); Infrastructure owns every class that concretely touches a framework or external system. Caught by Greptile review on PR #83.
 - **2026-04-22** — **`IContentModerationService` interface lives in Civiti.Application**, not Infrastructure. The concrete `OpenAIModerationService` is Infrastructure (OpenAI SDK client), but the interface is an application-layer contract consumed by other services (notably `CommentService`). This is the general rule: every service interface moves to Application regardless of where its implementation lives. Caught by Greptile review on PR #83.
+- **2026-04-22** — **`Microsoft.IdentityModel.Tokens` is added to `Civiti.Application` (and kept in `Civiti.Infrastructure` + `Civiti.Api`)**, superseding §5's earlier "Civiti.Application takes zero NuGet packages" rule. Caught during commit-3 execution: `IJwksManager` exposes `JsonWebKey`, `JsonWebKeySet`, and `SecurityKey` in its method signatures. Those types live in `Microsoft.IdentityModel.Tokens`; the interface won't compile without it. Alternatives — (a) keep `IJwksManager` in Civiti.Api, which would be the only interface doing so and would contradict §12's "every service interface lives in Civiti.Application" rule, or (b) reshape the interface to hide the package types behind a neutral abstraction, which is behaviour-adjacent and out of scope for a mechanical refactor (§1). Adding the package is the smallest legal move. A later refactor can pull the types behind a domain abstraction if we want Application back to zero packages.
+- **2026-04-22** — **`SignupMetadata` moves to `Civiti.Application/Requests/Auth/`, not "stays in Civiti.Api"** (supersedes §2's earlier placement). Caught during commit-3 execution: `IUserService.GetOrCreateUserProfileAsync(..., SignupMetadata? ...)` — an Application-layer contract — requires `SignupMetadata`. The type itself is a pure record with no HTTP dependencies; the original "HTTP-request-bound" classification referred to where it's *consumed* (JWT parsing in `ClaimsPrincipalExtensions`), not what it *is*. Letting it stay in Civiti.Api would require `Application → Api`, inverting the dependency arrow. `ClaimsPrincipalExtensions.cs` stays in Civiti.Api and picks up a `using Civiti.Application.Requests.Auth;` to consume the moved type.
+- **2026-04-22** — **`CategoryLocalization` moves to `Civiti.Application/Localization/` in commit 3, not to `Civiti.Domain/Localization/` in commit 2** (supersedes §2's earlier "all 4 localization files → Civiti.Domain" row). Caught during commit-2 execution: `CategoryLocalization.GetAll()` returns `List<CategoryResponse>` where `CategoryResponse` is a Response DTO that moves to `Civiti.Application.Responses.Common` in commit 3. Putting `CategoryLocalization` in Civiti.Domain would force `Civiti.Domain → Civiti.Application`, inverting the dependency arrow. The cleanest split is to classify `CategoryLocalization` as application-layer (it's a localization-of-DTO concern, not a pure domain fact), the same way `IContentModerationService`'s interface is in Application even though its implementation is Infrastructure. The other three localization files (`AchievementLocalization`, `BadgeLocalization`, `PosterLocalization`) are pure domain label tables and still move to Civiti.Domain in commit 2.
+- **2026-04-22** — **Pre-execution corrections to the plan, ahead of opening the mechanical PR.** Five small drifts between plan-as-written and repo state: (1) `Models/DTOs/**` row removed from §2/§3 — no such folder exists; `Models/Requests/**` and `Models/Responses/**` fill the DTO role. (2) `InternalsVisibleTo` risk row updated in §8 — the attribute *is* currently in use (`Civiti.Api.csproj → Civiti.Tests`) and `SupabaseAdminClientTests` reaches two `internal sealed record` types on `SupabaseAdminClient`, so the attribute moves with the class in commit 4. (3) §5 NuGet table row rewritten — no separate `Microsoft.EntityFrameworkCore` runtime PackageReference exists; Npgsql.EF pulls the runtime transitively. (4) §5 adds a row for `Microsoft.EntityFrameworkCore.Tools` (stays in Civiti.Api alongside `.Design`). (5) §4 Civiti.Tests reference graph corrected — middleware tests force a retained `Civiti.Api` `ProjectReference`, not an optional one. No behaviour implications; purely factual accuracy.

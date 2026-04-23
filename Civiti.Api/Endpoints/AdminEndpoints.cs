@@ -1,11 +1,12 @@
 using System.Security.Claims;
 using Civiti.Api.Infrastructure.Constants;
+using Civiti.Domain.Constants;
 using Civiti.Api.Infrastructure.Extensions;
-using Civiti.Api.Models.Domain;
-using Civiti.Api.Models.Requests.Admin;
-using Civiti.Api.Models.Responses.Admin;
-using Civiti.Api.Models.Responses.Common;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Domain.Entities;
+using Civiti.Application.Requests.Admin;
+using Civiti.Application.Responses.Admin;
+using Civiti.Application.Responses.Common;
+using Civiti.Application.Services;
 
 namespace Civiti.Api.Endpoints;
 

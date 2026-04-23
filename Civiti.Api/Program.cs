@@ -3,17 +3,27 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using System.Threading.RateLimiting;
-using Civiti.Api.Data;
+using Civiti.Infrastructure.Data;
 using Civiti.Api.Endpoints;
 using Civiti.Api.Infrastructure.Configuration;
 using Civiti.Api.Infrastructure.Constants;
+using Civiti.Domain.Constants;
 using Civiti.Api.Infrastructure.Extensions;
 using Civiti.Api.Infrastructure.Middleware;
-using Civiti.Api.Models.Email;
-using Civiti.Api.Models.Notifications;
-using Civiti.Api.Models.Push;
-using Civiti.Api.Services;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Email.Models;
+using Civiti.Application.Notifications;
+using Civiti.Application.Push.Models;
+using Civiti.Infrastructure.Configuration;
+using Civiti.Infrastructure.Services;
+using Civiti.Infrastructure.Services.AdminNotify;
+using Civiti.Infrastructure.Services.Claude;
+using Civiti.Infrastructure.Services.Email;
+using Civiti.Infrastructure.Services.Jwks;
+using Civiti.Infrastructure.Services.Moderation;
+using Civiti.Infrastructure.Services.Poster;
+using Civiti.Infrastructure.Services.Push;
+using Civiti.Infrastructure.Services.Supabase;
+using Civiti.Application.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -114,6 +124,10 @@ if (connectionString?.StartsWith("postgres://") == true || connectionString?.Sta
 builder.Services.AddDbContext<CivitiDbContext>(options =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
         {
+            // CivitiDbContext lives in Civiti.Infrastructure; the matching migrations live
+            // alongside it. MigrationsAssembly() pins EF to that assembly so `dotnet ef`
+            // (invoked with Civiti.Api as the startup project) finds them.
+            npgsqlOptions.MigrationsAssembly(typeof(CivitiDbContext).Assembly.GetName().Name);
             npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory");
             npgsqlOptions.CommandTimeout(30);
             npgsqlOptions.EnableRetryOnFailure(
@@ -591,7 +605,7 @@ app.MapGet("/swagger-debug", async (HttpContext context) =>
 
 app.MapGet("/api/health", async (CivitiDbContext context, ISupabaseService supabaseService) =>
     {
-        Civiti.Api.Models.Responses.Health.HealthCheckResponse health = new()
+        Civiti.Application.Responses.Health.HealthCheckResponse health = new()
         {
             Status = "Healthy",
             Timestamp = DateTime.UtcNow,
@@ -642,7 +656,7 @@ app.MapGet("/api/health", async (CivitiDbContext context, ISupabaseService supab
     .WithSummary("Health check endpoint with connectivity tests")
     .WithDescription(
         "Performs health checks on critical dependencies including PostgreSQL database and Supabase authentication service. Returns detailed connectivity status for each component.")
-    .Produces<Civiti.Api.Models.Responses.Health.HealthCheckResponse>();
+    .Produces<Civiti.Application.Responses.Health.HealthCheckResponse>();
 
 // Database migration on startup (Railway compatible with retry logic)
 var skipMigration = Environment.GetEnvironmentVariable("SKIP_DB_MIGRATION") == "true";

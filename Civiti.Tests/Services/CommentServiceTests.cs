@@ -1,9 +1,9 @@
-using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Models.Domain;
-using Civiti.Api.Models.Requests.Comments;
-using Civiti.Api.Models.Responses.Moderation;
-using Civiti.Api.Services;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Entities;
+using Civiti.Application.Requests.Comments;
+using Civiti.Application.Responses.Moderation;
+using Civiti.Infrastructure.Services;
+using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
