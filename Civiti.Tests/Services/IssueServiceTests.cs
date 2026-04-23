@@ -352,7 +352,7 @@ public class IssueServiceTests : IDisposable
         var (success, error) = await svc2.IncrementEmailCountAsync(issue.Id, "127.0.0.1");
 
         success.Should().BeFalse();
-        error.Should().Be(IssueService.RateLimitedError);
+        error.Should().Be(IIssueService.RateLimitedError);
     }
 
     [Fact]

@@ -34,10 +34,6 @@ public class IssueService(
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    /// <summary>
-    /// Error message returned when rate limited. Used by endpoint to detect 429 response.
-    /// </summary>
-    public const string RateLimitedError = "RATE_LIMITED";
     public async Task<PagedResult<IssueListResponse>> GetAllIssuesAsync(GetIssuesRequest request, Guid? currentUserId = null)
     {
         try
@@ -549,7 +545,7 @@ public class IssueService(
             if (memoryCache.TryGetValue(cacheKey, out _))
             {
                 logger.LogInformation("Rate limit hit for issue {IssueId} from IP {ClientIp}", issueId, clientIp);
-                return (false, RateLimitedError);
+                return (false, IIssueService.RateLimitedError);
             }
 
             // Check if issue exists and is valid for incrementing

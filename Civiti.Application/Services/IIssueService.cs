@@ -6,6 +6,14 @@ namespace Civiti.Application.Services;
 
 public interface IIssueService
 {
+    /// <summary>
+    /// Sentinel error code returned from service methods when an operation is blocked
+    /// by a rate limit. Endpoints map this to HTTP 429. Lives on the contract rather
+    /// than the implementation so callers at the API layer don't have to cross into
+    /// Civiti.Infrastructure to check for it.
+    /// </summary>
+    public const string RateLimitedError = "RATE_LIMITED";
+
     Task<PagedResult<IssueListResponse>> GetAllIssuesAsync(GetIssuesRequest request, Guid? currentUserId = null);
     Task<IssueDetailResponse?> GetIssueByIdAsync(Guid id, Guid? currentUserId = null);
     Task<CreateIssueResponse> CreateIssueAsync(CreateIssueRequest request, string supabaseUserId);
