@@ -1,13 +1,13 @@
 using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Infrastructure.Exceptions;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Exceptions;
 using Civiti.Api.Infrastructure.Extensions;
-using Civiti.Api.Models.Domain;
-using Civiti.Api.Models.Requests.Issues;
-using Civiti.Api.Models.Responses.Auth;
-using Civiti.Api.Models.Responses.Common;
-using Civiti.Api.Models.Responses.Issues;
-using Civiti.Api.Services;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Domain.Entities;
+using Civiti.Application.Requests.Issues;
+using Civiti.Application.Responses.Auth;
+using Civiti.Application.Responses.Common;
+using Civiti.Application.Responses.Issues;
+using Civiti.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 
@@ -211,7 +211,7 @@ public static class IssueEndpoints
                 return error switch
                 {
                     DomainErrors.IssueNotFound => TypedResults.NotFound(),
-                    IssueService.RateLimitedError => TypedResults.StatusCode(429),
+                    IIssueService.RateLimitedError => TypedResults.StatusCode(429),
                     _ => TypedResults.BadRequest(error)
                 };
             }

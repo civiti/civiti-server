@@ -29,6 +29,7 @@ riderModule.iml
 # Claude Code local settings
 .claude/settings.local.json
 .claude/pr-reviews/
+.claude/scheduled_tasks.lock
 
 # MCP server config (contains API keys)
 .mcp.json

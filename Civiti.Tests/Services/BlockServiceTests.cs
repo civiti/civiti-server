@@ -1,6 +1,6 @@
-using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Infrastructure.Exceptions;
-using Civiti.Api.Services;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Exceptions;
+using Civiti.Infrastructure.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;

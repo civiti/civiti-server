@@ -1,4 +1,4 @@
-using Civiti.Api.Data;
+using Civiti.Infrastructure.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 

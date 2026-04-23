@@ -1,4 +1,4 @@
-using Civiti.Api.Services.Interfaces;
+using Civiti.Application.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -8,7 +8,7 @@ namespace Civiti.Api.Infrastructure.Configuration;
 /// <summary>
 /// Post-configure options for JWT Bearer authentication with JWKS support.
 /// Configures a synchronous IssuerSigningKeyResolver that reads from the JWKS cache
-/// populated by <see cref="Services.JwksBackgroundService"/>.
+/// populated by <see cref="Civiti.Infrastructure.Services.Jwks.JwksBackgroundService"/>.
 /// </summary>
 public class JwtBearerPostConfigureOptions(
     IJwksManager jwksManager,

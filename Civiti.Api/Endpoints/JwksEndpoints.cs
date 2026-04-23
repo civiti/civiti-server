@@ -1,6 +1,7 @@
 using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Models.Responses.Jwks;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Domain.Constants;
+using Civiti.Application.Responses.Jwks;
+using Civiti.Application.Services;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Civiti.Api.Endpoints;

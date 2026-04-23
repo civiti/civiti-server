@@ -25,6 +25,16 @@
     </ItemGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\Civiti.Domain\Civiti.Domain.csproj" />
+        <ProjectReference Include="..\Civiti.Application\Civiti.Application.csproj" />
+        <ProjectReference Include="..\Civiti.Infrastructure\Civiti.Infrastructure.csproj" />
+        <!--
+            Civiti.Api reference is retained because middleware tests
+            (ErrorHandlingMiddlewareTests, RequestLoggingMiddlewareTests) exercise
+            classes that remained in the HTTP host. Dropping it would force
+            middleware to move to a shared library just to test it, which is out
+            of scope for the mechanical refactor.
+        -->
         <ProjectReference Include="..\Civiti.Api\Civiti.Api.csproj" />
     </ItemGroup>
 

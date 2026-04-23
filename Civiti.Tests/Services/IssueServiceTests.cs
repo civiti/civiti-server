@@ -1,9 +1,9 @@
-using Civiti.Api.Data;
-using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Models.Domain;
-using Civiti.Api.Models.Requests.Issues;
-using Civiti.Api.Services;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Infrastructure.Data;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Entities;
+using Civiti.Application.Requests.Issues;
+using Civiti.Infrastructure.Services;
+using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -352,7 +352,7 @@ public class IssueServiceTests : IDisposable
         var (success, error) = await svc2.IncrementEmailCountAsync(issue.Id, "127.0.0.1");
 
         success.Should().BeFalse();
-        error.Should().Be(IssueService.RateLimitedError);
+        error.Should().Be(IIssueService.RateLimitedError);
     }
 
     [Fact]

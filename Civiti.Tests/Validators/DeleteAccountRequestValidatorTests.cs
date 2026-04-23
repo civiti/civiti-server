@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using Civiti.Api.Models.Requests.Auth;
+using Civiti.Application.Requests.Auth;
 using FluentAssertions;
 
 namespace Civiti.Tests.Validators;

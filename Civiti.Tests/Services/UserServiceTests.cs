@@ -1,9 +1,9 @@
-using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Infrastructure.Exceptions;
-using Civiti.Api.Models.Domain;
-using Civiti.Api.Models.Requests.Auth;
-using Civiti.Api.Services;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Domain.Constants;
+using Civiti.Domain.Exceptions;
+using Civiti.Domain.Entities;
+using Civiti.Application.Requests.Auth;
+using Civiti.Infrastructure.Services;
+using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -31,10 +31,10 @@ public class UserServiceTests : IDisposable
         // Default: gamification queries return empty lists
         _gamificationService
             .Setup(g => g.GetUserBadgesAsync(It.IsAny<Guid>()))
-            .ReturnsAsync(new List<Api.Models.Responses.Gamification.BadgeResponse>());
+            .ReturnsAsync(new List<Application.Responses.Gamification.BadgeResponse>());
         _gamificationService
             .Setup(g => g.GetUserAchievementsAsync(It.IsAny<Guid>()))
-            .ReturnsAsync(new List<Api.Models.Responses.Gamification.AchievementProgressResponse>());
+            .ReturnsAsync(new List<Application.Responses.Gamification.AchievementProgressResponse>());
 
         // Default: Supabase auth deletion succeeds
         _supabaseService

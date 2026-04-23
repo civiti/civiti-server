@@ -1,6 +1,7 @@
 using Civiti.Api.Infrastructure.Constants;
-using Civiti.Api.Models.Responses.Authority;
-using Civiti.Api.Services.Interfaces;
+using Civiti.Domain.Constants;
+using Civiti.Application.Responses.Authority;
+using Civiti.Application.Services;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Civiti.Api.Endpoints;
