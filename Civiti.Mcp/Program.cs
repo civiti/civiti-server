@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
@@ -12,7 +13,6 @@ using Civiti.Infrastructure.Services;
 using Civiti.Infrastructure.Services.AdminNotify;
 using Civiti.Infrastructure.Services.Email;
 using Civiti.Mcp.Tools;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -126,51 +126,81 @@ builder.Services.AddMcpServer()
 
 var app = builder.Build();
 
-// Mirror Civiti.Api's proxy handling so RemoteIpAddress is the real client IP, not Railway's hop.
+// Proxy trust — resolve the real client IP from X-Forwarded-For without trusting headers from
+// arbitrary upstreams. Verified 2026-04-24 against the live Railway deploy via the PR #91
+// diagnostic, including a probe that sent a spoofed `X-Forwarded-For: 1.2.3.4`:
 //
-// SECURITY — known limitation: clearing KnownIPNetworks + KnownProxies trusts X-Forwarded-For from
-// any upstream. In practice traffic reaches this service only through Railway's edge, which appends
-// (not overwrites) the header chain — but a caller who can reach the container can still inflate
-// the counter keyed on the spoofed value. Mitigations in this PR: (a) middleware rate limiter above
-// caps total requests per observed IP, and (b) service-layer 1/IP/issue/hour cooldown still fires.
-// Follow-up in the Railway deployment PR: replace the clears with explicit KnownNetworks covering
-// Railway's actual forward range, once we can observe it from a running service. Matches Civiti.Api's
-// current config for consistency in the meantime.
-var forwardedHeaders = new ForwardedHeadersOptions
-{
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
-    ForwardLimit = 1
-};
-forwardedHeaders.KnownIPNetworks.Clear();
-forwardedHeaders.KnownProxies.Clear();
-
-// TEMP DIAGNOSTIC — inserted on branch fix/mcp-proxy-trust to observe the real Railway
-// upstream IP and X-Forwarded-For chain from the Production deploy. Runs *before*
-// UseForwardedHeaders so Connection.RemoteIpAddress is Railway's immediate hop, not the
-// rewritten client IP. Remove in the follow-up commit that sets KnownNetworks tightly.
+//   no spoof: upstream=100.64.0.3  xff="<client>, <railway-lb>"
+//   spoofed:  upstream=100.64.0.4  xff="1.2.3.4, <client>, <railway-lb>"
 //
-// Header values are attacker-controlled; strip line breaks + tabs before logging so a caller
-// can't forge a fake "PROXY-DIAG upstream=…" line by embedding CR/LF in X-Forwarded-For. The
-// sanitised values are still truthful for the IP-range inference we need. Caught in Greptile
-// review of PR #91.
-static string SanitizeForLog(string value) =>
-    value.ReplaceLineEndings(" ").Replace('\t', ' ');
+// Railway **preserves and appends** — client-supplied XFF entries survive unmodified, then
+// Railway's edge adds its own two hops (LB's view of the TCP peer, then the internal hop).
+// So the leftmost entry is attacker-controllable; the real client IP is at position
+// `len - RailwayAppendedHopCount` from the left, i.e. second from right. Everything left of
+// that is attacker-supplied and must be ignored.
+//
+// We reject headers entirely when the direct socket peer isn't in a trusted range. Any direct
+// caller that bypassed Railway's edge lands outside CGNAT, and their spoofed headers have no
+// effect. The built-in ForwardedHeadersMiddleware isn't used because its peel algorithm stops
+// at the first untrusted IP in the chain, which on Railway is the GCP-backed LB (IP range
+// effectively unbounded) — that would give us the LB IP instead of the real client.
+const int RailwayAppendedHopCount = 2; // LB hop + internal hop; re-verify if Railway's edge changes.
+IPNetwork[] trustedProxyRanges =
+[
+    IPNetwork.Parse("100.64.0.0/10"), // Railway internal edge (RFC 6598 CGNAT)
+    IPNetwork.Parse("127.0.0.0/8"),   // IPv4 loopback (local dev)
+    IPNetwork.Parse("::1/128")        // IPv6 loopback
+];
 
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/mcp/public"))
+    var upstream = context.Connection.RemoteIpAddress;
+    // Kestrel's dual-stack sockets hand loopback addresses to us as ::ffff:127.0.0.1; unwrap
+    // before range matching so local dev (where the trusted peer is the kernel itself) still
+    // goes through the trust path.
+    if (upstream is { IsIPv4MappedToIPv6: true })
     {
-        var upstream = context.Connection.RemoteIpAddress?.ToString() ?? "(null)";
-        var xff = context.Request.Headers.TryGetValue("X-Forwarded-For", out var xffValues) ? SanitizeForLog(string.Join(",", xffValues!)) : "(absent)";
-        var xfp = context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) ? SanitizeForLog(string.Join(",", xfpValues!)) : "(absent)";
-        var fwd = context.Request.Headers.TryGetValue("Forwarded", out var fwdValues) ? SanitizeForLog(string.Join(",", fwdValues!)) : "(absent)";
-        Log.Information("PROXY-DIAG upstream={Upstream} xff={XForwardedFor} xfp={XForwardedProto} forwarded={Forwarded} path={Path}",
-            upstream, xff, xfp, fwd, context.Request.Path.Value);
+        upstream = upstream.MapToIPv4();
     }
+
+    if (upstream is not null && trustedProxyRanges.Any(n => n.Contains(upstream)))
+    {
+        if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var xffValues) && xffValues.Count > 0)
+        {
+            // StringValues.ToString() joins multi-header-line values with commas — RFC 7230
+            // treats repeated XFF headers as one logical list, so we concatenate before
+            // splitting. Parsing only xffValues[0] would miss entries from later header lines
+            // and let the hop-count index land on an attacker-controlled entry.
+            var entries = xffValues.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (entries.Length >= RailwayAppendedHopCount)
+            {
+                var clientEntry = entries[entries.Length - RailwayAppendedHopCount];
+                if (IPAddress.TryParse(clientEntry, out var clientIp))
+                {
+                    context.Connection.RemoteIpAddress = clientIp;
+                }
+            }
+        }
+
+        if (context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) && xfpValues.Count > 0)
+        {
+            // Every Railway hop stamps X-Forwarded-Proto with the scheme it observed, so the
+            // rightmost entry (across all header lines) is Railway's authoritative view; anything
+            // to its left could be client-supplied and spoofable.
+            var protoEntries = xfpValues.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (protoEntries.Length > 0)
+            {
+                var scheme = protoEntries[^1];
+                if (scheme is "http" or "https")
+                {
+                    context.Request.Scheme = scheme;
+                }
+            }
+        }
+    }
+
     await next(context);
 });
-
-app.UseForwardedHeaders(forwardedHeaders);
 
 app.UseRateLimiter();
 
