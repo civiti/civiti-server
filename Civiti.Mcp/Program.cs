@@ -167,7 +167,11 @@ app.Use(async (context, next) =>
     {
         if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var xffValues) && xffValues.Count > 0)
         {
-            var entries = (xffValues[0] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            // StringValues.ToString() joins multi-header-line values with commas — RFC 7230
+            // treats repeated XFF headers as one logical list, so we concatenate before
+            // splitting. Parsing only xffValues[0] would miss entries from later header lines
+            // and let the hop-count index land on an attacker-controlled entry.
+            var entries = xffValues.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (entries.Length >= RailwayAppendedHopCount)
             {
                 var clientEntry = entries[entries.Length - RailwayAppendedHopCount];
@@ -181,9 +185,9 @@ app.Use(async (context, next) =>
         if (context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) && xfpValues.Count > 0)
         {
             // Every Railway hop stamps X-Forwarded-Proto with the scheme it observed, so the
-            // rightmost entry is Railway's authoritative view; anything to its left could be
-            // client-supplied and spoofable.
-            var protoEntries = (xfpValues[0] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            // rightmost entry (across all header lines) is Railway's authoritative view; anything
+            // to its left could be client-supplied and spoofable.
+            var protoEntries = xfpValues.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (protoEntries.Length > 0)
             {
                 var scheme = protoEntries[^1];

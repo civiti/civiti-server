@@ -566,8 +566,10 @@ app.Use(async (context, next) =>
         {
             // Railway preserves client-supplied XFF entries and appends its own two hops, so the
             // real client IP is at (len - RailwayAppendedHopCount). Everything left of that is
-            // attacker-supplied and discarded.
-            var entries = (xffValues[0] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            // attacker-supplied and discarded. StringValues.ToString() joins multi-header-line
+            // values with commas (RFC 7230 treats them as one logical list) — parsing only the
+            // first line would let the hop-count index land on an attacker-controlled entry.
+            var entries = xffValues.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (entries.Length >= RailwayAppendedHopCount)
             {
                 var clientEntry = entries[entries.Length - RailwayAppendedHopCount];
@@ -580,9 +582,10 @@ app.Use(async (context, next) =>
 
         if (context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) && xfpValues.Count > 0)
         {
-            // Every Railway hop stamps X-Forwarded-Proto; the rightmost entry is Railway's
-            // authoritative view, anything to its left could be client-supplied.
-            var protoEntries = (xfpValues[0] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            // Every Railway hop stamps X-Forwarded-Proto; the rightmost entry (across all
+            // header lines) is Railway's authoritative view, anything to its left could be
+            // client-supplied.
+            var protoEntries = xfpValues.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (protoEntries.Length > 0)
             {
                 var scheme = protoEntries[^1];
