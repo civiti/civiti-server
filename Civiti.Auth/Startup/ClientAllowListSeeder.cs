@@ -76,23 +76,9 @@ public sealed class ClientAllowListSeeder(
 
                 backoff = backoff * 2 < MaxBackoff ? backoff * 2 : MaxBackoff;
             }
-        }
-
-        // Final attempt with the catch-all stripped — let BackgroundService's host logger
-        // surface the exception rather than swallowing it silently.
-        await using var finalScope = services.CreateAsyncScope();
-        var finalManager = finalScope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
-        foreach (var client in AllowList)
-        {
-            var existing = await finalManager.FindByClientIdAsync(client.ClientId, stoppingToken);
-            if (existing is null)
-            {
-                await finalManager.CreateAsync(client.ToDescriptor(), stoppingToken);
-            }
-            else
-            {
-                await finalManager.UpdateAsync(existing, client.ToDescriptor(), stoppingToken);
-            }
+            // No catch for the MaxAttempts iteration: the exception unwinds past the loop,
+            // BackgroundService's host logger surfaces it, and the pod stays up (allow-list
+            // empty, /authorize will reject until operator intervention).
         }
     }
 
