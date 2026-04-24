@@ -143,6 +143,33 @@ var forwardedHeaders = new ForwardedHeadersOptions
 };
 forwardedHeaders.KnownIPNetworks.Clear();
 forwardedHeaders.KnownProxies.Clear();
+
+// TEMP DIAGNOSTIC — inserted on branch fix/mcp-proxy-trust to observe the real Railway
+// upstream IP and X-Forwarded-For chain from the Production deploy. Runs *before*
+// UseForwardedHeaders so Connection.RemoteIpAddress is Railway's immediate hop, not the
+// rewritten client IP. Remove in the follow-up commit that sets KnownNetworks tightly.
+//
+// Header values are attacker-controlled; strip line breaks + tabs before logging so a caller
+// can't forge a fake "PROXY-DIAG upstream=…" line by embedding CR/LF in X-Forwarded-For. The
+// sanitised values are still truthful for the IP-range inference we need. Caught in Greptile
+// review of PR #91.
+static string SanitizeForLog(string value) =>
+    value.ReplaceLineEndings(" ").Replace('\t', ' ');
+
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/mcp/public"))
+    {
+        var upstream = context.Connection.RemoteIpAddress?.ToString() ?? "(null)";
+        var xff = context.Request.Headers.TryGetValue("X-Forwarded-For", out var xffValues) ? SanitizeForLog(string.Join(",", xffValues!)) : "(absent)";
+        var xfp = context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) ? SanitizeForLog(string.Join(",", xfpValues!)) : "(absent)";
+        var fwd = context.Request.Headers.TryGetValue("Forwarded", out var fwdValues) ? SanitizeForLog(string.Join(",", fwdValues!)) : "(absent)";
+        Log.Information("PROXY-DIAG upstream={Upstream} xff={XForwardedFor} xfp={XForwardedProto} forwarded={Forwarded} path={Path}",
+            upstream, xff, xfp, fwd, context.Request.Path.Value);
+    }
+    await next(context);
+});
+
 app.UseForwardedHeaders(forwardedHeaders);
 
 app.UseRateLimiter();
