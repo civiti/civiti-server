@@ -224,7 +224,9 @@ app.MapGet("/api/health", async (CivitiDbContext ctx, IHostEnvironment env) =>
             : new { status = "Degraded", database = "disconnected" };
         return Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable);
     }
-}).ExcludeFromDescription();
+})
+.ExcludeFromDescription()
+.RequireRateLimiting(McpPublicRateLimitPolicy);
 
 app.MapMcp("/mcp/public").RequireRateLimiting(McpPublicRateLimitPolicy);
 
@@ -250,5 +252,5 @@ static string ResolveConnectionString(WebApplicationBuilder builder)
     var username = userInfo[0];
     var password = userInfo.Length > 1 ? userInfo[1] : string.Empty;
     var includeErrorDetail = builder.Environment.IsDevelopment() ? ";Include Error Detail=true" : string.Empty;
-    return $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;Timeout=30;Command Timeout=30;Connection Idle Lifetime=300;Maximum Pool Size=50{includeErrorDetail}";
+    return $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={username};Password={password};SSL Mode=Require;Timeout=30;Command Timeout=30;Connection Idle Lifetime=300;Maximum Pool Size=50{includeErrorDetail}";
 }

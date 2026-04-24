@@ -24,6 +24,6 @@ COPY --from=build /app/publish .
 
 # Railway sets PORT at runtime; Program.cs reads it and binds 0.0.0.0:$PORT.
 # EXPOSE is informational only and does not affect Railway routing.
-EXPOSE 8080
+EXPOSE 8081
 
 ENTRYPOINT ["dotnet", "Civiti.Mcp.dll"]
