@@ -143,6 +143,25 @@ var forwardedHeaders = new ForwardedHeadersOptions
 };
 forwardedHeaders.KnownIPNetworks.Clear();
 forwardedHeaders.KnownProxies.Clear();
+
+// TEMP DIAGNOSTIC — inserted on branch fix/mcp-proxy-trust to observe the real Railway
+// upstream IP and X-Forwarded-For chain from the Production deploy. Runs *before*
+// UseForwardedHeaders so Connection.RemoteIpAddress is Railway's immediate hop, not the
+// rewritten client IP. Remove in the follow-up commit that sets KnownNetworks tightly.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/mcp/public"))
+    {
+        var upstream = context.Connection.RemoteIpAddress?.ToString() ?? "(null)";
+        var xff = context.Request.Headers.TryGetValue("X-Forwarded-For", out var xffValues) ? string.Join(",", xffValues!) : "(absent)";
+        var xfp = context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) ? string.Join(",", xfpValues!) : "(absent)";
+        var fwd = context.Request.Headers.TryGetValue("Forwarded", out var fwdValues) ? string.Join(",", fwdValues!) : "(absent)";
+        Log.Information("PROXY-DIAG upstream={Upstream} xff={XForwardedFor} xfp={XForwardedProto} forwarded={Forwarded} path={Path}",
+            upstream, xff, xfp, fwd, context.Request.Path.Value);
+    }
+    await next(context);
+});
+
 app.UseForwardedHeaders(forwardedHeaders);
 
 app.UseRateLimiter();
