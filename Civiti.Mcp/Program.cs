@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
@@ -12,7 +13,6 @@ using Civiti.Infrastructure.Services;
 using Civiti.Infrastructure.Services.AdminNotify;
 using Civiti.Infrastructure.Services.Email;
 using Civiti.Mcp.Tools;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -126,51 +126,50 @@ builder.Services.AddMcpServer()
 
 var app = builder.Build();
 
-// Mirror Civiti.Api's proxy handling so RemoteIpAddress is the real client IP, not Railway's hop.
-//
-// SECURITY — known limitation: clearing KnownIPNetworks + KnownProxies trusts X-Forwarded-For from
-// any upstream. In practice traffic reaches this service only through Railway's edge, which appends
-// (not overwrites) the header chain — but a caller who can reach the container can still inflate
-// the counter keyed on the spoofed value. Mitigations in this PR: (a) middleware rate limiter above
-// caps total requests per observed IP, and (b) service-layer 1/IP/issue/hour cooldown still fires.
-// Follow-up in the Railway deployment PR: replace the clears with explicit KnownNetworks covering
-// Railway's actual forward range, once we can observe it from a running service. Matches Civiti.Api's
-// current config for consistency in the meantime.
-var forwardedHeaders = new ForwardedHeadersOptions
-{
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
-    ForwardLimit = 1
-};
-forwardedHeaders.KnownIPNetworks.Clear();
-forwardedHeaders.KnownProxies.Clear();
-
-// TEMP DIAGNOSTIC — inserted on branch fix/mcp-proxy-trust to observe the real Railway
-// upstream IP and X-Forwarded-For chain from the Production deploy. Runs *before*
-// UseForwardedHeaders so Connection.RemoteIpAddress is Railway's immediate hop, not the
-// rewritten client IP. Remove in the follow-up commit that sets KnownNetworks tightly.
-//
-// Header values are attacker-controlled; strip line breaks + tabs before logging so a caller
-// can't forge a fake "PROXY-DIAG upstream=…" line by embedding CR/LF in X-Forwarded-For. The
-// sanitised values are still truthful for the IP-range inference we need. Caught in Greptile
-// review of PR #91.
-static string SanitizeForLog(string value) =>
-    value.ReplaceLineEndings(" ").Replace('\t', ' ');
+// Proxy trust — resolve the real client IP from X-Forwarded-For without trusting headers from
+// arbitrary upstreams. Observed from the PR #91 diagnostic deploy:
+//   upstream=100.64.0.3  xff="<client-ip>, <railway-lb-public-ip>"  xfp=https
+// Railway fronts every container via an internal edge in the CGNAT range 100.64.0.0/10 (RFC 6598),
+// and the edge appends (never overwrites) the X-Forwarded-For chain — the first entry is the
+// original client. So: if the direct socket peer is in CGNAT (or loopback, for local dev), take
+// XFF[0] as the client IP. Any direct caller that bypassed Railway's edge lands with upstream
+// outside CGNAT, and we leave their RemoteIpAddress untouched — header spoofing is harmless in
+// that case. The built-in ForwardedHeadersMiddleware isn't used because its peel algorithm stops
+// at the first untrusted IP in the chain, which on Railway is the GCP-backed LB (IP range
+// effectively unbounded) — that would give us the LB IP instead of the real client.
+IPNetwork[] trustedProxyRanges =
+[
+    IPNetwork.Parse("100.64.0.0/10"), // Railway internal edge (RFC 6598 CGNAT)
+    IPNetwork.Parse("127.0.0.0/8"),   // IPv4 loopback (local dev)
+    IPNetwork.Parse("::1/128")        // IPv6 loopback
+];
 
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/mcp/public"))
+    var upstream = context.Connection.RemoteIpAddress;
+    if (upstream is not null && trustedProxyRanges.Any(n => n.Contains(upstream)))
     {
-        var upstream = context.Connection.RemoteIpAddress?.ToString() ?? "(null)";
-        var xff = context.Request.Headers.TryGetValue("X-Forwarded-For", out var xffValues) ? SanitizeForLog(string.Join(",", xffValues!)) : "(absent)";
-        var xfp = context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) ? SanitizeForLog(string.Join(",", xfpValues!)) : "(absent)";
-        var fwd = context.Request.Headers.TryGetValue("Forwarded", out var fwdValues) ? SanitizeForLog(string.Join(",", fwdValues!)) : "(absent)";
-        Log.Information("PROXY-DIAG upstream={Upstream} xff={XForwardedFor} xfp={XForwardedProto} forwarded={Forwarded} path={Path}",
-            upstream, xff, xfp, fwd, context.Request.Path.Value);
+        if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var xffValues) && xffValues.Count > 0)
+        {
+            var firstEntry = xffValues[0]?.Split(',')[0].Trim();
+            if (IPAddress.TryParse(firstEntry, out var clientIp))
+            {
+                context.Connection.RemoteIpAddress = clientIp;
+            }
+        }
+
+        if (context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) && xfpValues.Count > 0)
+        {
+            var scheme = xfpValues[0]?.Split(',')[0].Trim();
+            if (scheme is "http" or "https")
+            {
+                context.Request.Scheme = scheme;
+            }
+        }
     }
+
     await next(context);
 });
-
-app.UseForwardedHeaders(forwardedHeaders);
 
 app.UseRateLimiter();
 

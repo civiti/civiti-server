@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -26,7 +27,6 @@ using Civiti.Infrastructure.Services.Push;
 using Civiti.Infrastructure.Services.Supabase;
 using Civiti.Application.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -537,17 +537,43 @@ builder.Services.AddHttpClient();
 
 WebApplication app = builder.Build();
 
-// Configure forwarded headers for reverse proxy (Railway, etc.)
-// This must be first in the pipeline to correctly set RemoteIpAddress
-ForwardedHeadersOptions forwardedHeadersOptions = new()
+// Proxy trust — resolve the real client IP from X-Forwarded-For without trusting headers from
+// arbitrary upstreams. See Civiti.Mcp/Program.cs for the observed Railway chain and the same
+// logic; both hosts sit behind the same edge and need identical trust rules. When we see enough
+// duplication to justify Civiti.Web, this moves there (architecture.md §3).
+IPNetwork[] trustedProxyRanges =
+[
+    IPNetwork.Parse("100.64.0.0/10"), // Railway internal edge (RFC 6598 CGNAT)
+    IPNetwork.Parse("127.0.0.0/8"),   // IPv4 loopback (local dev)
+    IPNetwork.Parse("::1/128")        // IPv6 loopback
+];
+
+app.Use(async (context, next) =>
 {
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
-    ForwardLimit = 1 // Only trust the first proxy hop to prevent spoofing
-};
-// Clear default known networks/proxies to allow any proxy (needed for cloud deployments)
-forwardedHeadersOptions.KnownIPNetworks.Clear();
-forwardedHeadersOptions.KnownProxies.Clear();
-app.UseForwardedHeaders(forwardedHeadersOptions);
+    var upstream = context.Connection.RemoteIpAddress;
+    if (upstream is not null && trustedProxyRanges.Any(n => n.Contains(upstream)))
+    {
+        if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var xffValues) && xffValues.Count > 0)
+        {
+            var firstEntry = xffValues[0]?.Split(',')[0].Trim();
+            if (IPAddress.TryParse(firstEntry, out var clientIp))
+            {
+                context.Connection.RemoteIpAddress = clientIp;
+            }
+        }
+
+        if (context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) && xfpValues.Count > 0)
+        {
+            var scheme = xfpValues[0]?.Split(',')[0].Trim();
+            if (scheme is "http" or "https")
+            {
+                context.Request.Scheme = scheme;
+            }
+        }
+    }
+
+    await next(context);
+});
 
 // Configure pipeline
 if (!app.Environment.IsDevelopment())
