@@ -86,6 +86,11 @@ public sealed class PublicIssueTools(IIssueService issues, IHttpContextAccessor 
         [Description("Issue id (uuid).")] Guid id)
     {
         var clientIp = httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
+        if (string.IsNullOrEmpty(clientIp))
+        {
+            return new { ok = false, reason = "ip_unresolvable" };
+        }
+
         var (success, error) = await issues.IncrementEmailCountAsync(id, clientIp);
         return success
             ? new { ok = true }
