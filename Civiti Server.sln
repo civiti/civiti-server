@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Civiti.Infrastructure", "Ci
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Civiti.Mcp", "Civiti.Mcp\Civiti.Mcp.csproj", "{242480B6-008A-4A37-9939-963160B50FDD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Civiti.Auth", "Civiti.Auth\Civiti.Auth.csproj", "{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -94,6 +96,18 @@ Global
 		{242480B6-008A-4A37-9939-963160B50FDD}.Release|x64.Build.0 = Release|Any CPU
 		{242480B6-008A-4A37-9939-963160B50FDD}.Release|x86.ActiveCfg = Release|Any CPU
 		{242480B6-008A-4A37-9939-963160B50FDD}.Release|x86.Build.0 = Release|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Debug|x64.Build.0 = Debug|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Debug|x86.Build.0 = Debug|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Release|x64.ActiveCfg = Release|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Release|x64.Build.0 = Release|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Release|x86.ActiveCfg = Release|Any CPU
+		{EBFE2975-EC55-429B-9E4D-5C0ED91CD693}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
