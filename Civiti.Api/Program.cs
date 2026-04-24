@@ -538,9 +538,11 @@ builder.Services.AddHttpClient();
 WebApplication app = builder.Build();
 
 // Proxy trust — resolve the real client IP from X-Forwarded-For without trusting headers from
-// arbitrary upstreams. See Civiti.Mcp/Program.cs for the observed Railway chain and the same
-// logic; both hosts sit behind the same edge and need identical trust rules. When we see enough
-// duplication to justify Civiti.Web, this moves there (architecture.md §3).
+// arbitrary upstreams. See Civiti.Mcp/Program.cs for the observed Railway chain (verified via
+// the PR #91 diagnostic, including a spoofed-XFF probe) and the derivation. Both hosts sit
+// behind the same edge and need identical trust rules. When duplication warrants, this moves
+// to Civiti.Web (architecture.md §3).
+const int RailwayAppendedHopCount = 2; // LB hop + internal hop; re-verify if Railway's edge changes.
 IPNetwork[] trustedProxyRanges =
 [
     IPNetwork.Parse("100.64.0.0/10"), // Railway internal edge (RFC 6598 CGNAT)
@@ -551,23 +553,43 @@ IPNetwork[] trustedProxyRanges =
 app.Use(async (context, next) =>
 {
     var upstream = context.Connection.RemoteIpAddress;
+    // Kestrel's dual-stack sockets hand loopback addresses to us as ::ffff:127.0.0.1; unwrap
+    // before range matching so local dev still goes through the trust path.
+    if (upstream is { IsIPv4MappedToIPv6: true })
+    {
+        upstream = upstream.MapToIPv4();
+    }
+
     if (upstream is not null && trustedProxyRanges.Any(n => n.Contains(upstream)))
     {
         if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var xffValues) && xffValues.Count > 0)
         {
-            var firstEntry = xffValues[0]?.Split(',')[0].Trim();
-            if (IPAddress.TryParse(firstEntry, out var clientIp))
+            // Railway preserves client-supplied XFF entries and appends its own two hops, so the
+            // real client IP is at (len - RailwayAppendedHopCount). Everything left of that is
+            // attacker-supplied and discarded.
+            var entries = (xffValues[0] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (entries.Length >= RailwayAppendedHopCount)
             {
-                context.Connection.RemoteIpAddress = clientIp;
+                var clientEntry = entries[entries.Length - RailwayAppendedHopCount];
+                if (IPAddress.TryParse(clientEntry, out var clientIp))
+                {
+                    context.Connection.RemoteIpAddress = clientIp;
+                }
             }
         }
 
         if (context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) && xfpValues.Count > 0)
         {
-            var scheme = xfpValues[0]?.Split(',')[0].Trim();
-            if (scheme is "http" or "https")
+            // Every Railway hop stamps X-Forwarded-Proto; the rightmost entry is Railway's
+            // authoritative view, anything to its left could be client-supplied.
+            var protoEntries = (xfpValues[0] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (protoEntries.Length > 0)
             {
-                context.Request.Scheme = scheme;
+                var scheme = protoEntries[^1];
+                if (scheme is "http" or "https")
+                {
+                    context.Request.Scheme = scheme;
+                }
             }
         }
     }

@@ -127,16 +127,24 @@ builder.Services.AddMcpServer()
 var app = builder.Build();
 
 // Proxy trust — resolve the real client IP from X-Forwarded-For without trusting headers from
-// arbitrary upstreams. Observed from the PR #91 diagnostic deploy:
-//   upstream=100.64.0.3  xff="<client-ip>, <railway-lb-public-ip>"  xfp=https
-// Railway fronts every container via an internal edge in the CGNAT range 100.64.0.0/10 (RFC 6598),
-// and the edge appends (never overwrites) the X-Forwarded-For chain — the first entry is the
-// original client. So: if the direct socket peer is in CGNAT (or loopback, for local dev), take
-// XFF[0] as the client IP. Any direct caller that bypassed Railway's edge lands with upstream
-// outside CGNAT, and we leave their RemoteIpAddress untouched — header spoofing is harmless in
-// that case. The built-in ForwardedHeadersMiddleware isn't used because its peel algorithm stops
+// arbitrary upstreams. Verified 2026-04-24 against the live Railway deploy via the PR #91
+// diagnostic, including a probe that sent a spoofed `X-Forwarded-For: 1.2.3.4`:
+//
+//   no spoof: upstream=100.64.0.3  xff="<client>, <railway-lb>"
+//   spoofed:  upstream=100.64.0.4  xff="1.2.3.4, <client>, <railway-lb>"
+//
+// Railway **preserves and appends** — client-supplied XFF entries survive unmodified, then
+// Railway's edge adds its own two hops (LB's view of the TCP peer, then the internal hop).
+// So the leftmost entry is attacker-controllable; the real client IP is at position
+// `len - RailwayAppendedHopCount` from the left, i.e. second from right. Everything left of
+// that is attacker-supplied and must be ignored.
+//
+// We reject headers entirely when the direct socket peer isn't in a trusted range. Any direct
+// caller that bypassed Railway's edge lands outside CGNAT, and their spoofed headers have no
+// effect. The built-in ForwardedHeadersMiddleware isn't used because its peel algorithm stops
 // at the first untrusted IP in the chain, which on Railway is the GCP-backed LB (IP range
 // effectively unbounded) — that would give us the LB IP instead of the real client.
+const int RailwayAppendedHopCount = 2; // LB hop + internal hop; re-verify if Railway's edge changes.
 IPNetwork[] trustedProxyRanges =
 [
     IPNetwork.Parse("100.64.0.0/10"), // Railway internal edge (RFC 6598 CGNAT)
@@ -147,23 +155,42 @@ IPNetwork[] trustedProxyRanges =
 app.Use(async (context, next) =>
 {
     var upstream = context.Connection.RemoteIpAddress;
+    // Kestrel's dual-stack sockets hand loopback addresses to us as ::ffff:127.0.0.1; unwrap
+    // before range matching so local dev (where the trusted peer is the kernel itself) still
+    // goes through the trust path.
+    if (upstream is { IsIPv4MappedToIPv6: true })
+    {
+        upstream = upstream.MapToIPv4();
+    }
+
     if (upstream is not null && trustedProxyRanges.Any(n => n.Contains(upstream)))
     {
         if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var xffValues) && xffValues.Count > 0)
         {
-            var firstEntry = xffValues[0]?.Split(',')[0].Trim();
-            if (IPAddress.TryParse(firstEntry, out var clientIp))
+            var entries = (xffValues[0] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (entries.Length >= RailwayAppendedHopCount)
             {
-                context.Connection.RemoteIpAddress = clientIp;
+                var clientEntry = entries[entries.Length - RailwayAppendedHopCount];
+                if (IPAddress.TryParse(clientEntry, out var clientIp))
+                {
+                    context.Connection.RemoteIpAddress = clientIp;
+                }
             }
         }
 
         if (context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) && xfpValues.Count > 0)
         {
-            var scheme = xfpValues[0]?.Split(',')[0].Trim();
-            if (scheme is "http" or "https")
+            // Every Railway hop stamps X-Forwarded-Proto with the scheme it observed, so the
+            // rightmost entry is Railway's authoritative view; anything to its left could be
+            // client-supplied and spoofable.
+            var protoEntries = (xfpValues[0] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (protoEntries.Length > 0)
             {
-                context.Request.Scheme = scheme;
+                var scheme = protoEntries[^1];
+                if (scheme is "http" or "https")
+                {
+                    context.Request.Scheme = scheme;
+                }
             }
         }
     }
