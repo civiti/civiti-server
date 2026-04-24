@@ -26,17 +26,17 @@
         <PackageReference Include="Swashbuckle.AspNetCore.Annotations" Version="10.1.4" />
         <PackageReference Include="Swashbuckle.AspNetCore.Filters" Version="10.0.1" />
         <PackageReference Include="Swashbuckle.AspNetCore.Filters.Abstractions" Version="10.0.1" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.3">
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.7">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.3">
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.7">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.3" />
-        <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.2.1" />
-        <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.2.1" />
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.7" />
+        <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.16.0" />
+        <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.16.0" />
         <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
         <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
         <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />

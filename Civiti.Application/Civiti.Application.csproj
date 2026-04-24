@@ -24,7 +24,7 @@
         <!-- IJwksManager's contract exposes JsonWebKey / JsonWebKeySet / SecurityKey types    -->
         <!-- directly. Those live in Microsoft.IdentityModel.Tokens, so the package lands in   -->
         <!-- Civiti.Application to keep the interface resolvable. See refactor plan §5.        -->
-        <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.2.1" />
+        <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.16.0" />
     </ItemGroup>
 
 </Project>

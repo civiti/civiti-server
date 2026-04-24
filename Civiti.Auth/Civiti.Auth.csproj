@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <RootNamespace>Civiti.Auth</RootNamespace>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Civiti.Auth</AssemblyName>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Civiti.Domain\Civiti.Domain.csproj" />
+        <ProjectReference Include="..\Civiti.Application\Civiti.Application.csproj" />
+        <ProjectReference Include="..\Civiti.Infrastructure\Civiti.Infrastructure.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- OpenIddict.AspNetCore is the meta-package pulling Server + Validation + Client. -->
+        <!-- v1a wires the Server half only; Validation lands in Civiti.Mcp in v1c.          -->
+        <PackageReference Include="OpenIddict.AspNetCore" Version="7.5.0" />
+        <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    </ItemGroup>
+
+</Project>

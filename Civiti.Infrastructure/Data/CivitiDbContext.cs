@@ -24,6 +24,7 @@ public class CivitiDbContext(DbContextOptions<CivitiDbContext> options) : DbCont
     public DbSet<Report> Reports { get; set; } = null!;
     public DbSet<BlockedUser> BlockedUsers { get; set; } = null!;
     public DbSet<AdminIssueNotification> AdminIssueNotifications { get; set; } = null!;
+    public DbSet<McpSession> McpSessions { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -51,6 +52,13 @@ public class CivitiDbContext(DbContextOptions<CivitiDbContext> options) : DbCont
         modelBuilder.ApplyConfiguration(new ReportConfiguration());
         modelBuilder.ApplyConfiguration(new BlockedUserConfiguration());
         modelBuilder.ApplyConfiguration(new AdminIssueNotificationConfiguration());
+        modelBuilder.ApplyConfiguration(new McpSessionConfiguration());
+
+        // Register OpenIddict's default EF entity set (applications, authorizations, scopes,
+        // tokens). Matches architecture.md §3: all OAuth state lives on the shared DbContext,
+        // with Civiti.Api as the sole migration runner; Civiti.Auth and Civiti.Mcp read/write
+        // via DI but never call Database.Migrate().
+        modelBuilder.UseOpenIddict();
 
         // Note: Seed data is handled by StaticDataSeeder at runtime
     }
