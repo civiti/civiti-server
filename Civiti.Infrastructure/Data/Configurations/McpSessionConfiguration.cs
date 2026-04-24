@@ -36,9 +36,13 @@ public class McpSessionConfiguration : IEntityTypeConfiguration<McpSession>
             .HasMaxLength(64);
 
         // Rotation looks sessions up by their current refresh-token id; must be unique so we
-        // can never have two active sessions pointing at the same token row.
+        // can never have two active sessions pointing at the same token row. Partial filter
+        // makes the "only non-null tokens are unique" semantics explicit (Postgres already
+        // allows multiple NULLs in a b-tree unique index since NULL ≠ NULL, but the filter is
+        // self-documenting for future readers and portable across engines).
         builder.HasIndex(s => s.OpenIddictTokenId)
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("\"OpenIddictTokenId\" IS NOT NULL");
 
         // "Active sessions for this user" — powers the Connected AI Assistants UI and the
         // admin kill-switch sweep.

@@ -137,7 +137,8 @@ namespace Civiti.Infrastructure.Migrations
                 name: "IX_McpSessions_OpenIddictTokenId",
                 table: "McpSessions",
                 column: "OpenIddictTokenId",
-                unique: true);
+                unique: true,
+                filter: "\"OpenIddictTokenId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_McpSessions_SupabaseUserId_RevokedAt",

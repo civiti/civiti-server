@@ -704,7 +704,8 @@ namespace Civiti.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OpenIddictTokenId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"OpenIddictTokenId\" IS NOT NULL");
 
                     b.HasIndex("SupabaseUserId", "RevokedAt");
 

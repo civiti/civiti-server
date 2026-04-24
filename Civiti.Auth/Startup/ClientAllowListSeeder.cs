@@ -16,40 +16,83 @@ public sealed class ClientAllowListSeeder(
     IServiceProvider services,
     ILogger<ClientAllowListSeeder> logger) : BackgroundService
 {
+    // Retry cap + backoff. A single pass that fails on Railway cold start (DB not yet reachable)
+    // would leave the allow-list empty until the pod restarts — and /authorize would return
+    // "unknown client_id" in the meantime. We retry up to MaxAttempts with exponential backoff
+    // (capped at MaxBackoff) before re-throwing; BackgroundService then logs the fatal exception
+    // clearly rather than silently giving up.
+    private const int MaxAttempts = 10;
+    private static readonly TimeSpan InitialBackoff = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(60);
+
     // BackgroundService (not IHostedService.StartAsync) so a slow or momentarily unreachable
     // DB doesn't block Kestrel from binding — the health endpoint must come up even during
-    // a DB hiccup. Worst case: the first /authorize request that hits before the seed finishes
-    // fails with "unknown client_id"; the seed completes shortly after and subsequent requests
-    // succeed.
+    // a DB hiccup.
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
+        var backoff = InitialBackoff;
+        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
         {
-            await using var scope = services.CreateAsyncScope();
-            var manager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
-
-            foreach (var client in AllowList)
+            try
             {
-                var existing = await manager.FindByClientIdAsync(client.ClientId, stoppingToken);
-                if (existing is null)
+                await using var scope = services.CreateAsyncScope();
+                var manager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+
+                foreach (var client in AllowList)
                 {
-                    await manager.CreateAsync(client.ToDescriptor(), stoppingToken);
-                    logger.LogInformation("Seeded OpenIddict application {ClientId}", client.ClientId);
+                    var existing = await manager.FindByClientIdAsync(client.ClientId, stoppingToken);
+                    if (existing is null)
+                    {
+                        await manager.CreateAsync(client.ToDescriptor(), stoppingToken);
+                        logger.LogInformation("Seeded OpenIddict application {ClientId}", client.ClientId);
+                    }
+                    else
+                    {
+                        await manager.UpdateAsync(existing, client.ToDescriptor(), stoppingToken);
+                        logger.LogDebug("Updated OpenIddict application {ClientId}", client.ClientId);
+                    }
                 }
-                else
+
+                return;
+            }
+            catch (OperationCanceledException)
+            {
+                return; // Host shutting down.
+            }
+            catch (Exception ex) when (attempt < MaxAttempts)
+            {
+                logger.LogWarning(ex,
+                    "Client allow-list seed attempt {Attempt}/{Max} failed; retrying in {Backoff}.",
+                    attempt, MaxAttempts, backoff);
+
+                try
                 {
-                    await manager.UpdateAsync(existing, client.ToDescriptor(), stoppingToken);
-                    logger.LogDebug("Updated OpenIddict application {ClientId}", client.ClientId);
+                    await Task.Delay(backoff, stoppingToken);
                 }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                backoff = backoff * 2 < MaxBackoff ? backoff * 2 : MaxBackoff;
             }
         }
-        catch (OperationCanceledException)
+
+        // Final attempt with the catch-all stripped — let BackgroundService's host logger
+        // surface the exception rather than swallowing it silently.
+        await using var finalScope = services.CreateAsyncScope();
+        var finalManager = finalScope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
+        foreach (var client in AllowList)
         {
-            // Host shutting down before seed completed; nothing to do.
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Client allow-list seed failed. /authorize will reject requests until this resolves.");
+            var existing = await finalManager.FindByClientIdAsync(client.ClientId, stoppingToken);
+            if (existing is null)
+            {
+                await finalManager.CreateAsync(client.ToDescriptor(), stoppingToken);
+            }
+            else
+            {
+                await finalManager.UpdateAsync(existing, client.ToDescriptor(), stoppingToken);
+            }
         }
     }
 

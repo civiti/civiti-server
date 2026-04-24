@@ -192,11 +192,11 @@ app.MapMethods("/token", ["POST"], (HttpContext context) =>
         detail: "Civiti.Auth v1a has no issued authorization codes or refresh tokens to exchange.");
 });
 
-app.MapMethods("/revoke", ["POST"], (HttpContext context) =>
-{
-    Log.Information("/revoke hit; v1a stub acknowledges but there are no active tokens to revoke.");
-    return Results.NoContent();
-});
+// /revoke is handled end-to-end by OpenIddict's built-in handler — returning RFC 7009-compliant
+// 200 OK for unknown tokens, which is the right v1a behaviour. We don't enable passthrough so
+// we don't need a custom route; adding one would be dead code until v1b gives us sessions to
+// sync. Token revocation will re-route through a passthrough handler when we add McpSessions
+// lifecycle sync (auth-design.md §10).
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8082";
 Log.Information("Civiti.Auth starting on port {Port}; OpenIddict Server stubbed (v1a — no login flow wired).", port);

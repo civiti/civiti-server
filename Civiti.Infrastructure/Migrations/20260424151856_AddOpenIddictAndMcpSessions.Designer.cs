@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Civiti.Infrastructure.Migrations
 {
     [DbContext(typeof(CivitiDbContext))]
-    [Migration("20260424145751_AddOpenIddictAndMcpSessions")]
+    [Migration("20260424151856_AddOpenIddictAndMcpSessions")]
     partial class AddOpenIddictAndMcpSessions
     {
         /// <inheritdoc />
@@ -707,7 +707,8 @@ namespace Civiti.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OpenIddictTokenId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"OpenIddictTokenId\" IS NOT NULL");
 
                     b.HasIndex("SupabaseUserId", "RevokedAt");
 
