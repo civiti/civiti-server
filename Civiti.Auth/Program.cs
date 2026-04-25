@@ -1,4 +1,3 @@
-using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Civiti.Infrastructure.Data;
@@ -37,6 +36,15 @@ builder.Services.AddDbContext<CivitiDbContext>(options =>
     options.EnableSensitiveDataLogging(builder.Environment.IsDevelopment());
     options.EnableDetailedErrors(builder.Environment.IsDevelopment());
 });
+
+// Proxy trust runs as an IStartupFilter (registered before AddOpenIddict so it executes
+// first in the IStartupFilter chain) instead of the inline app.Use(...) we use in
+// Civiti.Mcp / Civiti.Api. OpenIddict's ASP.NET Core integration injects its server
+// middleware at the top of the pipeline via its own IStartupFilter, so any inline
+// app.Use(...) registered after var app = builder.Build() runs *behind* it — Request.Scheme
+// would still be "http" when OpenIddict's HTTPS check fires on /.well-known/openid-configuration
+// and discovery would 400 with ID2083. See ProxyTrustStartupFilter for the full XFF/XFP rules.
+builder.Services.AddSingleton<IStartupFilter, Civiti.Auth.Startup.ProxyTrustStartupFilter>();
 
 // OpenIddict Server — per auth-design.md §3/§4/§8. Scope/flow/lifetime values are the spec
 // defaults. v1a ships infrastructure only: /authorize and /token are registered but stubbed
@@ -98,57 +106,6 @@ builder.Services.AddOpenIddict()
 builder.Services.AddHostedService<Civiti.Auth.Startup.ClientAllowListSeeder>();
 
 var app = builder.Build();
-
-// Proxy trust — same rules as Civiti.Mcp / Civiti.Api; see Civiti.Mcp/Program.cs for the
-// observed Railway chain + rationale. Inlined per architecture.md §3 (no speculative
-// Civiti.Web library until duplication warrants it).
-const int RailwayAppendedHopCount = 2;
-IPNetwork[] trustedProxyRanges =
-[
-    IPNetwork.Parse("100.64.0.0/10"),
-    IPNetwork.Parse("127.0.0.0/8"),
-    IPNetwork.Parse("::1/128")
-];
-
-app.Use(async (context, next) =>
-{
-    var upstream = context.Connection.RemoteIpAddress;
-    if (upstream is { IsIPv4MappedToIPv6: true })
-    {
-        upstream = upstream.MapToIPv4();
-    }
-
-    if (upstream is not null && trustedProxyRanges.Any(n => n.Contains(upstream)))
-    {
-        if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var xffValues) && xffValues.Count > 0)
-        {
-            var entries = xffValues.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (entries.Length >= RailwayAppendedHopCount)
-            {
-                var clientEntry = entries[entries.Length - RailwayAppendedHopCount];
-                if (IPAddress.TryParse(clientEntry, out var clientIp))
-                {
-                    context.Connection.RemoteIpAddress = clientIp;
-                }
-            }
-        }
-
-        if (context.Request.Headers.TryGetValue("X-Forwarded-Proto", out var xfpValues) && xfpValues.Count > 0)
-        {
-            var protoEntries = xfpValues.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (protoEntries.Length > 0)
-            {
-                var scheme = protoEntries[^1];
-                if (scheme is "http" or "https")
-                {
-                    context.Request.Scheme = scheme;
-                }
-            }
-        }
-    }
-
-    await next(context);
-});
 
 app.MapGet("/api/health", async (CivitiDbContext ctx, IHostEnvironment env) =>
 {
