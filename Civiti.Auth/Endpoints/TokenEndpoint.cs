@@ -38,10 +38,20 @@ internal static class TokenEndpoint
 
         if (!oidcRequest.IsAuthorizationCodeGrantType())
         {
-            return Results.Problem(
-                statusCode: StatusCodes.Status400BadRequest,
-                title: "Unsupported grant type",
-                detail: "v1b.1 supports grant_type=authorization_code only. Refresh-token rotation lands in v1b.2.");
+            // Refresh-token grant flows reach this handler because AllowRefreshTokenFlow() is on
+            // in the OpenIddict server config (so v1b.1 issues refresh tokens for v1b.2 to
+            // consume). Until v1b.2 wires Supabase Admin API re-validation, we surface the
+            // RFC 6749 §5.2 unsupported_grant_type error via OpenIddict's properties pipeline so
+            // OAuth clients get the canonical {"error":"unsupported_grant_type"} body and trigger
+            // a fresh /authorize round-trip rather than failing on an unknown ProblemDetails shape.
+            var properties = new AuthenticationProperties(new Dictionary<string, string?>
+            {
+                [OpenIddictServerAspNetCoreConstants.Properties.Error] = OpenIddictConstants.Errors.UnsupportedGrantType,
+                [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] =
+                    "Refresh-token rotation lands in v1b.2; re-run /authorize to obtain a fresh access token."
+            });
+            return Results.Challenge(properties,
+                authenticationSchemes: new[] { OpenIddictServerAspNetCoreDefaults.AuthenticationScheme });
         }
 
         var info = await httpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
