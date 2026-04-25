@@ -1,8 +1,15 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Civiti.Auth.Authentication;
+using Civiti.Auth.Endpoints;
+using Civiti.Infrastructure.Configuration;
 using Civiti.Infrastructure.Data;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using OpenIddict.Abstractions;
+using OpenIddict.Server;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,6 +52,55 @@ builder.Services.AddDbContext<CivitiDbContext>(options =>
 // would still be "http" when OpenIddict's HTTPS check fires on /.well-known/openid-configuration
 // and discovery would 400 with ID2083. See ProxyTrustStartupFilter for the full XFF/XFP rules.
 builder.Services.AddSingleton<IStartupFilter, Civiti.Auth.Startup.ProxyTrustStartupFilter>();
+
+// Supabase configuration — same env var contract as Civiti.Api so deploys can share
+// SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY between services. v1b only needs the public key
+// (used as the `apikey` header on the /auth/v1/token PKCE exchange); the service-role key
+// is not required and stays unset on Civiti.Auth.
+var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL")
+    ?? builder.Configuration["Supabase:Url"]
+    ?? throw new InvalidOperationException(
+        "SUPABASE_URL env var (or Supabase:Url config) is required for v1b login delegation.");
+var supabasePublishableKey = Environment.GetEnvironmentVariable("SUPABASE_PUBLISHABLE_KEY")
+    ?? Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY")
+    ?? builder.Configuration["Supabase:PublishableKey"]
+    ?? throw new InvalidOperationException(
+        "SUPABASE_PUBLISHABLE_KEY env var (or Supabase:PublishableKey config) is required for v1b login delegation.");
+
+builder.Services.AddSingleton(new SupabaseConfiguration
+{
+    Url = supabaseUrl,
+    PublishableKey = supabasePublishableKey,
+    ServiceRoleKey = string.Empty
+});
+
+builder.Services.AddHttpClient();
+builder.Services.AddMemoryCache();
+// Persist Data Protection keys via the shared CivitiDbContext so the encrypted PKCE state we
+// hand to Supabase survives container restarts (Railway redeploys would otherwise discard the
+// in-memory key ring and break any in-flight login). Civiti.Api applies the
+// AddDataProtectionKeys migration before Civiti.Auth comes up.
+builder.Services.AddDataProtection()
+    .PersistKeysToDbContext<CivitiDbContext>();
+
+// Cookie scheme for the short-lived Civiti.Auth session that survives between /authorize and
+// /supabase-callback (and lets a returning user skip the Supabase round-trip if they hit
+// /authorize again from a different MCP client within 30 minutes).
+builder.Services.AddAuthentication()
+    .AddCookie(AuthEndpointConstants.CookieScheme, options =>
+    {
+        options.Cookie.Name = "civiti_auth_session";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        // SameAsRequest keeps local dev (HTTP) functional; in prod our proxy-trust middleware
+        // sets Request.Scheme = "https" before this cookie is written, so it picks up Secure.
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+        options.SlidingExpiration = false;
+    });
+
+builder.Services.AddSingleton<SupabasePkceStateProtector>();
+builder.Services.AddSingleton<SupabaseTokenValidator>();
 
 // OpenIddict Server — per auth-design.md §3/§4/§8. Scope/flow/lifetime values are the spec
 // defaults. v1a ships infrastructure only: /authorize and /token are registered but stubbed
@@ -99,13 +155,28 @@ builder.Services.AddOpenIddict()
             // has no proxy, so allow plaintext to keep the inner-loop simple.
             aspnet.DisableTransportSecurityRequirement();
         }
+
+        // McpSession audit row write happens inside OpenIddict's signin pipeline — see
+        // Civiti.Auth/Endpoints/McpSessionWriteHandler.cs for the rationale (avoids the
+        // orphan-row failure mode where a SignIn pipeline error left a phantom session).
+        // Late ordering ensures the principal + scopes have been finalised by the time we run.
+        options.AddEventHandler<OpenIddictServerEvents.ProcessSignInContext>(handler =>
+            handler.UseScopedHandler<McpSessionWriteHandler>()
+                   .SetOrder(int.MaxValue - 100_000));
     });
+
+builder.Services.AddScoped<McpSessionWriteHandler>();
 
 // Allow-list seed runs once at startup and ensures every client in auth-design.md §6 exists in
 // OpenIddict's application store. Idempotent: on second boot it's a no-op.
 builder.Services.AddHostedService<Civiti.Auth.Startup.ClientAllowListSeeder>();
 
 var app = builder.Build();
+
+// Wires the cookie scheme into the request pipeline. Required for `httpContext.SignInAsync`
+// on the /supabase-callback handler to reach the registered handler. OpenIddict's own scheme
+// is plumbed via its IStartupFilter, so no separate wiring is needed for it here.
+app.UseAuthentication();
 
 app.MapGet("/api/health", async (CivitiDbContext ctx, IHostEnvironment env) =>
 {
@@ -127,36 +198,17 @@ app.MapGet("/api/health", async (CivitiDbContext ctx, IHostEnvironment env) =>
     }
 }).ExcludeFromDescription();
 
-// v1a stubs — /authorize and /token answer OpenIddict's passthrough with 501. The Supabase
-// login delegation, consent Razor page, and refresh-token rotation wiring land in v1b and v1c.
-// Until then, hitting these endpoints is expected to 501; discovery metadata
-// (/.well-known/openid-configuration, /.well-known/jwks.json) is already served by OpenIddict.
-app.MapMethods("/authorize", ["GET", "POST"], (HttpContext context) =>
-{
-    Log.Information("/authorize hit but v1a stub has no Supabase login delegation; returning 501.");
-    return Results.Problem(
-        statusCode: StatusCodes.Status501NotImplemented,
-        title: "Authorization flow not yet implemented",
-        detail: "Civiti.Auth v1a ships the OpenIddict/OAuth skeleton only. Supabase login delegation lands in v1b.");
-});
-
-app.MapMethods("/token", ["POST"], (HttpContext context) =>
-{
-    Log.Information("/token hit but v1a stub has no issued codes/tokens; returning 501.");
-    return Results.Problem(
-        statusCode: StatusCodes.Status501NotImplemented,
-        title: "Token endpoint not yet implemented",
-        detail: "Civiti.Auth v1a has no issued authorization codes or refresh tokens to exchange.");
-});
-
-// /revoke is handled end-to-end by OpenIddict's built-in handler — returning RFC 7009-compliant
-// 200 OK for unknown tokens, which is the right v1a behaviour. We don't enable passthrough so
-// we don't need a custom route; adding one would be dead code until v1b gives us sessions to
-// sync. Token revocation will re-route through a passthrough handler when we add McpSessions
-// lifecycle sync (auth-design.md §10).
+// v1b.1 — real /authorize, /supabase-callback, and /token handlers. Refresh-token rotation
+// with Supabase Admin re-validation, the consent Razor page, admin-scope gating, and the
+// background role-sweep all arrive in v1b.2. /revoke remains handled end-to-end by
+// OpenIddict's built-in handler (RFC 7009-compliant 200 for unknown tokens) until v1b.2
+// adds McpSessions.RevokedAt sync via passthrough.
+app.MapMethods("/authorize", ["GET", "POST"], AuthorizeEndpoint.HandleAsync);
+app.MapGet(AuthEndpointConstants.SupabaseCallbackPath, SupabaseCallbackEndpoint.HandleAsync);
+app.MapPost("/token", TokenEndpoint.HandleAsync);
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8082";
-Log.Information("Civiti.Auth starting on port {Port}; OpenIddict Server stubbed (v1a — no login flow wired).", port);
+Log.Information("Civiti.Auth starting on port {Port}; v1b.1 — Supabase login delegation + token mint live; refresh + consent land in v1b.2.", port);
 await app.RunAsync($"http://0.0.0.0:{port}");
 return;
 
