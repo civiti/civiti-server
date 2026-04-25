@@ -19,7 +19,15 @@ internal sealed class SupabaseTokenValidator(
     ILogger<SupabaseTokenValidator> logger)
 {
     private const string JwksCacheKey = "Civiti.Auth.SupabaseJwks";
+    private const string JwksFailureCacheKey = "Civiti.Auth.SupabaseJwks.Failure";
     private static readonly TimeSpan JwksCacheTtl = TimeSpan.FromHours(6);
+    // Negative-cache fetch failures briefly so a Supabase outage doesn't generate one upstream
+    // request per inbound JWT; the value is short enough to recover quickly once Supabase returns.
+    private static readonly TimeSpan JwksFailureCacheTtl = TimeSpan.FromSeconds(30);
+    // Collapse concurrent cache-miss fetches so a TTL expiry under burst traffic produces exactly
+    // one Supabase round-trip instead of one per request. The semaphore is process-wide because
+    // the validator itself is registered as a singleton.
+    private static readonly SemaphoreSlim FetchGate = new(1, 1);
 
     public async Task<ClaimsPrincipal?> ValidateAsync(string supabaseJwt, CancellationToken cancellationToken)
     {
@@ -60,22 +68,47 @@ internal sealed class SupabaseTokenValidator(
             return cached;
         }
 
+        if (memoryCache.TryGetValue(JwksFailureCacheKey, out _))
+        {
+            return null;
+        }
+
+        await FetchGate.WaitAsync(cancellationToken);
         try
         {
-            using var http = httpClientFactory.CreateClient();
-            http.Timeout = TimeSpan.FromSeconds(5);
-            var jwksJson = await http.GetStringAsync(
-                $"{config.Url.TrimEnd('/')}/auth/v1/.well-known/jwks.json",
-                cancellationToken);
+            // Re-check after acquiring the gate — another caller may have populated the cache
+            // while we were waiting, in which case a duplicate fetch would be wasted work.
+            if (memoryCache.TryGetValue(JwksCacheKey, out cached) && cached is not null)
+            {
+                return cached;
+            }
+            if (memoryCache.TryGetValue(JwksFailureCacheKey, out _))
+            {
+                return null;
+            }
 
-            var jwks = new JsonWebKeySet(jwksJson);
-            memoryCache.Set(JwksCacheKey, jwks, JwksCacheTtl);
-            return jwks;
+            try
+            {
+                using var http = httpClientFactory.CreateClient();
+                http.Timeout = TimeSpan.FromSeconds(5);
+                var jwksJson = await http.GetStringAsync(
+                    $"{config.Url.TrimEnd('/')}/auth/v1/.well-known/jwks.json",
+                    cancellationToken);
+
+                var jwks = new JsonWebKeySet(jwksJson);
+                memoryCache.Set(JwksCacheKey, jwks, JwksCacheTtl);
+                return jwks;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to fetch Supabase JWKS from {Url}", config.Url);
+                memoryCache.Set(JwksFailureCacheKey, true, JwksFailureCacheTtl);
+                return null;
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            logger.LogError(ex, "Failed to fetch Supabase JWKS from {Url}", config.Url);
-            return null;
+            FetchGate.Release();
         }
     }
 }

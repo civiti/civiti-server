@@ -56,7 +56,7 @@ internal static class AuthorizeEndpoint
         var state = new SupabasePkceState(verifier, returnUrl, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         var protectedState = stateProtector.Protect(state);
 
-        var callbackUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{AuthEndpointConstants.SupabaseCallbackPath}";
+        var callbackUrl = ResolveCallbackUrl(httpContext, logger);
         var provider = Environment.GetEnvironmentVariable(ProviderEnvVar) ?? DefaultProvider;
 
         var supabaseAuthorizeUrl =
@@ -110,6 +110,24 @@ internal static class AuthorizeEndpoint
             supabaseUserId, string.Join(',', oidcRequest.GetScopes()));
 
         return Results.SignIn(principal, authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+    }
+
+    // The `redirect_to` value we hand to Supabase has to match a URL on Supabase's allow-list
+    // exactly — using Request.Host directly lets a spoofed Host header point Supabase at an
+    // attacker-controlled domain (defence-in-depth alongside Supabase's own allow-list). Read
+    // CIVITI_AUTH_PUBLIC_ORIGIN if it's set and trust nothing else; only fall back to
+    // Request.Scheme + Request.Host for local dev where the env var isn't worth the friction.
+    private static string ResolveCallbackUrl(HttpContext httpContext, ILogger logger)
+    {
+        var publicOrigin = Environment.GetEnvironmentVariable(AuthEndpointConstants.PublicOriginEnvVar);
+        if (!string.IsNullOrWhiteSpace(publicOrigin))
+        {
+            return $"{publicOrigin.TrimEnd('/')}{AuthEndpointConstants.SupabaseCallbackPath}";
+        }
+
+        logger.LogWarning(
+            "CIVITI_AUTH_PUBLIC_ORIGIN is unset — falling back to Request.Host for the Supabase callback URL. Set the env var in production to defend against Host-header spoofing.");
+        return $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{AuthEndpointConstants.SupabaseCallbackPath}";
     }
 
     // Claim destinations follow the OpenIddict convention: subject + role flow into both

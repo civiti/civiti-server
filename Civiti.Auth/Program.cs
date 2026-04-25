@@ -5,9 +5,11 @@ using Civiti.Auth.Endpoints;
 using Civiti.Infrastructure.Configuration;
 using Civiti.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using OpenIddict.Abstractions;
+using OpenIddict.Server;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -74,7 +76,12 @@ builder.Services.AddSingleton(new SupabaseConfiguration
 
 builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
-builder.Services.AddDataProtection();
+// Persist Data Protection keys via the shared CivitiDbContext so the encrypted PKCE state we
+// hand to Supabase survives container restarts (Railway redeploys would otherwise discard the
+// in-memory key ring and break any in-flight login). Civiti.Api applies the
+// AddDataProtectionKeys migration before Civiti.Auth comes up.
+builder.Services.AddDataProtection()
+    .PersistKeysToDbContext<CivitiDbContext>();
 
 // Cookie scheme for the short-lived Civiti.Auth session that survives between /authorize and
 // /supabase-callback (and lets a returning user skip the Supabase round-trip if they hit
@@ -148,7 +155,17 @@ builder.Services.AddOpenIddict()
             // has no proxy, so allow plaintext to keep the inner-loop simple.
             aspnet.DisableTransportSecurityRequirement();
         }
+
+        // McpSession audit row write happens inside OpenIddict's signin pipeline — see
+        // Civiti.Auth/Endpoints/McpSessionWriteHandler.cs for the rationale (avoids the
+        // orphan-row failure mode where a SignIn pipeline error left a phantom session).
+        // Late ordering ensures the principal + scopes have been finalised by the time we run.
+        options.AddEventHandler<OpenIddictServerEvents.ProcessSignInContext>(handler =>
+            handler.UseScopedHandler<McpSessionWriteHandler>()
+                   .SetOrder(int.MaxValue - 100_000));
     });
+
+builder.Services.AddScoped<McpSessionWriteHandler>();
 
 // Allow-list seed runs once at startup and ensures every client in auth-design.md §6 exists in
 // OpenIddict's application store. Idempotent: on second boot it's a no-op.

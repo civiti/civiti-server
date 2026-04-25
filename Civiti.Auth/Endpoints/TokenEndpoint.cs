@@ -1,6 +1,4 @@
 using System.Security.Claims;
-using Civiti.Domain.Entities;
-using Civiti.Infrastructure.Data;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
 using OpenIddict.Abstractions;
@@ -15,17 +13,17 @@ namespace Civiti.Auth.Endpoints;
 ///
 /// OpenIddict's middleware has already validated the code (consumed it from
 /// <c>OpenIddictTokens</c>), PKCE verifier, redirect_uri, and client credentials by the time
-/// this handler runs. We just recover the principal embedded in the code, re-attach claim
-/// destinations, write the McpSession audit row, and SignIn the OpenIddict scheme so the
-/// middleware emits the access + refresh tokens.
+/// this handler runs. We recover the principal embedded in the code, re-attach claim
+/// destinations, and SignIn the OpenIddict scheme so the middleware emits the access + refresh
+/// tokens. The McpSession audit row is written by
+/// <see cref="McpSessionWriteHandler"/> from inside the OpenIddict signin pipeline so it
+/// shares a code path with token issuance instead of committing speculatively from here.
 /// </summary>
 internal static class TokenEndpoint
 {
     public static async Task<IResult> HandleAsync(
         HttpContext httpContext,
-        CivitiDbContext dbContext,
-        ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken)
+        ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("Civiti.Auth.Endpoints.Token");
 
@@ -70,26 +68,8 @@ internal static class TokenEndpoint
             claim.SetDestinations(GetDestinations(claim));
         }
 
-        // McpSession.OpenIddictTokenId stays null in v1b.1. The session row is the source of
-        // truth for the "Connected AI Assistants" UI; the link to OpenIddict's refresh-token row
-        // gets repointed atomically on the first refresh in v1b.2 (auth-design.md §5).
-        // Pre-creating the row here means a SignIn failure later in OpenIddict's pipeline could
-        // leave an orphan; v1b.2's IOpenIddictServerHandler<ProcessSignInContext> hook moves the
-        // write to the post-issuance event so it stays in lockstep with token state.
-        var session = new McpSession
-        {
-            Id = Guid.NewGuid(),
-            ClientId = oidcRequest.ClientId ?? string.Empty,
-            SupabaseUserId = supabaseUserId,
-            ScopesGranted = principal.GetScopes().ToList(),
-            CreatedAt = DateTime.UtcNow,
-            LastSeenAt = DateTime.UtcNow
-        };
-        dbContext.McpSessions.Add(session);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        logger.LogInformation("/token: minted tokens for sub {Sub}, client {ClientId}, session {SessionId}",
-            supabaseUserId, oidcRequest.ClientId, session.Id);
+        logger.LogInformation("/token: code-grant exchange for sub {Sub}, client {ClientId}",
+            supabaseUserId, oidcRequest.ClientId);
 
         return Results.SignIn(principal, properties: null,
             authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);

@@ -1,11 +1,21 @@
 using Civiti.Infrastructure.Data.Configurations;
 using Civiti.Domain.Entities;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.EntityFrameworkCore;
 
 namespace Civiti.Infrastructure.Data;
 
-public class CivitiDbContext(DbContextOptions<CivitiDbContext> options) : DbContext(options)
+public class CivitiDbContext(DbContextOptions<CivitiDbContext> options)
+    : DbContext(options), IDataProtectionKeyContext
 {
+    // Civiti.Auth's Data Protection key ring lives on this context so encrypted PKCE state
+    // survives container restarts (Railway redeploys would otherwise discard the in-memory
+    // keys and fail any in-flight Supabase login round-trip with "State parameter is missing
+    // or tampered"). Other hosts don't currently use Data Protection but inherit the table
+    // for free since they share the DbContext.
+    public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
+
     public DbSet<UserProfile> UserProfiles { get; set; } = null!;
     public DbSet<Issue> Issues { get; set; } = null!;
     public DbSet<IssuePhoto> IssuePhotos { get; set; } = null!;

@@ -24,4 +24,15 @@ internal static class AuthEndpointConstants
     /// (lands in v1c) can verify the audience.
     /// </summary>
     public const string ResourceServer = "civiti-mcp";
+
+    /// <summary>
+    /// Env var holding the canonical scheme+host this Civiti.Auth deploy answers on (e.g.
+    /// <c>https://civiti-auth-production.up.railway.app</c>). Used to build the
+    /// <c>redirect_to</c> URL we hand to Supabase, instead of trusting <c>Request.Host</c>
+    /// directly: a spoofed Host header could otherwise steer Supabase at an attacker-controlled
+    /// domain (the Supabase redirect-URL allow-list is the second line of defence, but only if
+    /// it's tight). Optional — when unset we fall back to Request.Scheme + Request.Host with a
+    /// warning so local dev still works without extra ceremony.
+    /// </summary>
+    public const string PublicOriginEnvVar = "CIVITI_AUTH_PUBLIC_ORIGIN";
 }
