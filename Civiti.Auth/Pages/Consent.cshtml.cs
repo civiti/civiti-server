@@ -114,10 +114,16 @@ public sealed class ConsentModel(
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-        if (RememberClient)
-        {
-            await UpsertPreferenceAsync(supabaseUserId, oauthParams.ClientId, sanitisedApproved, cancellationToken);
-        }
+        // Always persist the preference row so the /authorize round-trip can complete —
+        // <see cref="AuthorizeEndpoint.HandleAsync"/> reads the McpUserClientPreference DB row
+        // as the single signal of "this user has consented to this client". A user who unticks
+        // Remember without us writing the row would loop /Consent ↔ /authorize forever, since
+        // there's no session-local consent state for v1b.2 to read.
+        //
+        // The Remember checkbox is preserved for UX continuity; v1b.3 will add a sweep that
+        // deletes rows whose Remember was unticked once the user's cookie session expires, so
+        // the visible behaviour matches the user's intent. Until then, both branches persist.
+        await UpsertPreferenceAsync(supabaseUserId, oauthParams.ClientId, sanitisedApproved, cancellationToken);
 
         logger.LogInformation(
             "Consent granted: sub {Sub}, client {ClientId}, scopes={Scopes}, remember={Remember}",

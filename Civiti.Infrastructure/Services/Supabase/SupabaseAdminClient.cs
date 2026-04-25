@@ -269,7 +269,20 @@ public sealed class SupabaseAdminClient(
     /// </summary>
     internal static SupabaseUserSnapshot? ParseUserSnapshot(string body)
     {
-        using JsonDocument doc = JsonDocument.Parse(body);
+        // A proxy/WAF can occasionally return 200 with an HTML or plaintext body; surface that
+        // as null so the refresh handler treats it like "deny" instead of bubbling a 500 up
+        // through TokenEndpoint and crashing the OAuth client.
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(body);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        using var _ = doc;
         JsonElement root = doc.RootElement;
 
         JsonElement userEl;
@@ -314,12 +327,17 @@ public sealed class SupabaseAdminClient(
             role = roleEl.GetString();
         }
 
+        // banned_until is ISO 8601 with arbitrary offsets ("…+05:30", "…Z", or no offset).
+        // DateTime.TryParse + SpecifyKind(Utc) silently shifts non-Z offsets to the server's
+        // local time before relabelling them as UTC, which makes the >DateTime.UtcNow check in
+        // TokenEndpoint wrong by the server's offset. DateTimeOffset.TryParse handles every
+        // variant correctly; .UtcDateTime then gives a true UTC value to compare.
         DateTime? bannedUntil = null;
         if (userEl.TryGetProperty("banned_until", out JsonElement banEl)
             && banEl.ValueKind == JsonValueKind.String
-            && DateTime.TryParse(banEl.GetString(), out var parsedBan))
+            && DateTimeOffset.TryParse(banEl.GetString(), out var banOffset))
         {
-            bannedUntil = DateTime.SpecifyKind(parsedBan, DateTimeKind.Utc);
+            bannedUntil = banOffset.UtcDateTime;
         }
 
         return new SupabaseUserSnapshot(id, email, role, bannedUntil);

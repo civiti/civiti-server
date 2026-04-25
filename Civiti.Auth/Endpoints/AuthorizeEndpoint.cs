@@ -118,13 +118,6 @@ public static class AuthorizeEndpoint
         IReadOnlyCollection<string> requestedScopes,
         CancellationToken cancellationToken)
     {
-        if (requestedScopes.Count == 0)
-        {
-            // No app-scopes requested (e.g. only `openid`). Always show consent on first run so
-            // the user explicitly opts in; cheap and avoids surprising silent grants.
-            // The check below would always return true otherwise.
-        }
-
         var preference = await dbContext.McpUserClientPreferences
             .AsNoTracking()
             .FirstOrDefaultAsync(
@@ -133,6 +126,9 @@ public static class AuthorizeEndpoint
 
         if (preference is null) return false;
 
+        // requestedScopes empty (e.g. openid-only) is vacuously covered by any pref row, which
+        // is the right call: if the user has previously granted *anything* to this client, they
+        // shouldn't see a second consent for an identity-only request.
         var granted = preference.ScopesGranted.ToHashSet(StringComparer.Ordinal);
         return requestedScopes.All(granted.Contains);
     }

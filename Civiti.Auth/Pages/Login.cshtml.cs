@@ -163,10 +163,12 @@ public sealed class LoginModel(
         };
     }
 
+    // Login accepts a null/empty returnUrl by design — a user landing on /Login directly (not
+    // via /authorize) gets bounced to the homepage on success. Consent.cshtml.cs has its own
+    // stricter helper that rejects null because it always needs a /authorize URL to resume.
     private static bool IsSafeReturnUrl(string? url)
     {
         if (string.IsNullOrEmpty(url)) return true;
-        // Only relative URLs allowed — guards against open redirects after sign-in.
         return Uri.TryCreate(url, UriKind.Relative, out _);
     }
 }
