@@ -12,7 +12,7 @@ namespace Civiti.Auth.Authentication;
 /// lifetime. Audience is intentionally unchecked — Supabase JWTs use a fixed
 /// <c>"authenticated"</c> audience that gives us no useful signal here.
 /// </summary>
-internal sealed class SupabaseTokenValidator(
+public sealed class SupabaseTokenValidator(
     SupabaseConfiguration config,
     IHttpClientFactory httpClientFactory,
     IMemoryCache memoryCache,

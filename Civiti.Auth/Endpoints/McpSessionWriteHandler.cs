@@ -1,5 +1,6 @@
 using Civiti.Domain.Entities;
 using Civiti.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using OpenIddict.Abstractions;
 using OpenIddict.Server;
 using static OpenIddict.Server.OpenIddictServerEvents;
@@ -21,7 +22,7 @@ namespace Civiti.Auth.Endpoints;
 /// nothing to track in McpSessions for that path. Refresh-token rotation lands in v1b.2 with a
 /// separate handler that re-points <see cref="McpSession.OpenIddictTokenId"/> on each rotation.
 /// </summary>
-internal sealed class McpSessionWriteHandler(
+public sealed class McpSessionWriteHandler(
     CivitiDbContext dbContext,
     ILogger<McpSessionWriteHandler> logger)
     : IOpenIddictServerHandler<ProcessSignInContext>
@@ -32,7 +33,10 @@ internal sealed class McpSessionWriteHandler(
         {
             return;
         }
-        if (!context.Request.IsAuthorizationCodeGrantType())
+
+        var isCodeGrant = context.Request.IsAuthorizationCodeGrantType();
+        var isRefresh = context.Request.IsRefreshTokenGrantType();
+        if (!isCodeGrant && !isRefresh)
         {
             return;
         }
@@ -50,19 +54,46 @@ internal sealed class McpSessionWriteHandler(
             return;
         }
 
-        var session = new McpSession
-        {
-            Id = Guid.NewGuid(),
-            ClientId = context.Request.ClientId ?? string.Empty,
-            SupabaseUserId = supabaseUserId,
-            ScopesGranted = principal.GetScopes().ToList(),
-            CreatedAt = DateTime.UtcNow,
-            LastSeenAt = DateTime.UtcNow
-        };
-        dbContext.McpSessions.Add(session);
-        await dbContext.SaveChangesAsync(context.CancellationToken);
+        var clientId = context.Request.ClientId ?? string.Empty;
+        var scopes = principal.GetScopes().ToList();
 
-        logger.LogInformation("McpSession written: {SessionId}, sub {Sub}, client {ClientId}",
-            session.Id, supabaseUserId, context.Request.ClientId);
+        // McpSession is a (user, client) view-model row — find the existing active one and
+        // update it on refresh, otherwise insert a new row on first code-grant. If the user
+        // somehow re-authenticates fresh while an old row is still active (e.g. cookie
+        // session bypass, edge case), we update in place rather than creating a duplicate
+        // surfacing in the "Connected AI Assistants" UI.
+        var existing = await dbContext.McpSessions
+            .Where(s => s.SupabaseUserId == supabaseUserId
+                        && s.ClientId == clientId
+                        && s.RevokedAt == null)
+            .OrderByDescending(s => s.LastSeenAt)
+            .FirstOrDefaultAsync(context.CancellationToken);
+
+        if (existing is null)
+        {
+            var session = new McpSession
+            {
+                Id = Guid.NewGuid(),
+                ClientId = clientId,
+                SupabaseUserId = supabaseUserId,
+                ScopesGranted = scopes,
+                CreatedAt = DateTime.UtcNow,
+                LastSeenAt = DateTime.UtcNow
+            };
+            dbContext.McpSessions.Add(session);
+            logger.LogInformation("McpSession created: {SessionId}, sub {Sub}, client {ClientId} ({Grant})",
+                session.Id, supabaseUserId, clientId, context.Request.GrantType);
+        }
+        else
+        {
+            existing.LastSeenAt = DateTime.UtcNow;
+            // Track the latest scope set in case the user re-consented to a different scope
+            // shape on a fresh /authorize that landed back on this row.
+            existing.ScopesGranted = scopes;
+            logger.LogInformation("McpSession refreshed: {SessionId}, sub {Sub}, client {ClientId}",
+                existing.Id, supabaseUserId, clientId);
+        }
+
+        await dbContext.SaveChangesAsync(context.CancellationToken);
     }
 }

@@ -1,9 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Civiti.Application.Services;
 using Civiti.Auth.Authentication;
 using Civiti.Auth.Endpoints;
 using Civiti.Infrastructure.Configuration;
 using Civiti.Infrastructure.Data;
+using Civiti.Infrastructure.Services.Supabase;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -54,9 +56,11 @@ builder.Services.AddDbContext<CivitiDbContext>(options =>
 builder.Services.AddSingleton<IStartupFilter, Civiti.Auth.Startup.ProxyTrustStartupFilter>();
 
 // Supabase configuration — same env var contract as Civiti.Api so deploys can share
-// SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY between services. v1b only needs the public key
-// (used as the `apikey` header on the /auth/v1/token PKCE exchange); the service-role key
-// is not required and stays unset on Civiti.Auth.
+// SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY / SUPABASE_SERVICE_KEY between services. The
+// publishable key drives the password / OAuth-code exchanges on /auth/v1/token; the service
+// key is required from v1b.2 onward for the refresh-time Admin API re-validation in
+// SupabaseAdminClient.GetUserAsync (auth-design.md §4 — confirm user exists + role unchanged
+// on every refresh).
 var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL")
     ?? builder.Configuration["Supabase:Url"]
     ?? throw new InvalidOperationException(
@@ -66,13 +70,36 @@ var supabasePublishableKey = Environment.GetEnvironmentVariable("SUPABASE_PUBLIS
     ?? builder.Configuration["Supabase:PublishableKey"]
     ?? throw new InvalidOperationException(
         "SUPABASE_PUBLISHABLE_KEY env var (or Supabase:PublishableKey config) is required for v1b login delegation.");
+var supabaseServiceRoleKey = Environment.GetEnvironmentVariable("SUPABASE_SERVICE_KEY")
+    ?? Environment.GetEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY")
+    ?? builder.Configuration["Supabase:ServiceRoleKey"]
+    ?? string.Empty;
 
 builder.Services.AddSingleton(new SupabaseConfiguration
 {
     Url = supabaseUrl,
     PublishableKey = supabasePublishableKey,
-    ServiceRoleKey = string.Empty
+    ServiceRoleKey = supabaseServiceRoleKey
 });
+
+// SupabaseAdminClient needs an AdminNotifyConfiguration for retry/timeout/cache settings even
+// though Civiti.Auth never sends admin notifications. We register a minimal config (admin
+// notification dispatch is disabled here) so refresh-token re-validation can resolve the
+// dependency. The HttpClient name + factory mirrors the Civiti.Api wiring.
+builder.Services.AddSingleton(new AdminNotifyConfiguration
+{
+    Enabled = false,
+    AdminListCacheSeconds = 60,
+    MaxSupabaseRetries = 2,
+    SupabaseTimeoutSeconds = 5,
+    SupabasePageSize = 200,
+    MaxSupabasePages = 50
+});
+builder.Services.AddHttpClient(SupabaseAdminClient.HttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+builder.Services.AddSingleton<ISupabaseAdminClient, SupabaseAdminClient>();
 
 builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
@@ -101,6 +128,13 @@ builder.Services.AddAuthentication()
 
 builder.Services.AddSingleton<SupabasePkceStateProtector>();
 builder.Services.AddSingleton<SupabaseTokenValidator>();
+builder.Services.AddScoped<SupabaseLoginCompletion>();
+builder.Services.AddScoped<AdminScopeFilter>();
+
+// Razor Pages host the /Login (provider selection + email/password) and /Consent (per-scope
+// approval) screens. Both POST back to themselves and redirect to the original /authorize URL
+// on success, so no extra route conventions are needed.
+builder.Services.AddRazorPages();
 
 // OpenIddict Server — per auth-design.md §3/§4/§8. Scope/flow/lifetime values are the spec
 // defaults. v1a ships infrastructure only: /authorize and /token are registered but stubbed
@@ -173,10 +207,14 @@ builder.Services.AddHostedService<Civiti.Auth.Startup.ClientAllowListSeeder>();
 
 var app = builder.Build();
 
-// Wires the cookie scheme into the request pipeline. Required for `httpContext.SignInAsync`
-// on the /supabase-callback handler to reach the registered handler. OpenIddict's own scheme
-// is plumbed via its IStartupFilter, so no separate wiring is needed for it here.
+// Static assets (CSS for /Login + /Consent) live under wwwroot/ — UseStaticFiles() exposes
+// them at /css/site.css. UseAuthentication wires the cookie scheme into the pipeline so
+// SignInAsync on /supabase-callback (and the Razor pages) reaches the registered handler.
+// OpenIddict's own scheme is plumbed via its IStartupFilter and needs no extra wiring.
+app.UseStaticFiles();
 app.UseAuthentication();
+
+app.MapRazorPages();
 
 app.MapGet("/api/health", async (CivitiDbContext ctx, IHostEnvironment env) =>
 {
@@ -198,17 +236,19 @@ app.MapGet("/api/health", async (CivitiDbContext ctx, IHostEnvironment env) =>
     }
 }).ExcludeFromDescription();
 
-// v1b.1 — real /authorize, /supabase-callback, and /token handlers. Refresh-token rotation
-// with Supabase Admin re-validation, the consent Razor page, admin-scope gating, and the
-// background role-sweep all arrive in v1b.2. /revoke remains handled end-to-end by
-// OpenIddict's built-in handler (RFC 7009-compliant 200 for unknown tokens) until v1b.2
-// adds McpSessions.RevokedAt sync via passthrough.
+// v1b.2 — /authorize routes through /Login (no cookie) → /Consent (no preference) →
+// OpenIddict SignIn (mints code). /token now handles authorization_code AND refresh_token
+// grants; the refresh path re-validates the Supabase user via the Admin API on every
+// rotation. /revoke remains handled end-to-end by OpenIddict's built-in handler
+// (RFC 7009-compliant 200 for unknown tokens); McpSessions.RevokedAt sync via passthrough
+// lands in v1b.3 alongside the background role-revalidation sweep and the loopback
+// port-wildcard handler for native Claude clients.
 app.MapMethods("/authorize", ["GET", "POST"], AuthorizeEndpoint.HandleAsync);
 app.MapGet(AuthEndpointConstants.SupabaseCallbackPath, SupabaseCallbackEndpoint.HandleAsync);
 app.MapPost("/token", TokenEndpoint.HandleAsync);
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8082";
-Log.Information("Civiti.Auth starting on port {Port}; v1b.1 — Supabase login delegation + token mint live; refresh + consent land in v1b.2.", port);
+Log.Information("Civiti.Auth starting on port {Port}; v1b.2 — login + consent UI, refresh-token rotation with Supabase Admin re-validation, admin-scope gating live.", port);
 await app.RunAsync($"http://0.0.0.0:{port}");
 return;
 

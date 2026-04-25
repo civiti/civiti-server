@@ -10,12 +10,12 @@ namespace Civiti.Auth.Authentication;
 /// /supabase-callback can recover the PKCE verifier and the original /authorize query string
 /// (and resume the OpenIddict flow from where it left off).
 /// </summary>
-internal sealed record SupabasePkceState(
+public sealed record SupabasePkceState(
     string CodeVerifier,
     string ReturnUrl,
     long IssuedAtUnix);
 
-internal sealed class SupabasePkceStateProtector(IDataProtectionProvider provider)
+public sealed class SupabasePkceStateProtector(IDataProtectionProvider provider)
 {
     private const string Purpose = "Civiti.Auth.SupabasePkceState.v1";
 
