@@ -70,7 +70,13 @@ public sealed class ConsentModel(
         ClientId = oauthParams.ClientId;
         ClientDisplayName = await applicationManager.GetDisplayNameAsync(application, cancellationToken)
             ?? oauthParams.ClientId;
-        IsTrusted = true; // All v1b.2 clients are pre-registered in the allow-list; DCR (untrusted) lands later.
+        // Trust badge tracks the `civiti.is_allow_listed` property the seeder stamps on every
+        // pre-registered client. Once DCR lands, dynamically-registered apps won't carry this
+        // marker and will render the "Unverified" badge automatically — keeping the user-facing
+        // trust signal honest without a code change.
+        var properties = await applicationManager.GetPropertiesAsync(application, cancellationToken);
+        IsTrusted = properties.TryGetValue("civiti.is_allow_listed", out var trustElement)
+                    && trustElement.ValueKind == System.Text.Json.JsonValueKind.True;
 
         var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
         var filterResult = await adminScopeFilter.FilterAsync(
@@ -225,9 +231,14 @@ public sealed class ConsentModel(
         return new OAuthParams(clientId, redirectUri, query["state"], scopes);
     }
 
+    // Consent always needs a /authorize URL to resume — null/empty rejected. Reject
+    // protocol-relative URLs (`//evil.com`) and any absolute scheme too: see Login.cshtml.cs's
+    // helper for the rationale (Uri.TryCreate accepts `//evil.com` as a valid relative URI per
+    // RFC 3986 §4.2 even though browsers resolve it to a remote host).
     private static bool IsSafeReturnUrl(string? url)
     {
         if (string.IsNullOrEmpty(url)) return false;
+        if (!url.StartsWith('/') || url.StartsWith("//", StringComparison.Ordinal)) return false;
         return Uri.TryCreate(url, UriKind.Relative, out _);
     }
 

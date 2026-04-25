@@ -74,7 +74,10 @@ internal static class SupabaseCallbackEndpoint
         var completion = await loginCompletion.CompleteAsync(httpContext, supabaseJwt, cancellationToken);
         return completion switch
         {
-            SupabaseLoginCompletion.Result.Ok => Results.Redirect(state.ReturnUrl),
+            // LocalRedirect rejects absolute and protocol-relative URLs at the framework level —
+            // a belt-and-braces guard atop the IsSafeReturnUrl check on the originating /Login
+            // page, so a tampered state.ReturnUrl can't drive the post-Google redirect off-host.
+            SupabaseLoginCompletion.Result.Ok => Results.LocalRedirect(state.ReturnUrl),
             SupabaseLoginCompletion.Result.NoProfile => Results.Problem(
                 statusCode: StatusCodes.Status403Forbidden,
                 title: "No Civiti account",
