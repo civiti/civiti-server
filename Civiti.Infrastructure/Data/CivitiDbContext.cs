@@ -35,6 +35,7 @@ public class CivitiDbContext(DbContextOptions<CivitiDbContext> options)
     public DbSet<BlockedUser> BlockedUsers { get; set; } = null!;
     public DbSet<AdminIssueNotification> AdminIssueNotifications { get; set; } = null!;
     public DbSet<McpSession> McpSessions { get; set; } = null!;
+    public DbSet<McpUserClientPreference> McpUserClientPreferences { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -63,6 +64,7 @@ public class CivitiDbContext(DbContextOptions<CivitiDbContext> options)
         modelBuilder.ApplyConfiguration(new BlockedUserConfiguration());
         modelBuilder.ApplyConfiguration(new AdminIssueNotificationConfiguration());
         modelBuilder.ApplyConfiguration(new McpSessionConfiguration());
+        modelBuilder.ApplyConfiguration(new McpUserClientPreferenceConfiguration());
 
         // Register OpenIddict's default EF entity set (applications, authorizations, scopes,
         // tokens). Matches architecture.md §3: all OAuth state lives on the shared DbContext,

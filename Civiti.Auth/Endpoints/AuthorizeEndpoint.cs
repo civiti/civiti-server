@@ -1,38 +1,36 @@
 using System.Security.Claims;
 using Civiti.Auth.Authentication;
-using Civiti.Infrastructure.Configuration;
+using Civiti.Infrastructure.Data;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.EntityFrameworkCore;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 
 namespace Civiti.Auth.Endpoints;
 
 /// <summary>
-/// /authorize entry point. Two paths:
+/// /authorize entry point. Three paths:
 ///
-/// 1. <b>No cookie session</b> — generate a PKCE pair, persist (verifier + return-URL) as
-///    encrypted state, redirect the user to Supabase's OAuth provider. The flow resumes at
-///    /supabase-callback.
-/// 2. <b>Cookie session present</b> — convert the cookie principal into an OpenIddict
-///    principal (sub + role + scopes + resource), set claim destinations, and SignIn the
-///    OpenIddict server scheme. OpenIddict's middleware then emits the authorization-code
-///    redirect back to the MCP client.
-///
-/// v1b.1 deliberately ships OAuth-only login (Google, configured in Supabase). Email
-/// magic-link / password / provider selection land in v1b.2 with the consent Razor page —
-/// they all need user-facing UI which is out of scope here.
+/// 1. <b>No cookie session</b> — redirect to <c>/Login?returnUrl=/authorize?...</c>. The
+///    Login Razor page handles email+password and the "Sign in with Google" button (which
+///    bounces through Supabase's PKCE flow and lands on <c>/supabase-callback</c>).
+/// 2. <b>Cookie session, but no consent record covering the requested scopes</b> — redirect
+///    to <c>/Consent?returnUrl=/authorize?...</c>. The Consent page upserts an
+///    <c>McpUserClientPreference</c> row on approve and redirects back here, where this path
+///    is then satisfied.
+/// 3. <b>Cookie session + consent (or scopes don't need consent)</b> — apply
+///    <see cref="AdminScopeFilter"/>, build the OpenIddict <see cref="ClaimsPrincipal"/>, set
+///    claim destinations, and SignIn so the OpenIddict middleware emits the auth-code redirect.
 /// </summary>
-internal static class AuthorizeEndpoint
+public static class AuthorizeEndpoint
 {
-    private const string DefaultProvider = "google";
-    private const string ProviderEnvVar = "SUPABASE_LOGIN_PROVIDER";
-
     public static async Task<IResult> HandleAsync(
         HttpContext httpContext,
-        SupabasePkceStateProtector stateProtector,
-        SupabaseConfiguration supabaseConfig,
-        ILoggerFactory loggerFactory)
+        AdminScopeFilter adminScopeFilter,
+        CivitiDbContext dbContext,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Civiti.Auth.Endpoints.Authorize");
 
@@ -46,38 +44,16 @@ internal static class AuthorizeEndpoint
         }
 
         var cookieAuth = await httpContext.AuthenticateAsync(AuthEndpointConstants.CookieScheme);
-        if (cookieAuth.Succeeded && cookieAuth.Principal is not null)
+        if (!cookieAuth.Succeeded || cookieAuth.Principal is null)
         {
-            return IssueAuthorizationCode(oidcRequest, cookieAuth.Principal, logger);
+            // Path 1 — no session, send the user to /Login. Login.cshtml handles both
+            // email+password and the Google PKCE redirect.
+            var returnUrl = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
+            logger.LogInformation("/authorize: no cookie session, redirecting to /Login");
+            return Results.Redirect($"/Login?returnUrl={Uri.EscapeDataString(returnUrl)}");
         }
 
-        var (verifier, challenge) = PkceCodes.Generate();
-        var returnUrl = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
-        var state = new SupabasePkceState(verifier, returnUrl, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        var protectedState = stateProtector.Protect(state);
-
-        var callbackUrl = ResolveCallbackUrl(httpContext, logger);
-        var provider = Environment.GetEnvironmentVariable(ProviderEnvVar) ?? DefaultProvider;
-
-        var supabaseAuthorizeUrl =
-            $"{supabaseConfig.Url.TrimEnd('/')}/auth/v1/authorize" +
-            $"?provider={Uri.EscapeDataString(provider)}" +
-            $"&redirect_to={Uri.EscapeDataString(callbackUrl)}" +
-            $"&code_challenge={challenge}" +
-            $"&code_challenge_method=S256" +
-            $"&state={Uri.EscapeDataString(protectedState)}";
-
-        logger.LogInformation("/authorize: redirecting to Supabase ({Provider}) for client {ClientId}",
-            provider, oidcRequest.ClientId);
-        return Results.Redirect(supabaseAuthorizeUrl);
-    }
-
-    private static IResult IssueAuthorizationCode(
-        OpenIddictRequest oidcRequest,
-        ClaimsPrincipal cookiePrincipal,
-        ILogger logger)
-    {
-        var supabaseUserId = cookiePrincipal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var supabaseUserId = cookieAuth.Principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(supabaseUserId))
         {
             logger.LogWarning("/authorize: cookie session missing NameIdentifier claim");
@@ -85,8 +61,30 @@ internal static class AuthorizeEndpoint
                 authenticationSchemes: new[] { OpenIddictServerAspNetCoreDefaults.AuthenticationScheme });
         }
 
-        var role = cookiePrincipal.FindFirst(ClaimTypes.Role)?.Value;
+        var role = cookieAuth.Principal.FindFirst(ClaimTypes.Role)?.Value;
+        var clientId = oidcRequest.ClientId ?? string.Empty;
+        var requestedScopes = oidcRequest.GetScopes();
 
+        // §6 admin gating runs early so the consent screen + final SignIn agree on the same
+        // scope set; the Consent page re-runs the filter on POST to defeat any client-side
+        // tampering of the form.
+        var filter = await adminScopeFilter.FilterAsync(clientId, role, requestedScopes, cancellationToken);
+        var allowedScopes = filter.Allowed.ToList();
+
+        var hasConsent = await HasConsentForScopesAsync(dbContext, supabaseUserId, clientId, allowedScopes, cancellationToken);
+        if (!hasConsent)
+        {
+            // Path 2 — drive the user through the consent screen, which will bounce back here
+            // with the McpUserClientPreference row in place. We re-render /authorize on return
+            // so the OpenIddict request payload (PKCE challenge, redirect_uri, …) is intact.
+            var returnUrl = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
+            logger.LogInformation(
+                "/authorize: cookie session present but no consent covering scopes [{Scopes}] for client {ClientId}; redirecting to /Consent",
+                string.Join(',', allowedScopes), clientId);
+            return Results.Redirect($"/Consent?returnUrl={Uri.EscapeDataString(returnUrl)}");
+        }
+
+        // Path 3 — issue the authorization code.
         var identity = new ClaimsIdentity(
             authenticationType: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
             nameType: OpenIddictConstants.Claims.Name,
@@ -103,37 +101,42 @@ internal static class AuthorizeEndpoint
         }
 
         var principal = new ClaimsPrincipal(identity);
-        principal.SetScopes(oidcRequest.GetScopes());
+        principal.SetScopes(allowedScopes);
         principal.SetResources(AuthEndpointConstants.ResourceServer);
 
-        logger.LogInformation("/authorize: issuing authorization code for sub {Sub}, scopes {Scopes}",
-            supabaseUserId, string.Join(',', oidcRequest.GetScopes()));
+        logger.LogInformation(
+            "/authorize: issuing authorization code for sub {Sub}, scopes {Scopes}",
+            supabaseUserId, string.Join(',', allowedScopes));
 
         return Results.SignIn(principal, authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
     }
 
-    // The `redirect_to` value we hand to Supabase has to match a URL on Supabase's allow-list
-    // exactly — using Request.Host directly lets a spoofed Host header point Supabase at an
-    // attacker-controlled domain (defence-in-depth alongside Supabase's own allow-list). Read
-    // CIVITI_AUTH_PUBLIC_ORIGIN if it's set and trust nothing else; only fall back to
-    // Request.Scheme + Request.Host for local dev where the env var isn't worth the friction.
-    private static string ResolveCallbackUrl(HttpContext httpContext, ILogger logger)
+    private static async Task<bool> HasConsentForScopesAsync(
+        CivitiDbContext dbContext,
+        string supabaseUserId,
+        string clientId,
+        IReadOnlyCollection<string> requestedScopes,
+        CancellationToken cancellationToken)
     {
-        var publicOrigin = Environment.GetEnvironmentVariable(AuthEndpointConstants.PublicOriginEnvVar);
-        if (!string.IsNullOrWhiteSpace(publicOrigin))
+        if (requestedScopes.Count == 0)
         {
-            return $"{publicOrigin.TrimEnd('/')}{AuthEndpointConstants.SupabaseCallbackPath}";
+            // No app-scopes requested (e.g. only `openid`). Always show consent on first run so
+            // the user explicitly opts in; cheap and avoids surprising silent grants.
+            // The check below would always return true otherwise.
         }
 
-        logger.LogWarning(
-            "CIVITI_AUTH_PUBLIC_ORIGIN is unset — falling back to Request.Host for the Supabase callback URL. Set the env var in production to defend against Host-header spoofing.");
-        return $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{AuthEndpointConstants.SupabaseCallbackPath}";
+        var preference = await dbContext.McpUserClientPreferences
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                p => p.SupabaseUserId == supabaseUserId && p.ClientId == clientId,
+                cancellationToken);
+
+        if (preference is null) return false;
+
+        var granted = preference.ScopesGranted.ToHashSet(StringComparer.Ordinal);
+        return requestedScopes.All(granted.Contains);
     }
 
-    // Claim destinations follow the OpenIddict convention: subject + role flow into both
-    // the access token (so Civiti.Mcp can authorize calls) and the identity token (where
-    // applicable). v1b.2 will add scope-aware destinations once we introduce id_token-only
-    // claims like email + display_name.
     private static IEnumerable<string> GetDestinations(Claim claim) => claim.Type switch
     {
         OpenIddictConstants.Claims.Subject =>

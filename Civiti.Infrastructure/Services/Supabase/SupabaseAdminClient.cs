@@ -22,6 +22,47 @@ public sealed class SupabaseAdminClient(
     public const string HttpClientName = "SupabaseAdmin";
     private const string CacheKey = "SupabaseAdminClient:AdminList";
 
+    public async Task<SupabaseUserSnapshot?> GetUserAsync(string supabaseUserId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(supabaseUserId))
+        {
+            return null;
+        }
+        if (!supabaseConfig.HasServiceRoleKey)
+        {
+            // Same posture as ListAdmins — without the service-role key we can't query the
+            // admin endpoint; return null so the refresh handler treats this as "unknown" and
+            // declines, rather than letting an unverified user keep refreshing.
+            logger.LogWarning("Supabase service role key not configured — cannot resolve user {Sub}", supabaseUserId);
+            return null;
+        }
+
+        using HttpClient httpClient = httpClientFactory.CreateClient(HttpClientName);
+
+        var url = $"{supabaseConfig.Url}/auth/v1/admin/users/{Uri.EscapeDataString(supabaseUserId)}";
+        using HttpRequestMessage request = new(HttpMethod.Get, url);
+        request.Headers.Add("Authorization", $"Bearer {supabaseConfig.ServiceRoleKey}");
+        request.Headers.Add("apikey", supabaseConfig.ServiceRoleKey);
+
+        using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        if (!response.IsSuccessStatusCode)
+        {
+            // Don't retry/throw — the refresh handler treats null as "deny" and the cost of an
+            // erroneous deny is "user re-authenticates", which is preferable to letting a
+            // disabled user keep their session because Supabase had a transient blip.
+            logger.LogWarning("Supabase /admin/users/{Sub} returned {Status}", supabaseUserId, (int)response.StatusCode);
+            return null;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        return ParseUserSnapshot(body);
+    }
+
     public async Task<IReadOnlyList<SupabaseAdminUser>> ListAdminsAsync(CancellationToken cancellationToken = default)
     {
         if (memoryCache.TryGetValue(CacheKey, out IReadOnlyList<SupabaseAdminUser>? cached) && cached is not null)
@@ -220,4 +261,67 @@ public sealed class SupabaseAdminClient(
 
     internal sealed record UsersPage(IReadOnlyList<ParsedUser> Users);
     internal sealed record ParsedUser(Guid Id, string? Email, JsonElement AppMetadata);
+
+    /// <summary>
+    /// Parses a single-user response from <c>/auth/v1/admin/users/{id}</c>. Accepts either
+    /// a bare object body or a wrapping <c>{ "user": {...} }</c> shape (Supabase varies by
+    /// auth API version).
+    /// </summary>
+    internal static SupabaseUserSnapshot? ParseUserSnapshot(string body)
+    {
+        using JsonDocument doc = JsonDocument.Parse(body);
+        JsonElement root = doc.RootElement;
+
+        JsonElement userEl;
+        if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("user", out JsonElement wrapped)
+            && wrapped.ValueKind == JsonValueKind.Object)
+        {
+            userEl = wrapped;
+        }
+        else if (root.ValueKind == JsonValueKind.Object)
+        {
+            userEl = root;
+        }
+        else
+        {
+            return null;
+        }
+
+        Guid id = default;
+        if (userEl.TryGetProperty("id", out JsonElement idEl)
+            && idEl.ValueKind == JsonValueKind.String
+            && Guid.TryParse(idEl.GetString(), out var parsedId))
+        {
+            id = parsedId;
+        }
+        if (id == Guid.Empty)
+        {
+            return null;
+        }
+
+        string? email = null;
+        if (userEl.TryGetProperty("email", out JsonElement emailEl) && emailEl.ValueKind == JsonValueKind.String)
+        {
+            email = emailEl.GetString();
+        }
+
+        string? role = null;
+        if (userEl.TryGetProperty("app_metadata", out JsonElement appMetaEl)
+            && appMetaEl.ValueKind == JsonValueKind.Object
+            && appMetaEl.TryGetProperty("role", out JsonElement roleEl)
+            && roleEl.ValueKind == JsonValueKind.String)
+        {
+            role = roleEl.GetString();
+        }
+
+        DateTime? bannedUntil = null;
+        if (userEl.TryGetProperty("banned_until", out JsonElement banEl)
+            && banEl.ValueKind == JsonValueKind.String
+            && DateTime.TryParse(banEl.GetString(), out var parsedBan))
+        {
+            bannedUntil = DateTime.SpecifyKind(parsedBan, DateTimeKind.Utc);
+        }
+
+        return new SupabaseUserSnapshot(id, email, role, bannedUntil);
+    }
 }

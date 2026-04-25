@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Civiti.Application.Services;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
 using OpenIddict.Abstractions;
@@ -7,23 +8,26 @@ using OpenIddict.Server.AspNetCore;
 namespace Civiti.Auth.Endpoints;
 
 /// <summary>
-/// /token entry point for the OAuth code-exchange grant. v1b.1 implements
-/// <c>grant_type=authorization_code</c> only; <c>refresh_token</c> rotation with Supabase
-/// Admin API re-validation lands in v1b.2.
+/// /token entry point. Two grants:
 ///
-/// OpenIddict's middleware has already validated the code (consumed it from
-/// <c>OpenIddictTokens</c>), PKCE verifier, redirect_uri, and client credentials by the time
-/// this handler runs. We recover the principal embedded in the code, re-attach claim
-/// destinations, and SignIn the OpenIddict scheme so the middleware emits the access + refresh
-/// tokens. The McpSession audit row is written by
-/// <see cref="McpSessionWriteHandler"/> from inside the OpenIddict signin pipeline so it
-/// shares a code path with token issuance instead of committing speculatively from here.
+/// 1. <c>grant_type=authorization_code</c> — OpenIddict has already validated the code, PKCE
+///    verifier, redirect_uri, and client credentials. We recover the principal embedded in the
+///    code, re-attach claim destinations, and SignIn so the middleware emits access + refresh
+///    tokens. McpSessionWriteHandler tracks the row.
+/// 2. <c>grant_type=refresh_token</c> — OpenIddict has validated the refresh token (and
+///    rotated/consumed it). Before re-issuing, we re-validate the upstream Supabase user via
+///    the Admin API: missing user / disabled (banned) / role-changed all force a deny so the
+///    refresh fails and the user has to log in fresh. Per auth-design.md §4 every refresh
+///    re-validates against Supabase — this is what catches role demotions and account
+///    deletions before access tokens stop being issued.
 /// </summary>
-internal static class TokenEndpoint
+public static class TokenEndpoint
 {
     public static async Task<IResult> HandleAsync(
         HttpContext httpContext,
-        ILoggerFactory loggerFactory)
+        ISupabaseAdminClient supabaseAdminClient,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Civiti.Auth.Endpoints.Token");
 
@@ -36,28 +40,16 @@ internal static class TokenEndpoint
                 detail: "OpenIddict request context is unavailable.");
         }
 
-        if (!oidcRequest.IsAuthorizationCodeGrantType())
+        if (!oidcRequest.IsAuthorizationCodeGrantType() && !oidcRequest.IsRefreshTokenGrantType())
         {
-            // Refresh-token grant flows reach this handler because AllowRefreshTokenFlow() is on
-            // in the OpenIddict server config (so v1b.1 issues refresh tokens for v1b.2 to
-            // consume). Until v1b.2 wires Supabase Admin API re-validation, we surface the
-            // RFC 6749 §5.2 unsupported_grant_type error via OpenIddict's properties pipeline so
-            // OAuth clients get the canonical {"error":"unsupported_grant_type"} body and trigger
-            // a fresh /authorize round-trip rather than failing on an unknown ProblemDetails shape.
-            var properties = new AuthenticationProperties(new Dictionary<string, string?>
-            {
-                [OpenIddictServerAspNetCoreConstants.Properties.Error] = OpenIddictConstants.Errors.UnsupportedGrantType,
-                [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] =
-                    "Refresh-token rotation lands in v1b.2; re-run /authorize to obtain a fresh access token."
-            });
-            return Results.Challenge(properties,
-                authenticationSchemes: new[] { OpenIddictServerAspNetCoreDefaults.AuthenticationScheme });
+            return ChallengeWithError(OpenIddictConstants.Errors.UnsupportedGrantType,
+                "Only authorization_code and refresh_token grants are supported.");
         }
 
         var info = await httpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         if (!info.Succeeded || info.Principal is null)
         {
-            logger.LogWarning("/token: failed to recover principal from authorization code");
+            logger.LogWarning("/token: failed to recover principal");
             return Results.Forbid(
                 authenticationSchemes: new[] { OpenIddictServerAspNetCoreDefaults.AuthenticationScheme });
         }
@@ -71,18 +63,71 @@ internal static class TokenEndpoint
                 authenticationSchemes: new[] { OpenIddictServerAspNetCoreDefaults.AuthenticationScheme });
         }
 
-        // Claim destinations don't survive the encrypted authorization code round-trip; re-attach
+        if (oidcRequest.IsRefreshTokenGrantType())
+        {
+            var snapshot = await supabaseAdminClient.GetUserAsync(supabaseUserId, cancellationToken);
+            if (snapshot is null)
+            {
+                logger.LogWarning(
+                    "/token refresh: Supabase user {Sub} not found — denying refresh, session must re-authenticate",
+                    supabaseUserId);
+                return ChallengeWithError(OpenIddictConstants.Errors.InvalidGrant,
+                    "The upstream user no longer exists.");
+            }
+            if (snapshot.BannedUntilUtc is { } bannedUntil && bannedUntil > DateTime.UtcNow)
+            {
+                logger.LogWarning(
+                    "/token refresh: Supabase user {Sub} is banned until {Until} — denying refresh",
+                    supabaseUserId, bannedUntil);
+                return ChallengeWithError(OpenIddictConstants.Errors.InvalidGrant,
+                    "The upstream user is currently disabled.");
+            }
+
+            // Reflect the latest Supabase role onto the rotated refresh token's principal so a
+            // demotion (admin → citizen) takes effect immediately. Admin scopes that the user
+            // no longer qualifies for will be filtered by AdminScopeFilter on the next /authorize
+            // — for now, a same-set rotation with the updated role is sufficient. Wholesale
+            // scope re-evaluation on refresh lands once we have a UserProfile.McpAdminAccessEnabled
+            // sweep (auth-design.md §5).
+            UpdateRoleClaim(principal, snapshot.Role);
+        }
+
+        // Claim destinations don't survive the encrypted code/refresh round-trip; re-attach
         // before SignIn so OpenIddict knows which claims to embed in the access vs identity token.
         foreach (var claim in principal.Claims)
         {
             claim.SetDestinations(GetDestinations(claim));
         }
 
-        logger.LogInformation("/token: code-grant exchange for sub {Sub}, client {ClientId}",
-            supabaseUserId, oidcRequest.ClientId);
+        logger.LogInformation("/token: {Grant} for sub {Sub}, client {ClientId}",
+            oidcRequest.GrantType, supabaseUserId, oidcRequest.ClientId);
 
         return Results.SignIn(principal, properties: null,
             authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+    }
+
+    private static IResult ChallengeWithError(string error, string description)
+    {
+        var properties = new AuthenticationProperties(new Dictionary<string, string?>
+        {
+            [OpenIddictServerAspNetCoreConstants.Properties.Error] = error,
+            [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = description
+        });
+        return Results.Challenge(properties,
+            authenticationSchemes: new[] { OpenIddictServerAspNetCoreDefaults.AuthenticationScheme });
+    }
+
+    private static void UpdateRoleClaim(ClaimsPrincipal principal, string? role)
+    {
+        if (principal.Identity is not ClaimsIdentity identity) return;
+
+        var existing = identity.FindFirst(OpenIddictConstants.Claims.Role);
+        if (existing is not null) identity.RemoveClaim(existing);
+
+        if (!string.IsNullOrEmpty(role))
+        {
+            identity.AddClaim(new Claim(OpenIddictConstants.Claims.Role, role));
+        }
     }
 
     private static IEnumerable<string> GetDestinations(Claim claim) => claim.Type switch

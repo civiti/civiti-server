@@ -1,0 +1,64 @@
+@page
+@model Civiti.Auth.Pages.ConsentModel
+@{
+    ViewData["Title"] = "Authorize";
+}
+
+<h2>
+    @Model.ClientDisplayName
+    @if (Model.IsTrusted)
+    {
+        <span class="badge badge-verified">Verified</span>
+    }
+    else
+    {
+        <span class="badge badge-unverified">Unverified</span>
+    }
+</h2>
+<p>This application is asking to access your Civiti account.</p>
+
+<form method="post">
+    <input type="hidden" asp-for="ReturnUrl" />
+
+    <h3 style="margin-top:1.25rem;font-size:0.95rem;">It will be able to:</h3>
+    <ul class="scope-list">
+        @foreach (var scope in Model.Scopes)
+        {
+            <li>
+                <label>
+                    <input type="checkbox" name="ApprovedScopes" value="@scope.Name" checked />
+                    <span>
+                        <span class="scope-name">@scope.DisplayName</span>
+                        <span class="scope-desc">@scope.Description</span>
+                    </span>
+                </label>
+            </li>
+        }
+    </ul>
+
+    @if (Model.StrippedScopes.Count > 0)
+    {
+        <p class="error" role="status">
+            The following scopes were requested but cannot be granted:
+            <strong>@string.Join(", ", Model.StrippedScopes)</strong>
+            (your account isn't authorized for them).
+        </p>
+    }
+
+    <label style="margin-top:1rem;">
+        <input type="checkbox" asp-for="RememberClient" />
+        Remember this decision — don't ask again for the same scopes from this client.
+    </label>
+
+    <p class="gdpr-notice">
+        <strong>Privacy notice (placeholder — pending product/legal review):</strong>
+        Data returned by Civiti tools flows to your AI assistant's provider (Anthropic, OpenAI, …) according to their terms.
+        Civiti does not control how that provider stores, processes, or shares the data after it leaves us.
+        Approving here grants the listed permissions until you revoke them in your Civiti account settings.
+    </p>
+
+    <div class="actions">
+        <button type="submit" asp-page-handler="Deny" class="btn-secondary">Deny</button>
+        <button type="submit">Approve</button>
+    </div>
+</form>
