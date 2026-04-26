@@ -217,22 +217,25 @@ builder.Services.AddOpenIddict()
             handler.UseScopedHandler<McpSessionRevokeHandler>()
                    .SetOrder(int.MaxValue - 100_000));
 
-        // RFC 8252 §8.3 loopback wildcard for native MCP clients. The validator runs early so
-        // we can swap the requested URI to the registered form before OpenIddict's exact-match
-        // ValidateClientRedirectUri sees it; the response restorer runs in the apply phase to
-        // put the original (ephemeral-port) URI back on the redirect that returns the auth code.
+        // RFC 8252 §8.3 loopback wildcard for native MCP clients. We REPLACE OpenIddict's
+        // built-in redirect_uri validators (one for /authorize, one for /token) with versions
+        // that accept loopback URIs whose port differs from the registered placeholder. The
+        // earlier swap-the-URI approach trips an OpenIddict consistency check that compares
+        // the validated URI against Request.RedirectUri and 500s.
+        options.RemoveEventHandler(OpenIddictServerHandlers.Authentication.ValidateClientRedirectUri.Descriptor);
+        options.RemoveEventHandler(OpenIddictServerHandlers.Exchange.ValidateRedirectUri.Descriptor);
         options.AddEventHandler<OpenIddictServerEvents.ValidateAuthorizationRequestContext>(handler =>
-            handler.UseScopedHandler<LoopbackAuthorizationRequestValidator>()
-                   .SetOrder(int.MinValue + 100_000));
-        options.AddEventHandler<OpenIddictServerEvents.ApplyAuthorizationResponseContext>(handler =>
-            handler.UseSingletonHandler<LoopbackAuthorizationResponseRestorer>()
-                   .SetOrder(int.MinValue + 100_000));
+            handler.UseScopedHandler<LoopbackAwareAuthorizationRedirectUriValidator>()
+                   .SetOrder(OpenIddictServerHandlers.Authentication.ValidateClientRedirectUri.Descriptor.Order));
+        options.AddEventHandler<OpenIddictServerEvents.ValidateTokenRequestContext>(handler =>
+            handler.UseScopedHandler<LoopbackAwareTokenRedirectUriValidator>()
+                   .SetOrder(OpenIddictServerHandlers.Exchange.ValidateRedirectUri.Descriptor.Order));
     });
 
 builder.Services.AddScoped<McpSessionWriteHandler>();
 builder.Services.AddScoped<McpSessionRevokeHandler>();
-builder.Services.AddScoped<LoopbackAuthorizationRequestValidator>();
-builder.Services.AddSingleton<LoopbackAuthorizationResponseRestorer>();
+builder.Services.AddScoped<LoopbackAwareAuthorizationRedirectUriValidator>();
+builder.Services.AddScoped<LoopbackAwareTokenRedirectUriValidator>();
 
 // Allow-list seed runs once at startup and ensures every client in auth-design.md §6 exists in
 // OpenIddict's application store. Idempotent: on second boot it's a no-op.
