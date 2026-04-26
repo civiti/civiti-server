@@ -204,17 +204,44 @@ builder.Services.AddOpenIddict()
         // McpSession audit row write happens inside OpenIddict's signin pipeline — see
         // Civiti.Auth/Endpoints/McpSessionWriteHandler.cs for the rationale (avoids the
         // orphan-row failure mode where a SignIn pipeline error left a phantom session).
-        // Late ordering ensures the principal + scopes have been finalised by the time we run.
+        // Late ordering ensures the principal + scopes (and the issued refresh-token id we read
+        // from RefreshTokenPrincipal) have been finalised by the time we run.
         options.AddEventHandler<OpenIddictServerEvents.ProcessSignInContext>(handler =>
             handler.UseScopedHandler<McpSessionWriteHandler>()
                    .SetOrder(int.MaxValue - 100_000));
+
+        // /revoke → McpSessions.RevokedAt sync (auth-design.md §10). Late ordering inside the
+        // revocation pipeline so OpenIddict's own RevokeToken handler has already flipped the
+        // OpenIddictTokens.Status row before we mirror it onto the view-model.
+        options.AddEventHandler<OpenIddictServerEvents.HandleRevocationRequestContext>(handler =>
+            handler.UseScopedHandler<McpSessionRevokeHandler>()
+                   .SetOrder(int.MaxValue - 100_000));
+
+        // RFC 8252 §8.3 loopback wildcard for native MCP clients. The validator runs early so
+        // we can swap the requested URI to the registered form before OpenIddict's exact-match
+        // ValidateClientRedirectUri sees it; the response restorer runs in the apply phase to
+        // put the original (ephemeral-port) URI back on the redirect that returns the auth code.
+        options.AddEventHandler<OpenIddictServerEvents.ValidateAuthorizationRequestContext>(handler =>
+            handler.UseScopedHandler<LoopbackAuthorizationRequestValidator>()
+                   .SetOrder(int.MinValue + 100_000));
+        options.AddEventHandler<OpenIddictServerEvents.ApplyAuthorizationResponseContext>(handler =>
+            handler.UseSingletonHandler<LoopbackAuthorizationResponseRestorer>()
+                   .SetOrder(int.MinValue + 100_000));
     });
 
 builder.Services.AddScoped<McpSessionWriteHandler>();
+builder.Services.AddScoped<McpSessionRevokeHandler>();
+builder.Services.AddScoped<LoopbackAuthorizationRequestValidator>();
+builder.Services.AddSingleton<LoopbackAuthorizationResponseRestorer>();
 
 // Allow-list seed runs once at startup and ensures every client in auth-design.md §6 exists in
 // OpenIddict's application store. Idempotent: on second boot it's a no-op.
 builder.Services.AddHostedService<Civiti.Auth.Startup.ClientAllowListSeeder>();
+
+// Background sweep — every 5 minutes, re-validates active admin-scoped sessions against the
+// upstream Supabase user. Closes the gap between refresh-token rotations for long-lived
+// sessions where a user might be demoted from admin without re-authenticating soon.
+builder.Services.AddHostedService<Civiti.Auth.Startup.McpSessionRoleRevalidationSweep>();
 
 var app = builder.Build();
 

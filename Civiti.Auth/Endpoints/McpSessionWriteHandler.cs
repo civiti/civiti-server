@@ -9,18 +9,12 @@ namespace Civiti.Auth.Endpoints;
 
 /// <summary>
 /// Writes the <see cref="McpSession"/> audit row from inside OpenIddict's signin pipeline so it
-/// commits on the same path as the issued tokens. v1b.1's first cut wrote the row from the
-/// /token endpoint <em>before</em> <see cref="IResult"/> SignIn returned, which left an orphan
-/// row whenever OpenIddict's later token-creation handlers threw (the row would surface in the
-/// "Connected AI Assistants" UI as a phantom session). Registering as an
-/// <see cref="IOpenIddictServerHandler{TContext}"/> moves the write into the same request path
-/// that issues the tokens — if the SignIn pipeline aborts before this handler runs, no row is
-/// persisted.
-///
-/// Filters: token endpoint only, authorization_code grant only. /authorize signin events also
-/// fire <see cref="ProcessSignInContext"/> but those issue auth codes, not refresh tokens —
-/// nothing to track in McpSessions for that path. Refresh-token rotation lands in v1b.2 with a
-/// separate handler that re-points <see cref="McpSession.OpenIddictTokenId"/> on each rotation.
+/// commits on the same path as the issued tokens. v1b.3 also captures the issued refresh
+/// token's database id from <see cref="ProcessSignInContext.RefreshTokenPrincipal"/> and writes
+/// it to <see cref="McpSession.OpenIddictTokenId"/>, closing the linkage that v1b.1/.2 left
+/// nullable. The id is the prerequisite for the /revoke handler in <see cref="McpSessionRevokeHandler"/>
+/// and the role-revalidation sweep in <see cref="Civiti.Infrastructure.Services.Auth.McpSessionRoleRevalidationSweep"/>:
+/// both use it to tie an OpenIddict token revoke back to its session row.
 /// </summary>
 public sealed class McpSessionWriteHandler(
     CivitiDbContext dbContext,
@@ -57,6 +51,13 @@ public sealed class McpSessionWriteHandler(
         var clientId = context.Request.ClientId ?? string.Empty;
         var scopes = principal.GetScopes().ToList();
 
+        // RefreshTokenPrincipal carries the to-be-issued refresh token's claims, including the
+        // OpenIddict store id under the private oi_tkn_id claim. If we're not minting a refresh
+        // token (e.g. the request didn't include offline_access on the original /authorize), the
+        // principal is null and we leave OpenIddictTokenId null — the entity comment documents
+        // that as an acceptable transient state, and v1b.3's revoke + sweep handlers tolerate it.
+        var refreshTokenId = context.RefreshTokenPrincipal?.GetTokenId();
+
         // McpSession is a (user, client) view-model row — find the existing active one and
         // update it on refresh, otherwise insert a new row on first code-grant. If the user
         // somehow re-authenticates fresh while an old row is still active (e.g. cookie
@@ -77,12 +78,13 @@ public sealed class McpSessionWriteHandler(
                 ClientId = clientId,
                 SupabaseUserId = supabaseUserId,
                 ScopesGranted = scopes,
+                OpenIddictTokenId = refreshTokenId,
                 CreatedAt = DateTime.UtcNow,
                 LastSeenAt = DateTime.UtcNow
             };
             dbContext.McpSessions.Add(session);
-            logger.LogInformation("McpSession created: {SessionId}, sub {Sub}, client {ClientId} ({Grant})",
-                session.Id, supabaseUserId, clientId, context.Request.GrantType);
+            logger.LogInformation("McpSession created: {SessionId}, sub {Sub}, client {ClientId}, tokenId {TokenId} ({Grant})",
+                session.Id, supabaseUserId, clientId, refreshTokenId ?? "(none)", context.Request.GrantType);
         }
         else
         {
@@ -90,8 +92,15 @@ public sealed class McpSessionWriteHandler(
             // Track the latest scope set in case the user re-consented to a different scope
             // shape on a fresh /authorize that landed back on this row.
             existing.ScopesGranted = scopes;
-            logger.LogInformation("McpSession refreshed: {SessionId}, sub {Sub}, client {ClientId}",
-                existing.Id, supabaseUserId, clientId);
+            // Repoint to the rotated refresh token's id so /revoke and the role-revalidation
+            // sweep can find this session by token id without a stale-row chase. If the new
+            // signin doesn't mint a refresh token, leave the existing id alone.
+            if (!string.IsNullOrEmpty(refreshTokenId))
+            {
+                existing.OpenIddictTokenId = refreshTokenId;
+            }
+            logger.LogInformation("McpSession refreshed: {SessionId}, sub {Sub}, client {ClientId}, tokenId {TokenId}",
+                existing.Id, supabaseUserId, clientId, refreshTokenId ?? "(unchanged)");
         }
 
         await dbContext.SaveChangesAsync(context.CancellationToken);
