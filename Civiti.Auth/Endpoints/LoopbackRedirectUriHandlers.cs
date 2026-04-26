@@ -46,6 +46,11 @@ public sealed class LoopbackAuthorizationRequestValidator(
             if (!TryParseLoopback(registered, out var registeredUri)) continue;
             if (!string.Equals(registeredUri.Scheme, requestedUri.Scheme, StringComparison.OrdinalIgnoreCase)) continue;
             if (!string.Equals(registeredUri.AbsolutePath, requestedUri.AbsolutePath, StringComparison.Ordinal)) continue;
+            // Query + fragment are NOT relaxed by RFC 8252 §8.3 — only the port is.
+            // Comparing them keeps a registered ?version=2 callback from accidentally
+            // matching an incoming URI without the parameter (or vice versa).
+            if (!string.Equals(registeredUri.Query, requestedUri.Query, StringComparison.Ordinal)) continue;
+            if (!string.Equals(registeredUri.Fragment, requestedUri.Fragment, StringComparison.Ordinal)) continue;
 
             registeredMatch = registered;
             break;

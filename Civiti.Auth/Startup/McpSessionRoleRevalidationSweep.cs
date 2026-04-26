@@ -77,22 +77,38 @@ internal sealed class McpSessionRoleRevalidationSweep(
         {
             if (cancellationToken.IsCancellationRequested) return;
 
-            var snapshot = await supabase.GetUserAsync(session.SupabaseUserId, cancellationToken);
-            string? revokeReason = null;
-            if (snapshot is null)
+            string? revokeReason;
+            try
             {
-                revokeReason = "user_disabled";
+                var snapshot = await supabase.GetUserAsync(session.SupabaseUserId, cancellationToken);
+                if (snapshot is null)
+                {
+                    revokeReason = "user_disabled";
+                }
+                else if (snapshot.BannedUntilUtc is { } bannedUntil && bannedUntil > DateTime.UtcNow)
+                {
+                    revokeReason = "user_banned";
+                }
+                else if (!string.Equals(snapshot.Role, "admin", StringComparison.Ordinal))
+                {
+                    revokeReason = "role_lost";
+                }
+                else
+                {
+                    continue;
+                }
             }
-            else if (snapshot.BannedUntilUtc is { } bannedUntil && bannedUntil > DateTime.UtcNow)
+            catch (Exception ex)
             {
-                revokeReason = "user_banned";
+                // A transient GetUserAsync failure shouldn't poison the rest of the sweep —
+                // skip this session and move on. Catching here (rather than at the loop level
+                // outside) keeps already-committed revokes from being rolled back if a later
+                // session raises.
+                logger.LogWarning(ex,
+                    "Sweep skipping session {SessionId} (sub {Sub}) due to upstream lookup failure",
+                    session.Id, session.SupabaseUserId);
+                continue;
             }
-            else if (!string.Equals(snapshot.Role, "admin", StringComparison.Ordinal))
-            {
-                revokeReason = "role_lost";
-            }
-
-            if (revokeReason is null) continue;
 
             session.RevokedAt = DateTime.UtcNow;
             session.RevokedReason = revokeReason;
@@ -115,11 +131,16 @@ internal sealed class McpSessionRoleRevalidationSweep(
                     session.OpenIddictTokenId, session.Id);
             }
 
+            // Commit per-session so a later candidate's lookup failure can't strand
+            // already-revoked OpenIddict tokens whose McpSession.RevokedAt update would
+            // otherwise be lost when the outer try/catch swallows the exception. The cost is
+            // one extra round-trip per stale session, which is negligible at the volumes we
+            // expect (admin sessions are a small fraction of total sessions).
+            await dbContext.SaveChangesAsync(cancellationToken);
+
             logger.LogInformation(
                 "McpSession {SessionId} revoked by sweep (sub {Sub}, reason {Reason})",
                 session.Id, session.SupabaseUserId, revokeReason);
         }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
     }
 }
