@@ -75,6 +75,17 @@ var supabaseServiceRoleKey = Environment.GetEnvironmentVariable("SUPABASE_SERVIC
     ?? builder.Configuration["Supabase:ServiceRoleKey"]
     ?? string.Empty;
 
+// SUPABASE_SERVICE_KEY isn't a hard requirement at boot (we don't want a missing key in dev
+// to crash the host), but every refresh-token grant calls SupabaseAdminClient.GetUserAsync,
+// which short-circuits to null without it — refreshes silently fail and clients log out
+// every 15 minutes. Warn loudly so operators see the misconfiguration in the very first log
+// scrape rather than only after users start complaining about constant re-auth.
+if (string.IsNullOrWhiteSpace(supabaseServiceRoleKey))
+{
+    Log.Warning(
+        "SUPABASE_SERVICE_KEY is not set — refresh-token grants will return invalid_grant and force re-authentication on every access-token expiry. Set the Supabase service role key on this Civiti.Auth deploy to enable refresh.");
+}
+
 builder.Services.AddSingleton(new SupabaseConfiguration
 {
     Url = supabaseUrl,

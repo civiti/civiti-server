@@ -166,9 +166,16 @@ public sealed class LoginModel(
     // Login accepts a null/empty returnUrl by design — a user landing on /Login directly (not
     // via /authorize) gets bounced to the homepage on success. Consent.cshtml.cs has its own
     // stricter helper that rejects null because it always needs a /authorize URL to resume.
+    //
+    // Reject protocol-relative URLs (`//evil.com`) and absolute schemes outright: per
+    // RFC 3986 §4.2, `//authority/path` is a syntactically valid relative-URI reference, so
+    // Uri.TryCreate(..., UriKind.Relative) accepts it — but a browser receiving a redirect to
+    // `//evil.com` resolves it to `https://evil.com` (open redirect). Require a single leading
+    // slash and rely on Uri.TryCreate for the rest of the relative-syntax check.
     private static bool IsSafeReturnUrl(string? url)
     {
         if (string.IsNullOrEmpty(url)) return true;
+        if (!url.StartsWith('/') || url.StartsWith("//", StringComparison.Ordinal)) return false;
         return Uri.TryCreate(url, UriKind.Relative, out _);
     }
 }
