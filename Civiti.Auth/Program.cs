@@ -124,7 +124,15 @@ builder.Services.AddDataProtection()
 // Cookie scheme for the short-lived Civiti.Auth session that survives between /authorize and
 // /supabase-callback (and lets a returning user skip the Supabase round-trip if they hit
 // /authorize again from a different MCP client within 30 minutes).
-builder.Services.AddAuthentication()
+//
+// Pass the scheme name as the default to AddAuthentication so the AuthenticationMiddleware
+// populates HttpContext.User from this cookie on every request — Razor Pages' PageModel.User
+// reads from there, and /Consent POST needs the user's sub claim to upsert the
+// McpUserClientPreference row. Without a default, User stays anonymous on the consent POST,
+// the handler bails into LocalRedirect without writing, and /authorize re-routes back to
+// /Consent forever. /authorize itself isn't affected — it explicitly authenticates against the
+// cookie scheme via httpContext.AuthenticateAsync — but the Razor pages do not.
+builder.Services.AddAuthentication(AuthEndpointConstants.CookieScheme)
     .AddCookie(AuthEndpointConstants.CookieScheme, options =>
     {
         options.Cookie.Name = "civiti_auth_session";
