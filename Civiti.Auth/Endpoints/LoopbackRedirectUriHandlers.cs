@@ -79,27 +79,62 @@ public sealed class LoopbackAwareTokenRedirectUriValidator(
 {
     public async ValueTask HandleAsync(ValidateTokenRequestContext context)
     {
-        // Only authorization_code grants carry a redirect_uri — refresh_token / client_credentials
-        // skip this validator entirely in OpenIddict's pipeline, but be defensive.
+        // Only authorization_code grants exchange a redirect_uri — refresh_token /
+        // client_credentials skip this validator entirely in OpenIddict's pipeline.
         if (!context.Request.IsAuthorizationCodeGrantType()) return;
-        if (string.IsNullOrEmpty(context.Request.RedirectUri) || string.IsNullOrEmpty(context.ClientId))
+
+        // RFC 6749 §4.1.3: the redirect_uri on the token request must mirror what was on the
+        // /authorize request that minted the auth code. OpenIddict stores the original
+        // redirect_uri on the code's principal as a private claim; we compare presence
+        // symmetrically — absent on both is fine, mismatch (or asymmetric absence) rejects.
+        // Skipping this check would let an attacker who steals an auth code redeem it without
+        // the redirect_uri binding, defeating the whole point of the binding.
+        var requestUri = context.Request.RedirectUri;
+        var principalUri = context.AuthorizationCodePrincipal?.GetClaim(OpenIddictConstants.Claims.Private.RedirectUri);
+
+        if (string.IsNullOrEmpty(principalUri) && string.IsNullOrEmpty(requestUri))
         {
+            return; // Code was minted without a redirect_uri; token request matches.
+        }
+        if (string.IsNullOrEmpty(requestUri))
+        {
+            context.Reject(
+                error: OpenIddictConstants.Errors.InvalidRequest,
+                description: "The mandatory 'redirect_uri' parameter is missing.");
+            return;
+        }
+        if (string.IsNullOrEmpty(principalUri))
+        {
+            context.Reject(
+                error: OpenIddictConstants.Errors.InvalidGrant,
+                description: "The 'redirect_uri' parameter is not expected for this authorization code.");
+            return;
+        }
+        if (!string.Equals(principalUri, requestUri, StringComparison.Ordinal))
+        {
+            context.Reject(
+                error: OpenIddictConstants.Errors.InvalidGrant,
+                description: "The specified 'redirect_uri' does not match the original authorization request.");
             return;
         }
 
+        // Defense in depth: re-validate the URI against the application's currently-registered
+        // URIs, in case the allow-list was edited between /authorize and /token. Loopback
+        // wildcard fallback applies here too — the original /authorize call will have been
+        // accepted via the same loopback rule, and we want the /token exchange to mirror it.
+        if (string.IsNullOrEmpty(context.ClientId)) return;
         var application = await applicationManager.FindByClientIdAsync(context.ClientId, context.CancellationToken);
         if (application is null) return;
 
-        if (await applicationManager.ValidateRedirectUriAsync(application, context.Request.RedirectUri, context.CancellationToken))
+        if (await applicationManager.ValidateRedirectUriAsync(application, requestUri, context.CancellationToken))
         {
             return;
         }
-
-        if (await LoopbackRedirectUriMatcher.MatchesAsync(applicationManager, application, context.Request.RedirectUri, context.CancellationToken))
+        if (await LoopbackRedirectUriMatcher.MatchesAsync(applicationManager, application, requestUri, context.CancellationToken))
         {
             logger.LogInformation(
                 "Loopback wildcard accepted on /token for client {ClientId}: redirect_uri {RedirectUri}",
-                context.ClientId, context.Request.RedirectUri);
+                context.ClientId, requestUri);
             return;
         }
 
