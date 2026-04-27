@@ -125,7 +125,14 @@ public sealed class LoginModel(
             $"?provider={Uri.EscapeDataString(provider)}" +
             $"&redirect_to={Uri.EscapeDataString(callbackUrl)}" +
             $"&code_challenge={challenge}" +
-            $"&code_challenge_method=S256";
+            $"&code_challenge_method=S256" +
+            // Force Google's account chooser instead of silently auto-signing in with whichever
+            // identity the browser is already logged into. A user with multiple Google accounts
+            // (work + personal) needs the picker to land on the right one — this is also the
+            // behaviour every "Continue with Google" button on the open web exhibits, so it
+            // matches user expectation. Supabase passes recognised OAuth params (prompt,
+            // access_type, …) straight through to the upstream provider.
+            $"&prompt=select_account";
 
         return Redirect(supabaseUrl);
     }
