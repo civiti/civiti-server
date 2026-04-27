@@ -91,7 +91,8 @@ public static class AuthorizeEndpoint
                 RedirectUri: oidcRequest.RedirectUri ?? string.Empty,
                 State: oidcRequest.State,
                 AllowedScopes: allowedScopes,
-                IssuedAtUnix: DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                IssuedAtUnix: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Nonce: Guid.NewGuid().ToString("N"));
             httpContext.Response.Cookies.Append(
                 AuthEndpointConstants.ConsentContextCookie,
                 consentContextProtector.Protect(ctx),

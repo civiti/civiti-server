@@ -52,6 +52,13 @@ public sealed class ConsentModel(
 
     public IReadOnlyList<string> StrippedScopes { get; set; } = [];
 
+    // OnGet renders this to a hidden field; the POST handlers check it matches the cookie's
+    // nonce. Keeps two simultaneous /authorize flows in the same browser (e.g. two tabs for
+    // different clients) from clobbering each other — the second tab's cookie overwrites the
+    // first's, so the first tab's stale form Nonce won't match and the POST returns 400.
+    [BindProperty]
+    public string? Nonce { get; set; }
+
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
         var ctx = ReadContext();
@@ -67,6 +74,7 @@ public sealed class ConsentModel(
         }
 
         ClientId = ctx.ClientId;
+        Nonce = ctx.Nonce;
         ClientDisplayName = await applicationManager.GetDisplayNameAsync(application, cancellationToken)
             ?? ctx.ClientId;
         // Trust badge tracks the `civiti.is_allow_listed` property the seeder stamps on every
@@ -95,6 +103,16 @@ public sealed class ConsentModel(
         if (ctx is null)
         {
             return BadRequest("Consent context missing or expired. Restart the OAuth flow.");
+        }
+
+        if (!string.Equals(Nonce, ctx.Nonce, StringComparison.Ordinal))
+        {
+            // Form's hidden Nonce doesn't match the cookie's nonce — most likely a concurrent
+            // OAuth flow in another tab overwrote the cookie between this page's render and
+            // submit. Refusing protects the user from silently approving consent for a different
+            // client than the one shown.
+            logger.LogWarning("Consent POST: nonce mismatch (cookie minted a fresh flow during render); refusing");
+            return BadRequest("This consent form is stale. Restart the OAuth flow.");
         }
 
         var supabaseUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -138,6 +156,14 @@ public sealed class ConsentModel(
         if (ctx is null)
         {
             return BadRequest("Consent context missing or expired. Restart the OAuth flow.");
+        }
+
+        if (!string.Equals(Nonce, ctx.Nonce, StringComparison.Ordinal))
+        {
+            // Same concurrent-tab guard as OnPostAsync: refuse Deny for a stale form so we don't
+            // emit access_denied to the wrong client's redirect_uri.
+            logger.LogWarning("Consent Deny: nonce mismatch; refusing");
+            return BadRequest("This consent form is stale. Restart the OAuth flow.");
         }
 
         // Sign the user out of the Civiti.Auth cookie session — refusing consent should not leave

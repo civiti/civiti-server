@@ -20,8 +20,12 @@
 <form method="post">
     @* OAuth context (clientId, scopes, redirect_uri, state, original /authorize URL) is read
        server-side from the Data-Protection-encrypted civiti_auth_consent_ctx cookie set by
-       /authorize, not from form fields the user can edit. The form's only payload is the
-       antiforgery token; clicking Approve or Deny flips OnPostAsync vs OnPostDenyAsync. *@
+       /authorize, not from form fields the user can edit. The hidden Nonce below is the only
+       payload beyond the antiforgery token: it ties THIS form to the cookie that rendered it,
+       so a concurrent /authorize in another tab overwriting the cookie causes this submit to
+       fail with 400 instead of silently committing consent for the other tab's client. *@
+    <input type="hidden" asp-for="Nonce" />
+
     <h3 style="margin-top:1.25rem;font-size:0.95rem;">It will be able to:</h3>
     <ul class="scope-list">
         @foreach (var scope in Model.Scopes)

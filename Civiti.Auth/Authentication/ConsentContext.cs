@@ -27,13 +27,22 @@ namespace Civiti.Auth.Authentication;
 /// can't tamper themselves into civiti.admin.* scopes their role doesn't qualify for.
 /// </param>
 /// <param name="IssuedAtUnix">Mint time; the protector rejects anything older than 10 min.</param>
+/// <param name="Nonce">
+/// Per-flow integrity marker. /Consent renders this in a hidden form field on GET; the POST
+/// handler compares the form-posted nonce against the cookie-decoded nonce and rejects on
+/// mismatch. Without this, two simultaneous /authorize flows for different clients (user has
+/// two browser tabs open) would clobber each other's cookies — Tab 1's POST would silently
+/// commit consent for Tab 2's client. Knowing the nonce grants no access; it's purely a
+/// "this POST belongs to this cookie" assertion.
+/// </param>
 public sealed record ConsentContext(
     string AuthorizeUrl,
     string ClientId,
     string RedirectUri,
     string? State,
     IReadOnlyList<string> AllowedScopes,
-    long IssuedAtUnix);
+    long IssuedAtUnix,
+    string Nonce);
 
 public sealed class ConsentContextProtector(IDataProtectionProvider provider)
 {
@@ -52,6 +61,12 @@ public sealed class ConsentContextProtector(IDataProtectionProvider provider)
         return _protector.Protect(json);
     }
 
+    // Tolerate small clock drift on the negative side (cookie minted on a server whose clock
+    // runs slightly ahead of ours). Without this, a 1-second forward skew rejects valid
+    // freshly-minted cookies in horizontally-scaled deployments. 10s matches the window
+    // System.IdentityModel.Tokens uses by default.
+    private const long ClockSkewToleranceSeconds = 10;
+
     public ConsentContext? Unprotect(string protectedContext)
     {
         try
@@ -61,7 +76,7 @@ public sealed class ConsentContextProtector(IDataProtectionProvider provider)
             if (ctx is null) return null;
 
             var ageSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ctx.IssuedAtUnix;
-            if (ageSeconds < 0 || ageSeconds > (long)MaxAge.TotalSeconds) return null;
+            if (ageSeconds < -ClockSkewToleranceSeconds || ageSeconds > (long)MaxAge.TotalSeconds) return null;
 
             return ctx;
         }
