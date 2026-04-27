@@ -31,8 +31,12 @@ internal static class SupabaseCallbackEndpoint
 
         var code = httpContext.Request.Query["code"].FirstOrDefault();
         // Our session payload rides in a cookie set on /Login OnPostGoogle, not the OAuth `state`
-        // param — GoTrue interprets `state` as its own flow-state lookup key under PKCE. Delete on
-        // read so a stolen cookie can't be replayed across multiple callback hits.
+        // param — GoTrue interprets `state` as its own flow-state lookup key under PKCE. The
+        // cookie is consumed by *any* hit to /supabase-callback (success or error) so a stolen
+        // cookie can't be replayed across multiple attempts. The error responses below return
+        // 400 Problem documents — none of them redirect back to /supabase-callback, so a
+        // cancelled Google consent doesn't trap the user: they restart from /Login, which mints
+        // a fresh cookie via OnPostGoogle.
         httpContext.Request.Cookies.TryGetValue(AuthEndpointConstants.SupabasePkceCookie, out var protectedState);
         httpContext.Response.Cookies.Delete(
             AuthEndpointConstants.SupabasePkceCookie,
