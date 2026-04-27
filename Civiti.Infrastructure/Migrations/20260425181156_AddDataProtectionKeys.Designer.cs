@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Civiti.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Civiti.Infrastructure.Migrations
 {
     [DbContext(typeof(CivitiDbContext))]
-    partial class CivitiDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260425181156_AddDataProtectionKeys")]
+    partial class AddDataProtectionKeys
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -710,40 +713,6 @@ namespace Civiti.Infrastructure.Migrations
                     b.HasIndex("SupabaseUserId", "RevokedAt");
 
                     b.ToTable("McpSessions");
-                });
-
-            modelBuilder.Entity("Civiti.Domain.Entities.McpUserClientPreference", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ClientId")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.PrimitiveCollection<List<string>>("ScopesGranted")
-                        .IsRequired()
-                        .HasColumnType("text[]");
-
-                    b.Property<string>("SupabaseUserId")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SupabaseUserId", "ClientId")
-                        .IsUnique();
-
-                    b.ToTable("McpUserClientPreferences", (string)null);
                 });
 
             modelBuilder.Entity("Civiti.Domain.Entities.PushToken", b =>

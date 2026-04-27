@@ -41,6 +41,10 @@
         <!-- OpenIddict EF integration is hosted in Infrastructure (DbContext layer); the Server -->
         <!-- and Validation wiring lives in their respective hosts (Civiti.Auth / Civiti.Mcp / Civiti.Api). -->
         <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="7.5.0" />
+        <!-- Lets Civiti.Auth persist its Data Protection keys via CivitiDbContext so encrypted    -->
+        <!-- PKCE state survives container restarts (otherwise users mid-login at deploy time hit -->
+        <!-- "State parameter is missing or tampered" because the key ring went with the pod).    -->
+        <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.7" />
         <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.16.0" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
         <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.7" />

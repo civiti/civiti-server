@@ -22,6 +22,67 @@ public sealed class SupabaseAdminClient(
     public const string HttpClientName = "SupabaseAdmin";
     private const string CacheKey = "SupabaseAdminClient:AdminList";
 
+    public async Task<SupabaseUserSnapshot?> GetUserAsync(string supabaseUserId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(supabaseUserId))
+        {
+            return null;
+        }
+        if (!supabaseConfig.HasServiceRoleKey)
+        {
+            // Same posture as ListAdmins — without the service-role key we can't query the
+            // admin endpoint; return null so the refresh handler treats this as "unknown" and
+            // declines, rather than letting an unverified user keep refreshing.
+            logger.LogWarning("Supabase service role key not configured — cannot resolve user {Sub}", supabaseUserId);
+            return null;
+        }
+
+        using HttpClient httpClient = httpClientFactory.CreateClient(HttpClientName);
+
+        var url = $"{supabaseConfig.Url}/auth/v1/admin/users/{Uri.EscapeDataString(supabaseUserId)}";
+        using HttpRequestMessage request = new(HttpMethod.Get, url);
+        request.Headers.Add("Authorization", $"Bearer {supabaseConfig.ServiceRoleKey}");
+        request.Headers.Add("apikey", supabaseConfig.ServiceRoleKey);
+
+        using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        if (!response.IsSuccessStatusCode)
+        {
+            // Throw — distinct from the legitimate-null cases (missing service key, 404 = user
+            // truly deleted) so callers can tell "user gone" from "Supabase had a hiccup". The
+            // background revalidation sweep catches this and skips the session rather than
+            // stamping RevokedAt; the /token refresh handler catches it and denies the refresh
+            // so a partially-disabled user can't keep refreshing during a Supabase outage.
+            logger.LogWarning("Supabase /admin/users/{Sub} returned {Status}", supabaseUserId, (int)response.StatusCode);
+            throw new SupabaseTransientException(
+                statusCode: (int)response.StatusCode,
+                supabaseUserId: supabaseUserId,
+                reason: "non-success HTTP status");
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var snapshot = ParseUserSnapshot(body);
+        if (snapshot is null)
+        {
+            // 200 status but unparseable body — typically a WAF/CDN HTML error page or a schema
+            // drift that omitted the user `id`. Treat as transient: we got *something* back, but
+            // not anything we can safely act on. The caller (sweep skip / refresh deny) routes
+            // both via SupabaseTransientException, same as a 5xx.
+            logger.LogWarning(
+                "Supabase /admin/users/{Sub} returned 200 with unparseable body — treating as transient",
+                supabaseUserId);
+            throw new SupabaseTransientException(
+                statusCode: (int)response.StatusCode,
+                supabaseUserId: supabaseUserId,
+                reason: "unparseable response body");
+        }
+        return snapshot;
+    }
+
     public async Task<IReadOnlyList<SupabaseAdminUser>> ListAdminsAsync(CancellationToken cancellationToken = default)
     {
         if (memoryCache.TryGetValue(CacheKey, out IReadOnlyList<SupabaseAdminUser>? cached) && cached is not null)
@@ -220,4 +281,85 @@ public sealed class SupabaseAdminClient(
 
     internal sealed record UsersPage(IReadOnlyList<ParsedUser> Users);
     internal sealed record ParsedUser(Guid Id, string? Email, JsonElement AppMetadata);
+
+    /// <summary>
+    /// Parses a single-user response from <c>/auth/v1/admin/users/{id}</c>. Accepts either
+    /// a bare object body or a wrapping <c>{ "user": {...} }</c> shape (Supabase varies by
+    /// auth API version).
+    /// </summary>
+    internal static SupabaseUserSnapshot? ParseUserSnapshot(string body)
+    {
+        // A proxy/WAF can occasionally return 200 with an HTML or plaintext body; surface that
+        // as null so the refresh handler treats it like "deny" instead of bubbling a 500 up
+        // through TokenEndpoint and crashing the OAuth client.
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(body);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        using var _ = doc;
+        JsonElement root = doc.RootElement;
+
+        JsonElement userEl;
+        if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("user", out JsonElement wrapped)
+            && wrapped.ValueKind == JsonValueKind.Object)
+        {
+            userEl = wrapped;
+        }
+        else if (root.ValueKind == JsonValueKind.Object)
+        {
+            userEl = root;
+        }
+        else
+        {
+            return null;
+        }
+
+        Guid id = default;
+        if (userEl.TryGetProperty("id", out JsonElement idEl)
+            && idEl.ValueKind == JsonValueKind.String
+            && Guid.TryParse(idEl.GetString(), out var parsedId))
+        {
+            id = parsedId;
+        }
+        if (id == Guid.Empty)
+        {
+            return null;
+        }
+
+        string? email = null;
+        if (userEl.TryGetProperty("email", out JsonElement emailEl) && emailEl.ValueKind == JsonValueKind.String)
+        {
+            email = emailEl.GetString();
+        }
+
+        string? role = null;
+        if (userEl.TryGetProperty("app_metadata", out JsonElement appMetaEl)
+            && appMetaEl.ValueKind == JsonValueKind.Object
+            && appMetaEl.TryGetProperty("role", out JsonElement roleEl)
+            && roleEl.ValueKind == JsonValueKind.String)
+        {
+            role = roleEl.GetString();
+        }
+
+        // banned_until is ISO 8601 with arbitrary offsets ("…+05:30", "…Z", or no offset).
+        // DateTime.TryParse + SpecifyKind(Utc) silently shifts non-Z offsets to the server's
+        // local time before relabelling them as UTC, which makes the >DateTime.UtcNow check in
+        // TokenEndpoint wrong by the server's offset. DateTimeOffset.TryParse handles every
+        // variant correctly; .UtcDateTime then gives a true UTC value to compare.
+        DateTime? bannedUntil = null;
+        if (userEl.TryGetProperty("banned_until", out JsonElement banEl)
+            && banEl.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(banEl.GetString(), out var banOffset))
+        {
+            bannedUntil = banOffset.UtcDateTime;
+        }
+
+        return new SupabaseUserSnapshot(id, email, role, bannedUntil);
+    }
 }
