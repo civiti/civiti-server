@@ -31,6 +31,22 @@ internal static class AuthEndpointConstants
     public const string SupabasePkceCookie = "civiti_auth_pkce";
 
     /// <summary>
+    /// Cookie carrying the Data-Protection-encrypted <c>ConsentContext</c> blob (AuthorizeUrl,
+    /// ClientId, RedirectUri, State, AllowedScopes) that <c>/authorize</c> hands to
+    /// <c>/Consent</c>. Round-tripping the OAuth context this way — instead of trusting the
+    /// form-posted <c>ReturnUrl</c> the user can edit before submit — closes the v1b.4(a)
+    /// scope-injection advisory. Cookie scope keeps the value bound to the same browser that
+    /// started the flow (CSRF defense) and confines it to /Consent.
+    /// </summary>
+    public const string ConsentContextCookie = "civiti_auth_consent_ctx";
+
+    /// <summary>
+    /// Path the consent screen lives at; used both by the Razor page route and by the
+    /// <see cref="ConsentContextCookie"/> cookie's Path attribute.
+    /// </summary>
+    public const string ConsentPath = "/Consent";
+
+    /// <summary>
     /// Resource string we attach to issued tokens so Civiti.Mcp's OpenIddict.Validation stack
     /// (lands in v1c) can verify the audience.
     /// </summary>
