@@ -20,6 +20,17 @@ internal static class AuthEndpointConstants
     public const string SupabaseCallbackPath = "/supabase-callback";
 
     /// <summary>
+    /// Cookie carrying the Data-Protection-encrypted <c>SupabasePkceState</c> blob (CodeVerifier
+    /// + ReturnUrl + IssuedAt) across the Supabase round-trip. We can't put this in the OAuth
+    /// <c>state</c> query parameter: GoTrue's PKCE-aware <c>/callback</c> validator interprets
+    /// <c>state</c> as a Supabase-generated flow-state lookup key (UUID-shaped) and rejects
+    /// anything else with <em>"400: OAuth state parameter is invalid"</em>, falling back to Site
+    /// URL. Cookie scope keeps the value bound to the same browser that started the login
+    /// (CSRF defense) and confines it to <see cref="SupabaseCallbackPath"/>.
+    /// </summary>
+    public const string SupabasePkceCookie = "civiti_auth_pkce";
+
+    /// <summary>
     /// Resource string we attach to issued tokens so Civiti.Mcp's OpenIddict.Validation stack
     /// (lands in v1c) can verify the audience.
     /// </summary>
