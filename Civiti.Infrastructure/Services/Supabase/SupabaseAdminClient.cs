@@ -52,15 +52,35 @@ public sealed class SupabaseAdminClient(
         }
         if (!response.IsSuccessStatusCode)
         {
-            // Don't retry/throw — the refresh handler treats null as "deny" and the cost of an
-            // erroneous deny is "user re-authenticates", which is preferable to letting a
-            // disabled user keep their session because Supabase had a transient blip.
+            // Throw — distinct from the legitimate-null cases (missing service key, 404 = user
+            // truly deleted) so callers can tell "user gone" from "Supabase had a hiccup". The
+            // background revalidation sweep catches this and skips the session rather than
+            // stamping RevokedAt; the /token refresh handler catches it and denies the refresh
+            // so a partially-disabled user can't keep refreshing during a Supabase outage.
             logger.LogWarning("Supabase /admin/users/{Sub} returned {Status}", supabaseUserId, (int)response.StatusCode);
-            return null;
+            throw new SupabaseTransientException(
+                statusCode: (int)response.StatusCode,
+                supabaseUserId: supabaseUserId,
+                reason: "non-success HTTP status");
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        return ParseUserSnapshot(body);
+        var snapshot = ParseUserSnapshot(body);
+        if (snapshot is null)
+        {
+            // 200 status but unparseable body — typically a WAF/CDN HTML error page or a schema
+            // drift that omitted the user `id`. Treat as transient: we got *something* back, but
+            // not anything we can safely act on. The caller (sweep skip / refresh deny) routes
+            // both via SupabaseTransientException, same as a 5xx.
+            logger.LogWarning(
+                "Supabase /admin/users/{Sub} returned 200 with unparseable body — treating as transient",
+                supabaseUserId);
+            throw new SupabaseTransientException(
+                statusCode: (int)response.StatusCode,
+                supabaseUserId: supabaseUserId,
+                reason: "unparseable response body");
+        }
+        return snapshot;
     }
 
     public async Task<IReadOnlyList<SupabaseAdminUser>> ListAdminsAsync(CancellationToken cancellationToken = default)

@@ -66,7 +66,23 @@ public static class TokenEndpoint
 
         if (oidcRequest.IsRefreshTokenGrantType())
         {
-            var snapshot = await supabaseAdminClient.GetUserAsync(supabaseUserId, cancellationToken);
+            SupabaseUserSnapshot? snapshot;
+            try
+            {
+                snapshot = await supabaseAdminClient.GetUserAsync(supabaseUserId, cancellationToken);
+            }
+            catch (SupabaseTransientException ex)
+            {
+                // Fail closed: a Supabase outage during refresh shouldn't let a possibly-revoked
+                // user keep their session. The user re-authenticates on next attempt; the cost
+                // is one extra interactive login, the saved cost is potentially extending an
+                // admin-scoped session past a legitimate demotion.
+                logger.LogWarning(ex,
+                    "/token refresh: transient Supabase error for sub {Sub} — denying refresh",
+                    supabaseUserId);
+                return ChallengeWithError(OpenIddictConstants.Errors.InvalidGrant,
+                    "Could not revalidate the upstream user. Please sign in again.");
+            }
             if (snapshot is null)
             {
                 logger.LogWarning(
