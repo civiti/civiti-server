@@ -143,6 +143,11 @@ builder.Services.AddAuthentication(AuthEndpointConstants.CookieScheme)
         options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
         options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
         options.SlidingExpiration = false;
+        // Now that this scheme is default, a cookie challenge (e.g. an [Authorize] attribute
+        // added later, or ChallengeAsync() without an explicit scheme) would redirect to the
+        // handler's built-in default of /Account/Login — which doesn't exist here. Point it at
+        // the real Razor page instead so a future authorize-attribute usage doesn't 404.
+        options.LoginPath = "/Login";
     });
 
 builder.Services.AddSingleton<SupabasePkceStateProtector>();
