@@ -18,8 +18,10 @@
 <p>This application is asking to access your Civiti account.</p>
 
 <form method="post">
-    <input type="hidden" asp-for="ReturnUrl" />
-
+    @* OAuth context (clientId, scopes, redirect_uri, state, original /authorize URL) is read
+       server-side from the Data-Protection-encrypted civiti_auth_consent_ctx cookie set by
+       /authorize, not from form fields the user can edit. The form's only payload is the
+       antiforgery token; clicking Approve or Deny flips OnPostAsync vs OnPostDenyAsync. *@
     <h3 style="margin-top:1.25rem;font-size:0.95rem;">It will be able to:</h3>
     <ul class="scope-list">
         @foreach (var scope in Model.Scopes)

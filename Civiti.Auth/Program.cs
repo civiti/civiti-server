@@ -151,6 +151,7 @@ builder.Services.AddAuthentication(AuthEndpointConstants.CookieScheme)
     });
 
 builder.Services.AddSingleton<SupabasePkceStateProtector>();
+builder.Services.AddSingleton<ConsentContextProtector>();
 builder.Services.AddSingleton<SupabaseTokenValidator>();
 builder.Services.AddScoped<SupabaseLoginCompletion>();
 builder.Services.AddScoped<AdminScopeFilter>();
