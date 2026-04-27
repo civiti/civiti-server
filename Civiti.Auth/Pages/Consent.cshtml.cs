@@ -24,6 +24,12 @@ namespace Civiti.Auth.Pages;
 /// client can react cleanly. Partial-scope grants would require splitting the requested set
 /// against the stored set inside <c>HasConsentForScopesAsync</c> + driving a follow-up
 /// /Consent visit for any new scope, which we don't ship today.
+///
+/// "Remember this decision" toggle is intentionally absent: the preference row is always
+/// persisted, so a user-visible toggle would be misleading. Per-session (ephemeral) consent
+/// requires a <c>RememberedAt</c> column + cleanup sweep tied to cookie expiry — that's
+/// v1b.4 work, blocked on the not-yet-built Connected AI Assistants UI which would let
+/// users see and revoke remembered grants.
 /// </summary>
 public sealed class ConsentModel(
     IOpenIddictApplicationManager applicationManager,
@@ -33,9 +39,6 @@ public sealed class ConsentModel(
 {
     [BindProperty(SupportsGet = true)]
     public string? ReturnUrl { get; set; }
-
-    [BindProperty]
-    public bool RememberClient { get; set; }
 
     public string ClientId { get; set; } = string.Empty;
 
@@ -129,8 +132,8 @@ public sealed class ConsentModel(
         await UpsertPreferenceAsync(supabaseUserId, oauthParams.ClientId, grantedScopes, cancellationToken);
 
         logger.LogInformation(
-            "Consent granted: sub {Sub}, client {ClientId}, scopes={Scopes}, remember={Remember}",
-            supabaseUserId, oauthParams.ClientId, string.Join(',', grantedScopes), RememberClient);
+            "Consent granted: sub {Sub}, client {ClientId}, scopes={Scopes}",
+            supabaseUserId, oauthParams.ClientId, string.Join(',', grantedScopes));
 
         return LocalRedirect(ReturnUrl ?? "/");
     }

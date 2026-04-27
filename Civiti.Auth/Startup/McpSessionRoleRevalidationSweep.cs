@@ -110,6 +110,11 @@ internal sealed class McpSessionRoleRevalidationSweep(
             string? revokeReason;
             try
             {
+                // GetUserAsync now returns null only on legitimate "no record" cases (404 — user
+                // truly deleted) and throws SupabaseTransientException on 5xx / 429 / network
+                // errors. The catch below handles the transient case by skipping this session
+                // (don't stamp RevokedAt during a Supabase outage); a null here means the user
+                // is gone, which is exactly when we want to revoke.
                 var snapshot = await supabase.GetUserAsync(session.SupabaseUserId, cancellationToken);
                 if (snapshot is null)
                 {

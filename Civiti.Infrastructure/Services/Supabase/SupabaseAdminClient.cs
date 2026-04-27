@@ -52,11 +52,13 @@ public sealed class SupabaseAdminClient(
         }
         if (!response.IsSuccessStatusCode)
         {
-            // Don't retry/throw — the refresh handler treats null as "deny" and the cost of an
-            // erroneous deny is "user re-authenticates", which is preferable to letting a
-            // disabled user keep their session because Supabase had a transient blip.
+            // Throw — distinct from the legitimate-null cases (missing service key, 404 = user
+            // truly deleted) so callers can tell "user gone" from "Supabase had a hiccup". The
+            // background revalidation sweep catches this and skips the session rather than
+            // stamping RevokedAt; the /token refresh handler catches it and denies the refresh
+            // so a partially-disabled user can't keep refreshing during a Supabase outage.
             logger.LogWarning("Supabase /admin/users/{Sub} returned {Status}", supabaseUserId, (int)response.StatusCode);
-            return null;
+            throw new SupabaseTransientException((int)response.StatusCode, supabaseUserId);
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
