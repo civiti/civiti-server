@@ -118,7 +118,13 @@ public sealed class ConsentModel(
         var filterResult = await adminScopeFilter.FilterAsync(
             oauthParams.ClientId, userRole, oauthParams.Scopes, cancellationToken);
 
-        var grantedScopes = filterResult.Allowed.ToList();
+        // Distinct guards against the edge case of duplicate tokens in the upstream `?scope=`
+        // parameter (RFC 6749 doesn't forbid duplicates). HasConsentForScopesAsync is safe
+        // either way (it ToHashSets), but a clean preference row keeps the union-on-re-consent
+        // path in UpsertPreferenceAsync from persisting duplicates forever.
+        var grantedScopes = filterResult.Allowed
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
         await UpsertPreferenceAsync(supabaseUserId, oauthParams.ClientId, grantedScopes, cancellationToken);
 

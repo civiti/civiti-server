@@ -95,7 +95,18 @@ public static class TokenEndpoint
             // token as admin until expiry. The role-revalidation sweep revokes the *refresh*
             // token within 5 min, which stops future refreshes; this stops the new access token
             // issued by *this* refresh from carrying admin authority.
-            var clientId = oidcRequest.ClientId ?? string.Empty;
+            //
+            // OpenIddict always populates ClientId on a refresh-token grant; if it's somehow
+            // missing we'd silently strip every admin scope (FilterAsync('') treats no app as
+            // not-allowed) and the warning log would read clientId="", making a parameter-bug
+            // look like a role demotion. Bail with an explicit error instead.
+            var clientId = oidcRequest.ClientId;
+            if (string.IsNullOrEmpty(clientId))
+            {
+                logger.LogWarning("/token refresh: missing client_id on refresh request for sub {Sub}", supabaseUserId);
+                return ChallengeWithError(OpenIddictConstants.Errors.InvalidClient,
+                    "client_id is required on refresh requests.");
+            }
             var currentScopes = principal.GetScopes();
             var filter = await adminScopeFilter.FilterAsync(
                 clientId, snapshot.Role, currentScopes, cancellationToken);
