@@ -1,4 +1,5 @@
 using Civiti.Application.Services;
+using Civiti.Infrastructure.Configuration;
 using Civiti.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +25,7 @@ namespace Civiti.Auth.Startup;
 /// </summary>
 internal sealed class McpSessionRoleRevalidationSweep(
     IServiceScopeFactory scopeFactory,
+    SupabaseConfiguration supabaseConfig,
     ILogger<McpSessionRoleRevalidationSweep> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
@@ -55,6 +57,22 @@ internal sealed class McpSessionRoleRevalidationSweep(
 
     private async Task RunOnceAsync(CancellationToken cancellationToken)
     {
+        // Without the Supabase service role key we can't tell "user truly disabled" apart from
+        // "we just can't reach the admin endpoint" — and ISupabaseAdminClient.GetUserAsync
+        // collapses both into a null return. Without this guard a missing/cleared
+        // SUPABASE_SERVICE_KEY at redeploy time would cause every admin-scoped active session
+        // to be marked user_disabled within five minutes and the RevokedAt stamp would persist
+        // even after the key is restored. Bail the whole pass instead — the worst case is a
+        // demoted admin keeps their session until the next refresh-window re-validation
+        // (TokenEndpoint already gates token issuance on the same service-key check), which
+        // is strictly safer than a one-way mass revocation.
+        if (!supabaseConfig.HasServiceRoleKey)
+        {
+            logger.LogWarning(
+                "McpSession sweep skipping pass — SUPABASE_SERVICE_KEY not configured; cannot revalidate admin sessions safely");
+            return;
+        }
+
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<CivitiDbContext>();
         var supabase = scope.ServiceProvider.GetRequiredService<ISupabaseAdminClient>();
