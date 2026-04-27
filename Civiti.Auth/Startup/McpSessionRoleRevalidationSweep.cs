@@ -133,6 +133,13 @@ internal sealed class McpSessionRoleRevalidationSweep(
                     continue;
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Host shutdown — bubble up to ExecuteAsync's outer cancellation-aware catch
+                // instead of logging a misleading "skipping session due to upstream lookup
+                // failure" warning that suggests Supabase had a problem.
+                throw;
+            }
             catch (Exception ex)
             {
                 // A transient GetUserAsync failure shouldn't poison the rest of the sweep —
@@ -158,6 +165,13 @@ internal sealed class McpSessionRoleRevalidationSweep(
                 {
                     await tokenManager.TryRevokeAsync(token, cancellationToken);
                 }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Host shutdown mid-revoke — let it bubble up. McpSession.RevokedAt is already
+                // stamped in memory; SaveChangesAsync below would have committed it, but with
+                // the host coming down we accept the loss rather than fight the shutdown clock.
+                throw;
             }
             catch (Exception ex)
             {
