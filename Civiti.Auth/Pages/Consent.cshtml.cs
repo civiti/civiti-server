@@ -140,6 +140,15 @@ public sealed class ConsentModel(
 
     public async Task<IActionResult> OnPostDenyAsync(CancellationToken cancellationToken)
     {
+        // Same guard as OnGetAsync / OnPostAsync — `ParseOAuthParams` already path-checks for
+        // /authorize but the IsSafeReturnUrl helper additionally rejects protocol-relative URLs
+        // and absolute schemes; keeping all three handlers symmetric closes a defence-in-depth
+        // gap (no exploit today, but the inconsistency is what Greptile keeps flagging).
+        if (!IsSafeReturnUrl(ReturnUrl))
+        {
+            return BadRequest("Invalid returnUrl.");
+        }
+
         var oauthParams = ParseOAuthParams(ReturnUrl);
         if (oauthParams is null)
         {
