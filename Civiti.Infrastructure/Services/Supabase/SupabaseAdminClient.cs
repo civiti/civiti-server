@@ -58,11 +58,29 @@ public sealed class SupabaseAdminClient(
             // stamping RevokedAt; the /token refresh handler catches it and denies the refresh
             // so a partially-disabled user can't keep refreshing during a Supabase outage.
             logger.LogWarning("Supabase /admin/users/{Sub} returned {Status}", supabaseUserId, (int)response.StatusCode);
-            throw new SupabaseTransientException((int)response.StatusCode, supabaseUserId);
+            throw new SupabaseTransientException(
+                statusCode: (int)response.StatusCode,
+                supabaseUserId: supabaseUserId,
+                reason: "non-success HTTP status");
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        return ParseUserSnapshot(body);
+        var snapshot = ParseUserSnapshot(body);
+        if (snapshot is null)
+        {
+            // 200 status but unparseable body — typically a WAF/CDN HTML error page or a schema
+            // drift that omitted the user `id`. Treat as transient: we got *something* back, but
+            // not anything we can safely act on. The caller (sweep skip / refresh deny) routes
+            // both via SupabaseTransientException, same as a 5xx.
+            logger.LogWarning(
+                "Supabase /admin/users/{Sub} returned 200 with unparseable body — treating as transient",
+                supabaseUserId);
+            throw new SupabaseTransientException(
+                statusCode: (int)response.StatusCode,
+                supabaseUserId: supabaseUserId,
+                reason: "unparseable response body");
+        }
+        return snapshot;
     }
 
     public async Task<IReadOnlyList<SupabaseAdminUser>> ListAdminsAsync(CancellationToken cancellationToken = default)

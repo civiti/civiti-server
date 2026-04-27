@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using Civiti.Application.Services;
-using Civiti.Infrastructure.Services.Supabase;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
 using OpenIddict.Abstractions;
