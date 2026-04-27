@@ -14,14 +14,16 @@ namespace Civiti.Auth.Pages;
 
 /// <summary>
 /// Civiti.Auth's OAuth consent screen (auth-design.md §7). Renders client display name +
-/// trust badge + per-scope opt-in toggles + GDPR notice. Reached when /authorize sees a
-/// cookie session but no <see cref="McpUserClientPreference"/> covering the requested scopes.
+/// trust badge + the requested scopes + GDPR notice. Reached when /authorize sees a cookie
+/// session but no <see cref="McpUserClientPreference"/> covering the requested scopes.
 ///
-/// The page POSTs back with the user's approved scopes (subset of the request) and an
-/// optional "remember" flag. On approve we upsert the preference row and redirect back to
-/// /authorize with the same query string, where AuthorizeEndpoint sees the consent and
-/// proceeds to the OpenIddict SignIn. On deny we redirect to the client's
-/// <c>redirect_uri</c> with <c>error=access_denied</c> so the OAuth client can react cleanly.
+/// All-or-nothing grant: Approve writes a preference row covering every scope the
+/// <see cref="AdminScopeFilter"/> allowed for this user+client (matching the all-or-nothing
+/// check in <see cref="AuthorizeEndpoint"/>'s <c>HasConsentForScopesAsync</c>); Deny redirects
+/// back to the client's <c>redirect_uri</c> with <c>error=access_denied</c> so the OAuth
+/// client can react cleanly. Partial-scope grants would require splitting the requested set
+/// against the stored set inside <c>HasConsentForScopesAsync</c> + driving a follow-up
+/// /Consent visit for any new scope, which we don't ship today.
 /// </summary>
 public sealed class ConsentModel(
     IOpenIddictApplicationManager applicationManager,
@@ -31,9 +33,6 @@ public sealed class ConsentModel(
 {
     [BindProperty(SupportsGet = true)]
     public string? ReturnUrl { get; set; }
-
-    [BindProperty]
-    public List<string> ApprovedScopes { get; set; } = [];
 
     [BindProperty]
     public bool RememberClient { get; set; }
@@ -108,32 +107,30 @@ public sealed class ConsentModel(
             return LocalRedirect(ReturnUrl ?? "/");
         }
 
-        // Re-run the admin filter on POST so a user can't smuggle admin scopes into ApprovedScopes
-        // via an edited form — only what FilterAsync returns may actually be granted.
+        // Approve grants the full set of scopes the AdminScopeFilter allowed — same set the page
+        // rendered. Per-scope toggles were considered for v1b.2 but the implementation required
+        // partial-grant semantics in HasConsentForScopesAsync that we don't have, so /authorize
+        // would loop back to /Consent forever after a partial approve. Industry consent screens
+        // (Google, GitHub, Microsoft) ship as all-or-nothing for the same reason — a user who
+        // wants to limit access uses Deny + a different client, not a smaller scope subset on
+        // the same flow.
         var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
         var filterResult = await adminScopeFilter.FilterAsync(
             oauthParams.ClientId, userRole, oauthParams.Scopes, cancellationToken);
 
-        var allowedSet = filterResult.Allowed.ToHashSet(StringComparer.Ordinal);
-        var sanitisedApproved = ApprovedScopes
-            .Where(allowedSet.Contains)
+        // Distinct guards against the edge case of duplicate tokens in the upstream `?scope=`
+        // parameter (RFC 6749 doesn't forbid duplicates). HasConsentForScopesAsync is safe
+        // either way (it ToHashSets), but a clean preference row keeps the union-on-re-consent
+        // path in UpsertPreferenceAsync from persisting duplicates forever.
+        var grantedScopes = filterResult.Allowed
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-        // Always persist the preference row so the /authorize round-trip can complete —
-        // <see cref="AuthorizeEndpoint.HandleAsync"/> reads the McpUserClientPreference DB row
-        // as the single signal of "this user has consented to this client". A user who unticks
-        // Remember without us writing the row would loop /Consent ↔ /authorize forever, since
-        // there's no session-local consent state for v1b.2 to read.
-        //
-        // The Remember checkbox is preserved for UX continuity; v1b.3 will add a sweep that
-        // deletes rows whose Remember was unticked once the user's cookie session expires, so
-        // the visible behaviour matches the user's intent. Until then, both branches persist.
-        await UpsertPreferenceAsync(supabaseUserId, oauthParams.ClientId, sanitisedApproved, cancellationToken);
+        await UpsertPreferenceAsync(supabaseUserId, oauthParams.ClientId, grantedScopes, cancellationToken);
 
         logger.LogInformation(
             "Consent granted: sub {Sub}, client {ClientId}, scopes={Scopes}, remember={Remember}",
-            supabaseUserId, oauthParams.ClientId, string.Join(',', sanitisedApproved), RememberClient);
+            supabaseUserId, oauthParams.ClientId, string.Join(',', grantedScopes), RememberClient);
 
         return LocalRedirect(ReturnUrl ?? "/");
     }

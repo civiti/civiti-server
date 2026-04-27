@@ -25,13 +25,11 @@
         @foreach (var scope in Model.Scopes)
         {
             <li>
-                <label>
-                    <input type="checkbox" name="ApprovedScopes" value="@scope.Name" checked />
-                    <span>
-                        <span class="scope-name">@scope.DisplayName</span>
-                        <span class="scope-desc">@scope.Description</span>
-                    </span>
-                </label>
+                <span class="scope-bullet" aria-hidden="true">•</span>
+                <span>
+                    <span class="scope-name">@scope.DisplayName</span>
+                    <span class="scope-desc">@scope.Description</span>
+                </span>
             </li>
         }
     </ul>

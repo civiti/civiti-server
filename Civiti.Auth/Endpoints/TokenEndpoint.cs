@@ -26,6 +26,7 @@ public static class TokenEndpoint
     public static async Task<IResult> HandleAsync(
         HttpContext httpContext,
         ISupabaseAdminClient supabaseAdminClient,
+        AdminScopeFilter adminScopeFilter,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -84,12 +85,38 @@ public static class TokenEndpoint
             }
 
             // Reflect the latest Supabase role onto the rotated refresh token's principal so a
-            // demotion (admin → citizen) takes effect immediately. Admin scopes that the user
-            // no longer qualifies for will be filtered by AdminScopeFilter on the next /authorize
-            // — for now, a same-set rotation with the updated role is sufficient. Wholesale
-            // scope re-evaluation on refresh lands once we have a UserProfile.McpAdminAccessEnabled
-            // sweep (auth-design.md §5).
+            // demotion (admin → citizen) takes effect immediately on this rotation.
             UpdateRoleClaim(principal, snapshot.Role);
+
+            // Also re-run AdminScopeFilter against the principal's scopes. Without this, a user
+            // demoted between refreshes would still get admin-scoped access tokens for the
+            // remaining 15-min TTL — the role claim says "citizen" but civiti.admin.* is in the
+            // scope set, and any consumer that gates on scope (Civiti.Mcp will) would treat the
+            // token as admin until expiry. The role-revalidation sweep revokes the *refresh*
+            // token within 5 min, which stops future refreshes; this stops the new access token
+            // issued by *this* refresh from carrying admin authority.
+            //
+            // OpenIddict always populates ClientId on a refresh-token grant; if it's somehow
+            // missing we'd silently strip every admin scope (FilterAsync('') treats no app as
+            // not-allowed) and the warning log would read clientId="", making a parameter-bug
+            // look like a role demotion. Bail with an explicit error instead.
+            var clientId = oidcRequest.ClientId;
+            if (string.IsNullOrEmpty(clientId))
+            {
+                logger.LogWarning("/token refresh: missing client_id on refresh request for sub {Sub}", supabaseUserId);
+                return ChallengeWithError(OpenIddictConstants.Errors.InvalidClient,
+                    "client_id is required on refresh requests.");
+            }
+            var currentScopes = principal.GetScopes();
+            var filter = await adminScopeFilter.FilterAsync(
+                clientId, snapshot.Role, currentScopes, cancellationToken);
+            if (filter.Stripped.Count > 0)
+            {
+                principal.SetScopes(filter.Allowed);
+                logger.LogWarning(
+                    "/token refresh: stripped admin scopes [{Stripped}] from sub {Sub} (role now {Role})",
+                    string.Join(',', filter.Stripped), supabaseUserId, snapshot.Role ?? "(none)");
+            }
         }
 
         // Claim destinations don't survive the encrypted code/refresh round-trip; re-attach
