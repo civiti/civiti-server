@@ -140,6 +140,15 @@ public sealed class ConsentModel(
 
     public async Task<IActionResult> OnPostDenyAsync(CancellationToken cancellationToken)
     {
+        // Same guard as OnGetAsync / OnPostAsync — `ParseOAuthParams` already path-checks for
+        // /authorize but the IsSafeReturnUrl helper additionally rejects protocol-relative URLs
+        // and absolute schemes; keeping all three handlers symmetric closes a defence-in-depth
+        // gap (no exploit today, but the inconsistency is what Greptile keeps flagging).
+        if (!IsSafeReturnUrl(ReturnUrl))
+        {
+            return BadRequest("Invalid returnUrl.");
+        }
+
         var oauthParams = ParseOAuthParams(ReturnUrl);
         if (oauthParams is null)
         {
@@ -154,7 +163,19 @@ public sealed class ConsentModel(
         // We do NOT redirect to client-supplied URIs without first verifying it matches the
         // app's registered redirect_uri, since this page can be reached by any signed-in user.
         var application = await applicationManager.FindByClientIdAsync(oauthParams.ClientId, cancellationToken);
-        if (application is null || !await applicationManager.ValidateRedirectUriAsync(application, oauthParams.RedirectUri, cancellationToken))
+        if (application is null)
+        {
+            return BadRequest("Cannot return error to an unrecognised redirect_uri.");
+        }
+
+        // Mirror the RFC 8252 §8.3 loopback wildcard the authorize/token phase handlers in
+        // LoopbackRedirectUriHandlers.cs already apply. Without this, a native MCP client
+        // (claude-desktop, claude-code) bound to an ephemeral 127.0.0.1:N port lands on
+        // /Consent, clicks Deny, and gets a 400 because the exact-match validator rejects
+        // the port mismatch against the placeholder registered URI (http://127.0.0.1:0/...).
+        var redirectUriValid = await applicationManager.ValidateRedirectUriAsync(application, oauthParams.RedirectUri, cancellationToken)
+            || await LoopbackRedirectUriMatcher.MatchesAsync(applicationManager, application, oauthParams.RedirectUri, cancellationToken);
+        if (!redirectUriValid)
         {
             return BadRequest("Cannot return error to an unrecognised redirect_uri.");
         }
