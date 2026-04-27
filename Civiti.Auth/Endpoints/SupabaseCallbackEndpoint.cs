@@ -30,7 +30,17 @@ internal static class SupabaseCallbackEndpoint
         var logger = loggerFactory.CreateLogger("Civiti.Auth.Endpoints.SupabaseCallback");
 
         var code = httpContext.Request.Query["code"].FirstOrDefault();
-        var protectedState = httpContext.Request.Query["state"].FirstOrDefault();
+        // Our session payload rides in a cookie set on /Login OnPostGoogle, not the OAuth `state`
+        // param — GoTrue interprets `state` as its own flow-state lookup key under PKCE. The
+        // cookie is consumed by *any* hit to /supabase-callback (success or error) so a stolen
+        // cookie can't be replayed across multiple attempts. The error responses below return
+        // 400 Problem documents — none of them redirect back to /supabase-callback, so a
+        // cancelled Google consent doesn't trap the user: they restart from /Login, which mints
+        // a fresh cookie via OnPostGoogle.
+        httpContext.Request.Cookies.TryGetValue(AuthEndpointConstants.SupabasePkceCookie, out var protectedState);
+        httpContext.Response.Cookies.Delete(
+            AuthEndpointConstants.SupabasePkceCookie,
+            new CookieOptions { Path = AuthEndpointConstants.SupabaseCallbackPath });
         var supabaseError = httpContext.Request.Query["error"].FirstOrDefault();
 
         if (!string.IsNullOrEmpty(supabaseError))
@@ -48,7 +58,7 @@ internal static class SupabaseCallbackEndpoint
             return Results.Problem(
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Invalid callback",
-                detail: "Required 'code' and 'state' query parameters are missing.");
+                detail: "Required 'code' query parameter or PKCE session cookie is missing.");
         }
 
         var state = stateProtector.Unprotect(protectedState);

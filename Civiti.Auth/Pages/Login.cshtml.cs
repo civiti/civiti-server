@@ -100,13 +100,32 @@ public sealed class LoginModel(
 
         var provider = Environment.GetEnvironmentVariable(ProviderEnvVar) ?? DefaultProvider;
 
+        // Stash our session payload (verifier + ReturnUrl) in a cookie scoped to /supabase-callback
+        // rather than the OAuth state param: GoTrue's PKCE-aware /callback validator treats `state`
+        // as its own flow-state lookup key and rejects anything else with "400: OAuth state
+        // parameter is invalid", silently falling back to Site URL. Lax (not Strict) so the cookie
+        // survives the top-level navigation back from accounts.google.com → supabase.co → us.
+        // Secure tracks Request.IsHttps so local HTTP dev still sets the cookie; in prod our
+        // ProxyTrustStartupFilter normalises Request.Scheme = "https" before this fires (Railway's
+        // edge terminates TLS) so the Secure flag goes on every production cookie.
+        Response.Cookies.Append(
+            AuthEndpointConstants.SupabasePkceCookie,
+            protectedState,
+            new CookieOptions
+            {
+                HttpOnly = true,
+                SameSite = SameSiteMode.Lax,
+                Secure = Request.IsHttps,
+                Path = AuthEndpointConstants.SupabaseCallbackPath,
+                MaxAge = TimeSpan.FromMinutes(10),
+            });
+
         var supabaseUrl =
             $"{supabaseConfig.Url.TrimEnd('/')}/auth/v1/authorize" +
             $"?provider={Uri.EscapeDataString(provider)}" +
             $"&redirect_to={Uri.EscapeDataString(callbackUrl)}" +
             $"&code_challenge={challenge}" +
-            $"&code_challenge_method=S256" +
-            $"&state={Uri.EscapeDataString(protectedState)}";
+            $"&code_challenge_method=S256";
 
         return Redirect(supabaseUrl);
     }

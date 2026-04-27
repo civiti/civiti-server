@@ -5,10 +5,12 @@ using Microsoft.AspNetCore.DataProtection;
 namespace Civiti.Auth.Authentication;
 
 /// <summary>
-/// Minted on /authorize when no Civiti.Auth cookie session exists. Encrypted via ASP.NET Core
-/// Data Protection and round-tripped through Supabase as the OAuth <c>state</c> parameter so
-/// /supabase-callback can recover the PKCE verifier and the original /authorize query string
-/// (and resume the OpenIddict flow from where it left off).
+/// Minted on /Login when the user starts the Supabase OAuth round-trip. Encrypted via ASP.NET
+/// Core Data Protection and stashed in a <see cref="Civiti.Auth.Endpoints.AuthEndpointConstants.SupabasePkceCookie"/>
+/// browser cookie so /supabase-callback can recover the PKCE verifier and the original
+/// /authorize query string (and resume the OpenIddict flow from where it left off). We can't
+/// piggy-back on the OAuth <c>state</c> param because GoTrue's PKCE-aware <c>/callback</c>
+/// treats <c>state</c> as its own flow-state lookup key.
 /// </summary>
 public sealed record SupabasePkceState(
     string CodeVerifier,
