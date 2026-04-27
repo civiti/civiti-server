@@ -30,6 +30,10 @@ internal sealed class McpSessionRoleRevalidationSweep(
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
     private static readonly string[] AdminScopes = ["civiti.admin.read", "civiti.admin.write"];
+    // First missing-key tick logs at Warning; subsequent ticks drop to Debug. Program.cs already
+    // emits a startup warning, and the env var can't change at runtime (requires redeploy), so an
+    // ongoing 5-minute warning would be pure noise in log aggregators after the first one.
+    private bool _missingKeyWarningLogged;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -68,8 +72,16 @@ internal sealed class McpSessionRoleRevalidationSweep(
         // is strictly safer than a one-way mass revocation.
         if (!supabaseConfig.HasServiceRoleKey)
         {
-            logger.LogWarning(
-                "McpSession sweep skipping pass — SUPABASE_SERVICE_KEY not configured; cannot revalidate admin sessions safely");
+            const string Message = "McpSession sweep skipping pass — SUPABASE_SERVICE_KEY not configured; cannot revalidate admin sessions safely";
+            if (!_missingKeyWarningLogged)
+            {
+                logger.LogWarning(Message);
+                _missingKeyWarningLogged = true;
+            }
+            else
+            {
+                logger.LogDebug(Message);
+            }
             return;
         }
 
