@@ -1,0 +1,33 @@
+@page
+@model Civiti.Auth.Pages.LoginModel
+@{
+    ViewData["Title"] = "Sign in";
+}
+
+<h2>Sign in</h2>
+<p>Use your Civiti account to authorize <strong>@(Model.ClientDisplayName ?? "the requesting application")</strong>.</p>
+
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <p class="error" role="alert">@Model.ErrorMessage</p>
+}
+
+<form method="post">
+    <input type="hidden" asp-for="ReturnUrl" />
+    <label>
+        <span>Email</span>
+        <input asp-for="Email" type="email" autocomplete="email" required />
+    </label>
+    <label>
+        <span>Password</span>
+        <input asp-for="Password" type="password" autocomplete="current-password" required />
+    </label>
+    <button type="submit">Sign in</button>
+</form>
+
+<div class="divider">or</div>
+
+<form method="post" asp-page-handler="Google">
+    <input type="hidden" asp-for="ReturnUrl" />
+    <button type="submit" class="btn btn-secondary">Sign in with Google</button>
+</form>

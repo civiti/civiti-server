@@ -1,0 +1,151 @@
+/* Minimal v1b.2 styling — replace with real brand assets in a follow-up. */
+
+:root {
+    --civiti-bg: #f5f6fa;
+    --civiti-card: #ffffff;
+    --civiti-text: #1f2933;
+    --civiti-muted: #6b7280;
+    --civiti-accent: #2563eb;
+    --civiti-danger: #b91c1c;
+    --civiti-border: #e5e7eb;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--civiti-bg);
+    color: var(--civiti-text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    display: grid;
+    place-items: start center;
+    padding: 4rem 1rem;
+}
+
+.card {
+    background: var(--civiti-card);
+    border: 1px solid var(--civiti-border);
+    border-radius: 12px;
+    padding: 2rem 2.25rem;
+    width: min(28rem, 100%);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 4%);
+}
+
+.brand {
+    margin: 0 0 1.5rem 0;
+    font-size: 1.25rem;
+    color: var(--civiti-accent);
+    letter-spacing: 0.02em;
+}
+
+h2 { margin: 0 0 0.5rem 0; font-size: 1.1rem; }
+
+p { margin: 0.5rem 0; color: var(--civiti-muted); }
+
+label {
+    display: block;
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+}
+
+label > span {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--civiti-muted);
+}
+
+input[type="email"], input[type="password"], input[type="text"] {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--civiti-border);
+    border-radius: 6px;
+    font: inherit;
+}
+
+input:focus { outline: 2px solid var(--civiti-accent); outline-offset: -1px; }
+
+button, .btn {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.65rem 1rem;
+    border: 0;
+    border-radius: 6px;
+    background: var(--civiti-accent);
+    color: white;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+}
+button:hover, .btn:hover { filter: brightness(1.05); }
+
+.btn-secondary {
+    background: transparent;
+    color: var(--civiti-text);
+    border: 1px solid var(--civiti-border);
+}
+
+.btn-danger { background: var(--civiti-danger); }
+
+.divider {
+    margin: 1.25rem 0;
+    text-align: center;
+    color: var(--civiti-muted);
+    font-size: 0.85rem;
+    position: relative;
+}
+.divider::before, .divider::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: calc(50% - 1.5rem);
+    height: 1px;
+    background: var(--civiti-border);
+}
+.divider::before { left: 0; }
+.divider::after { right: 0; }
+
+.scope-list {
+    margin: 1rem 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--civiti-border);
+    border-radius: 6px;
+}
+.scope-list li {
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--civiti-border);
+}
+.scope-list li:last-child { border-bottom: 0; }
+.scope-list label { margin: 0; display: flex; align-items: flex-start; gap: 0.6rem; }
+.scope-list .scope-name { font-weight: 500; }
+.scope-list .scope-desc { display: block; font-size: 0.85rem; color: var(--civiti-muted); margin-top: 0.15rem; }
+
+.badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-left: 0.4rem;
+}
+.badge-verified { background: #ecfdf5; color: #047857; }
+.badge-unverified { background: #fef3c7; color: #92400e; }
+
+.error { color: var(--civiti-danger); margin-top: 0.5rem; font-size: 0.9rem; }
+
+.gdpr-notice {
+    margin-top: 1.25rem;
+    padding: 0.75rem 1rem;
+    background: #f9fafb;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: var(--civiti-muted);
+    line-height: 1.5;
+}
+
+.actions { display: flex; gap: 0.75rem; margin-top: 1rem; }
+.actions > * { flex: 1; }

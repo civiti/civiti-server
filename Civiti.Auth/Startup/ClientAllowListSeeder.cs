@@ -163,6 +163,13 @@ public sealed class ClientAllowListSeeder(
             descriptor.Properties["civiti.allows_admin_scopes"] =
                 System.Text.Json.JsonDocument.Parse(AllowsAdminScopes ? "true" : "false").RootElement;
 
+            // Marker that this application was seeded by the allow-list (vs. dynamically
+            // registered via DCR, which doesn't set this property). The Consent page reads it to
+            // decide whether to render the "Verified" trust badge — when DCR lands, untrusted
+            // clients show "Unverified" automatically because they never get this property set.
+            descriptor.Properties["civiti.is_allow_listed"] =
+                System.Text.Json.JsonDocument.Parse("true").RootElement;
+
             return descriptor;
         }
     }
