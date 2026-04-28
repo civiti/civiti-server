@@ -18,6 +18,11 @@
         <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />
         <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
         <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+        <!-- v1c: pulled in to validate JWT access tokens minted by Civiti.Auth. Pinned to 7.5.0 to
+             match Civiti.Auth's OpenIddict.AspNetCore version — Validation and Server share an
+             internal contract, version skew across the two is the well-known foot-gun. -->
+        <PackageReference Include="OpenIddict.Validation.AspNetCore" Version="7.5.0" />
+        <PackageReference Include="OpenIddict.Validation.SystemNetHttp" Version="7.5.0" />
     </ItemGroup>
 
 </Project>

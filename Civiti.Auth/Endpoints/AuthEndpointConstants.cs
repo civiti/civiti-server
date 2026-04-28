@@ -47,12 +47,6 @@ internal static class AuthEndpointConstants
     public const string ConsentPath = "/Consent";
 
     /// <summary>
-    /// Resource string we attach to issued tokens so Civiti.Mcp's OpenIddict.Validation stack
-    /// (lands in v1c) can verify the audience.
-    /// </summary>
-    public const string ResourceServer = "civiti-mcp";
-
-    /// <summary>
     /// Env var holding the canonical scheme+host this Civiti.Auth deploy answers on (e.g.
     /// <c>https://civiti-auth-production.up.railway.app</c>). Used to build the
     /// <c>redirect_to</c> URL we hand to Supabase, instead of trusting <c>Request.Host</c>
