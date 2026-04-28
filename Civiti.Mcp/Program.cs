@@ -263,19 +263,34 @@ app.UseAuthorization();
 // as the public MCP endpoint so a discovery flood can't drown the host. The "resource" value
 // is the *protected* endpoint (/mcp), not the metadata URL itself — clients use it to verify
 // the discovery doc applies to the resource they were challenged for.
-app.MapGet("/.well-known/oauth-protected-resource", () => Results.Json(new
+//
+// Per RFC 8414 §2 the issuer identifier (and by extension the value advertised in
+// authorization_servers per RFC 9728) is a URL with NO trailing slash — that's also what
+// Civiti.Auth puts in the JWT `iss` claim. We trim the slash that ResolveAuthIssuer added
+// for OpenIddict's discovery-URL concat so a strict client doing string equality between
+// `aud` and the discovered AS doesn't reject the match over a stray "/".
+//
+// Cache-Control: this document changes only on a Civiti.Auth issuer move or a scope
+// addition, so a 5-minute cache balances client efficiency against propagation lag if we
+// ever do change it.
+var authorizationServer = authIssuer.ToString().TrimEnd('/');
+app.MapGet("/.well-known/oauth-protected-resource", (HttpContext ctx) =>
 {
-    resource = $"{mcpPublicOrigin}/mcp",
-    authorization_servers = new[] { authIssuer.ToString() },
-    scopes_supported = new[]
+    ctx.Response.Headers.CacheControl = "public, max-age=300";
+    return Results.Json(new
     {
-        "civiti.read",
-        "civiti.write",
-        "civiti.admin.read",
-        "civiti.admin.write"
-    },
-    bearer_methods_supported = new[] { "header" }
-}))
+        resource = $"{mcpPublicOrigin}/mcp",
+        authorization_servers = new[] { authorizationServer },
+        scopes_supported = new[]
+        {
+            "civiti.read",
+            "civiti.write",
+            "civiti.admin.read",
+            "civiti.admin.write"
+        },
+        bearer_methods_supported = new[] { "header" }
+    });
+})
 .AllowAnonymous()
 .ExcludeFromDescription()
 .RequireRateLimiting(McpPublicRateLimitPolicy);
