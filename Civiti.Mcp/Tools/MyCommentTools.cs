@@ -13,11 +13,6 @@ namespace Civiti.Mcp.Tools;
 [McpServerToolType]
 public sealed class MyCommentTools(ICommentService comments, IMcpCitizenContext citizenContext)
 {
-    private static readonly HashSet<string> AllowedVoteDirections = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "up", "remove"
-    };
-
     [McpServerTool(Name = "add_comment")]
     [Description("Add a comment to an issue, optionally as a reply to an existing comment (parentCommentId). Content runs through OpenAI moderation; rejections surface as {ok: false, reason: 'moderation_rejected'}. Mirrors POST /api/issues/{issueId}/comments. Requires civiti.write scope.")]
     public async Task<object> AddComment(
@@ -66,9 +61,9 @@ public sealed class MyCommentTools(ICommentService comments, IMcpCitizenContext 
             return auth.ErrorPayload;
         }
 
-        if (string.IsNullOrWhiteSpace(direction) || !AllowedVoteDirections.Contains(direction))
+        if (string.IsNullOrWhiteSpace(direction) || !ToolInputVocabularies.VoteDirections.Contains(direction))
         {
-            return new { ok = false, reason = "invalid_input", message = $"direction must be one of: {string.Join(", ", AllowedVoteDirections)}." };
+            return new { ok = false, reason = "invalid_input", message = $"direction must be one of: {string.Join(", ", ToolInputVocabularies.VoteDirections)}." };
         }
 
         var (success, error) = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase)

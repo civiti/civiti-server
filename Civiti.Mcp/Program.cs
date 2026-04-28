@@ -253,9 +253,9 @@ builder.Services.AddMcpServer()
     .WithTools<MyBlockedUsersTools>()
     // §2.2 citizen write tools — see Civiti.Mcp/docs/tool-inventory.md §2.2. Each tool calls
     // IMcpCitizenContext.RequireCitizenWriteAsync first; the helper enforces civiti.write
-    // scope and the structured-error contract per §2.3. add_comment specifically catches the
-    // InvalidOperationException CommentService throws on moderation rejection and surfaces it
-    // as {ok: false, reason: "moderation_rejected"}.
+    // scope and the structured-error contract per §2.3. add_comment specifically catches
+    // ContentModerationException (the typed exception CommentService throws on moderation
+    // rejection) and surfaces it as {ok: false, reason: "moderation_rejected"}.
     .WithTools<MyIssueWriteTools>()
     .WithTools<MyCommentTools>()
     .WithTools<MyProfileWriteTools>()

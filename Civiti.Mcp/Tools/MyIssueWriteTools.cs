@@ -13,11 +13,6 @@ namespace Civiti.Mcp.Tools;
 [McpServerToolType]
 public sealed class MyIssueWriteTools(IIssueService issues, IMcpCitizenContext citizenContext)
 {
-    private static readonly HashSet<string> AllowedVoteDirections = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "up", "remove"
-    };
-
     [McpServerTool(Name = "create_issue")]
     [Description("Create a new civic issue authored by the authenticated user. Mirrors POST /api/issues. Title (≤200), description (≤2000), category (Infrastructure | Environment | Transportation | PublicServices | Safety | Other), address (≤500), district (≤50), latitude / longitude required. Optional urgency, desiredOutcome, communityImpact. Requires civiti.write scope.")]
     public async Task<object> CreateIssue(
@@ -68,9 +63,9 @@ public sealed class MyIssueWriteTools(IIssueService issues, IMcpCitizenContext c
             return auth.ErrorPayload;
         }
 
-        if (string.IsNullOrWhiteSpace(direction) || !AllowedVoteDirections.Contains(direction))
+        if (string.IsNullOrWhiteSpace(direction) || !ToolInputVocabularies.VoteDirections.Contains(direction))
         {
-            return new { ok = false, reason = "invalid_input", message = $"direction must be one of: {string.Join(", ", AllowedVoteDirections)}." };
+            return new { ok = false, reason = "invalid_input", message = $"direction must be one of: {string.Join(", ", ToolInputVocabularies.VoteDirections)}." };
         }
 
         var (success, error) = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase)
