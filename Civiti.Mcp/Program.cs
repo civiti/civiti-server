@@ -385,6 +385,16 @@ static string ResolveMcpPublicOrigin(WebApplicationBuilder builder)
         throw new InvalidOperationException(
             $"CIVITI_MCP_PUBLIC_ORIGIN must use http or https. Got: '{uri.Scheme}'.");
     }
+    // Reject a non-root path: the env var documents a scheme+host origin, so a trailing path
+    // component (e.g. "/v1") is almost certainly a misconfiguration. Without this the
+    // GetLeftPart(Authority) call below would silently strip it, producing the wrong
+    // `resource` value in the discovery doc and a mismatched `resource_metadata` parameter
+    // in WWW-Authenticate — both quietly wrong rather than loudly invalid.
+    if (uri.AbsolutePath is not ("" or "/"))
+    {
+        throw new InvalidOperationException(
+            $"CIVITI_MCP_PUBLIC_ORIGIN must be a scheme+host origin with no path. Got: '{raw}'.");
+    }
 
     // Trim trailing slash so callers can format "$origin/mcp" without doubling.
     return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
