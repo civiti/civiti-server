@@ -18,30 +18,33 @@ public interface IMcpCitizenContext
     /// Supabase <c>sub</c>; does NOT hit the DB to resolve the internal Guid (skip the
     /// extra round-trip when a tool only needs the upstream identity).
     /// </summary>
-    Task<CitizenAuthResult> RequireCitizenReadAsync(CancellationToken cancellationToken = default);
+    Task<CitizenAuthResult<CitizenContext>> RequireCitizenReadAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Verifies the principal is authenticated and carries <c>civiti.read</c>, then resolves
     /// the internal <c>UserProfile.Id</c> via <c>IUserService.GetUserIdAsync</c>. Use when a
     /// downstream service signature takes <c>Guid</c> instead of <c>string supabaseUserId</c>
-    /// (currently <c>IActivityService.GetUserActivitiesAsync</c>, <c>IGamificationService</c>'s
-    /// per-user methods).
+    /// (currently <c>IActivityService.GetUserActivitiesAsync</c>).
     /// </summary>
-    Task<CitizenAuthResult> ResolveCitizenAsync(CancellationToken cancellationToken = default);
+    Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
 /// Discriminated result: either <c>Context</c> is non-null (authorized) or <c>ErrorPayload</c>
 /// is non-null (rejected — the tool returns the payload as its result).
+/// Generic over the context shape so <c>RequireCitizenReadAsync</c> and
+/// <c>ResolveCitizenAsync</c> can return precisely-typed contexts (sub-only vs. with internal
+/// Guid) and tools can dereference fields without nullability gymnastics.
 /// </summary>
-public sealed record CitizenAuthResult(CitizenContext? Context, object? ErrorPayload)
+public sealed record CitizenAuthResult<TContext>(TContext? Context, object? ErrorPayload)
+    where TContext : class
 {
     [MemberNotNullWhen(true, nameof(Context))]
     [MemberNotNullWhen(false, nameof(ErrorPayload))]
     public bool Authorized => Context is not null;
 
-    public static CitizenAuthResult FromContext(CitizenContext context) => new(context, null);
+    public static CitizenAuthResult<TContext> FromContext(TContext context) => new(context, null);
 
-    public static CitizenAuthResult Rejected(string reason, string message) =>
+    public static CitizenAuthResult<TContext> Rejected(string reason, string message) =>
         new(null, new { ok = false, reason, message });
 }

@@ -19,7 +19,7 @@ public sealed class MyActivityTools(IActivityService activity, IMcpCitizenContex
         [Description("Optional activity-type filter: NewSupporters | StatusChange | IssueApproved | IssueResolved | IssueCreated | NewComment. Omit for all types.")] ActivityType? type = null,
         [Description("Page number, 1-indexed. Default 1.")] int? page = null,
         [Description("Page size, 1–100. Default 20.")] int? pageSize = null,
-        [Description("ISO-8601 timestamp; only return activities after this. Omit for no lower bound.")] DateTime? since = null,
+        [Description("ISO-8601 timestamp with timezone offset (e.g. 2026-04-28T14:30:00Z or 2026-04-28T16:30:00+02:00); only return activities after this. Omit for no lower bound.")] DateTimeOffset? since = null,
         CancellationToken cancellationToken = default)
     {
         // Activity service keys off the internal Guid (UserProfile.Id) rather than the Supabase
@@ -29,7 +29,7 @@ public sealed class MyActivityTools(IActivityService activity, IMcpCitizenContex
         var auth = await citizenContext.ResolveCitizenAsync(cancellationToken);
         if (!auth.Authorized)
         {
-            return auth.ErrorPayload!;
+            return auth.ErrorPayload;
         }
 
         var request = new GetActivitiesRequest
@@ -37,8 +37,10 @@ public sealed class MyActivityTools(IActivityService activity, IMcpCitizenContex
             Page = page is > 0 ? page.Value : 1,
             PageSize = Math.Clamp(pageSize ?? 20, 1, 100),
             Type = type,
-            Since = since
+            // Activity rows store CreatedAt as UTC; convert any client-supplied offset to UTC
+            // here so the comparison is timezone-correct regardless of how the agent serialised it.
+            Since = since?.UtcDateTime
         };
-        return await activity.GetUserActivitiesAsync(auth.Context.InternalUserId!.Value, request);
+        return await activity.GetUserActivitiesAsync(auth.Context.InternalUserId, request);
     }
 }

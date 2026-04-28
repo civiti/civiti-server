@@ -84,9 +84,10 @@ public class McpCitizenContextTests
 
         result.Authorized.Should().BeTrue();
         result.Context!.SupabaseUserId.Should().Be("abc-123");
-        result.Context.InternalUserId.Should().BeNull();
+        // The CitizenContext type from RequireCitizenReadAsync deliberately doesn't carry an
+        // internal id — the type system enforces "you must call ResolveCitizenAsync to get one".
         // RequireCitizenReadAsync MUST NOT call GetUserIdAsync — that's the whole point of
-        // the two-overload split (avoid one DB round-trip when the tool only needs the sub).
+        // the two-method split (avoid one DB round-trip when the tool only needs the sub).
         _userService.Verify(s => s.GetUserIdAsync(It.IsAny<string>()), Times.Never);
     }
 
@@ -164,7 +165,7 @@ public class McpCitizenContextTests
         return new ClaimsPrincipal(identity);
     }
 
-    private static string ReasonOf(CitizenAuthResult result)
+    private static string ReasonOf<TContext>(CitizenAuthResult<TContext> result) where TContext : class
     {
         // ErrorPayload is an anonymous object: { ok = false, reason = "...", message = "..." }.
         // Use reflection to read the reason without coupling tests to a serialization format.
