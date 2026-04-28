@@ -36,6 +36,13 @@
             of scope for the mechanical refactor.
         -->
         <ProjectReference Include="..\Civiti.Api\Civiti.Api.csproj" />
+        <!--
+            Civiti.Mcp reference covers the v1c authorization helper tests
+            (Civiti.Tests/Mcp/Authorization/*). Pulls in OpenIddict.Validation.AspNetCore
+            transitively — version pinning to 7.5.0 lives on Civiti.Mcp.csproj per
+            ~/memory/feedback_test_project_version_pinning.md.
+        -->
+        <ProjectReference Include="..\Civiti.Mcp\Civiti.Mcp.csproj" />
     </ItemGroup>
 
 </Project>
