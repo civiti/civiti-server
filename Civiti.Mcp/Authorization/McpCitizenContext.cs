@@ -10,20 +10,31 @@ public sealed class McpCitizenContext(
     ILogger<McpCitizenContext> logger) : IMcpCitizenContext
 {
     private const string CivitiReadScope = "civiti.read";
+    private const string CivitiWriteScope = "civiti.write";
 
-    public async Task<CitizenAuthResult<CitizenContext>> RequireCitizenReadAsync(CancellationToken cancellationToken = default)
+    public Task<CitizenAuthResult<CitizenContext>> RequireCitizenReadAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(RequireScope(CivitiReadScope));
+
+    public Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenAsync(CancellationToken cancellationToken = default)
+        => ResolveWithScopeAsync(CivitiReadScope);
+
+    public Task<CitizenAuthResult<CitizenContext>> RequireCitizenWriteAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(RequireScope(CivitiWriteScope));
+
+    public Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenWriteAsync(CancellationToken cancellationToken = default)
+        => ResolveWithScopeAsync(CivitiWriteScope);
+
+    private CitizenAuthResult<CitizenContext> RequireScope(string requiredScope)
     {
-        var (sub, error) = AuthenticateAndExtractSub();
-        if (error is not null)
-        {
-            return new CitizenAuthResult<CitizenContext>(null, error);
-        }
-        return CitizenAuthResult<CitizenContext>.FromContext(new CitizenContext(sub!));
+        var (sub, error) = AuthenticateAndExtractSub(requiredScope);
+        return error is not null
+            ? new CitizenAuthResult<CitizenContext>(null, error)
+            : CitizenAuthResult<CitizenContext>.FromContext(new CitizenContext(sub!));
     }
 
-    public async Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenAsync(CancellationToken cancellationToken = default)
+    private async Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveWithScopeAsync(string requiredScope)
     {
-        var (sub, error) = AuthenticateAndExtractSub();
+        var (sub, error) = AuthenticateAndExtractSub(requiredScope);
         if (error is not null)
         {
             return new CitizenAuthResult<IdentifiedCitizenContext>(null, error);
@@ -47,11 +58,11 @@ public sealed class McpCitizenContext(
     }
 
     /// <summary>
-    /// Shared first half of both public methods: validate the principal, enforce the read
+    /// Shared first half of every public method: validate the principal, enforce the requested
     /// scope, extract the sub. Returns a tuple — either <c>Sub</c> is non-null (authenticated
     /// successfully) or <c>Error</c> is non-null (caller wraps it in the typed result).
     /// </summary>
-    private (string? Sub, object? Error) AuthenticateAndExtractSub()
+    private (string? Sub, object? Error) AuthenticateAndExtractSub(string requiredScope)
     {
         var user = httpContextAccessor.HttpContext?.User;
         if (user?.Identity is not { IsAuthenticated: true })
@@ -62,15 +73,15 @@ public sealed class McpCitizenContext(
             return (null, RejectionPayload("unauthenticated", "Bearer token required."));
         }
 
-        if (!user.HasCivitiScope(CivitiReadScope))
+        if (!user.HasCivitiScope(requiredScope))
         {
             logger.LogWarning(
                 "MCP tool call rejected: token for sub {Sub} is missing required scope {Scope}",
                 user.FindFirst(OpenIddictConstants.Claims.Subject)?.Value,
-                CivitiReadScope);
+                requiredScope);
             return (null, RejectionPayload(
                 "missing_scope",
-                $"Required scope '{CivitiReadScope}' was not granted on this token."));
+                $"Required scope '{requiredScope}' was not granted on this token."));
         }
 
         var sub = user.FindFirst(OpenIddictConstants.Claims.Subject)?.Value;

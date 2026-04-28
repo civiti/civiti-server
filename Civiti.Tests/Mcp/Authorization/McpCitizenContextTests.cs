@@ -146,6 +146,86 @@ public class McpCitizenContextTests
         result.Context!.SupabaseUserId.Should().Be("abc-123");
     }
 
+    // ── RequireCitizenWriteAsync ───────────────────────────────────────────
+
+    [Fact]
+    public async Task RequireCitizenWriteAsync_NoScope_RejectsMissingScope()
+    {
+        var sut = CreateSut(AuthenticatedPrincipal(sub: "abc"));
+
+        var result = await sut.RequireCitizenWriteAsync();
+
+        result.Authorized.Should().BeFalse();
+        ReasonOf(result).Should().Be("missing_scope");
+    }
+
+    [Fact]
+    public async Task RequireCitizenWriteAsync_ReadOnlyScope_RejectsMissingScope()
+    {
+        // Scopes are independent per auth-design.md §8 — civiti.read does NOT imply
+        // civiti.write. A token with only read must be rejected from write tools.
+        var sut = CreateSut(AuthenticatedPrincipal(sub: "abc", scope: "civiti.read"));
+
+        var result = await sut.RequireCitizenWriteAsync();
+
+        result.Authorized.Should().BeFalse();
+        ReasonOf(result).Should().Be("missing_scope");
+    }
+
+    [Fact]
+    public async Task RequireCitizenWriteAsync_WriteOnlyScope_Authorizes()
+    {
+        // Symmetric: a write-only token is enough to call write tools. The system doesn't
+        // require both scopes for write tools because nothing in the §2.2 surface needs to
+        // also call read tools internally — the response payloads are self-contained.
+        var sut = CreateSut(AuthenticatedPrincipal(sub: "abc", scope: "civiti.write"));
+
+        var result = await sut.RequireCitizenWriteAsync();
+
+        result.Authorized.Should().BeTrue();
+        result.Context!.SupabaseUserId.Should().Be("abc");
+        _userService.Verify(s => s.GetUserIdAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RequireCitizenWriteAsync_BothScopes_Authorizes()
+    {
+        var identity = new ClaimsIdentity("test");
+        identity.AddClaim(new Claim(OpenIddictConstants.Claims.Subject, "abc-456"));
+        identity.AddClaim(new Claim(OpenIddictConstants.Claims.Scope, "civiti.read civiti.write"));
+        var sut = CreateSut(new ClaimsPrincipal(identity));
+
+        var result = await sut.RequireCitizenWriteAsync();
+
+        result.Authorized.Should().BeTrue();
+        result.Context!.SupabaseUserId.Should().Be("abc-456");
+    }
+
+    [Fact]
+    public async Task ResolveCitizenWriteAsync_WriteScopeAndProfile_ResolvesInternalId()
+    {
+        var internalId = Guid.NewGuid();
+        _userService.Setup(s => s.GetUserIdAsync("abc")).ReturnsAsync(internalId);
+        var sut = CreateSut(AuthenticatedPrincipal(sub: "abc", scope: "civiti.write"));
+
+        var result = await sut.ResolveCitizenWriteAsync();
+
+        result.Authorized.Should().BeTrue();
+        result.Context!.InternalUserId.Should().Be(internalId);
+    }
+
+    [Fact]
+    public async Task ResolveCitizenWriteAsync_NoUserProfile_RejectsUserProfileMissing()
+    {
+        _userService.Setup(s => s.GetUserIdAsync("abc")).ReturnsAsync((Guid?)null);
+        var sut = CreateSut(AuthenticatedPrincipal(sub: "abc", scope: "civiti.write"));
+
+        var result = await sut.ResolveCitizenWriteAsync();
+
+        result.Authorized.Should().BeFalse();
+        ReasonOf(result).Should().Be("user_profile_missing");
+    }
+
     private McpCitizenContext CreateSut(ClaimsPrincipal user)
     {
         var ctx = new DefaultHttpContext { User = user };
