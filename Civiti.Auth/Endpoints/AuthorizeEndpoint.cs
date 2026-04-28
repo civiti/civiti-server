@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Civiti.Application.Mcp;
 using Civiti.Auth.Authentication;
 using Civiti.Infrastructure.Data;
 using Microsoft.AspNetCore;
@@ -129,7 +130,7 @@ public static class AuthorizeEndpoint
 
         var principal = new ClaimsPrincipal(identity);
         principal.SetScopes(allowedScopes);
-        principal.SetResources(AuthEndpointConstants.ResourceServer);
+        principal.SetResources(McpResourceIdentifiers.Audience);
 
         logger.LogInformation(
             "/authorize: issuing authorization code for sub {Sub}, scopes {Scopes}",

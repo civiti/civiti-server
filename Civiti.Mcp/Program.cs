@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using System.Threading.RateLimiting;
 using Civiti.Application.Email.Models;
+using Civiti.Application.Mcp;
 using Civiti.Application.Notifications;
 using Civiti.Application.Push.Models;
 using Civiti.Application.Services;
@@ -15,7 +16,9 @@ using Civiti.Infrastructure.Services.Email;
 using Civiti.Mcp.Tools;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using OpenIddict.Validation.AspNetCore;
 using Serilog;
+using static OpenIddict.Validation.OpenIddictValidationEvents;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,6 +49,51 @@ builder.Services.AddDbContext<CivitiDbContext>(options =>
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
+
+// v1c authenticated /mcp endpoint — see Civiti.Mcp/docs/auth-design.md.
+//
+// CIVITI_AUTH_ISSUER is the canonical issuer URL of the Civiti.Auth deploy this resource
+// server trusts (e.g. https://civiti-auth-development.up.railway.app/). OpenIddict.Validation
+// fetches /.well-known/openid-configuration from there, then the JWKS, and validates JWT
+// access-token signatures statelessly — no DB round-trip, no introspection. The 15-minute
+// access-token TTL bounds the revocation lag for citizen reads (acceptable per auth-design
+// open-question #2; admin scopes have stronger guarantees via the refresh-time + 5-min
+// sweep paths in Civiti.Auth).
+//
+// CIVITI_MCP_PUBLIC_ORIGIN is the scheme+host this Mcp deploy is publicly reachable on
+// (e.g. https://civiti-mcp-development.up.railway.app). Used to build the absolute resource
+// URL in the RFC 9728 discovery doc and the resource_metadata WWW-Authenticate parameter —
+// never trust Request.Host, mirroring the same defense Civiti.Auth uses with
+// CIVITI_AUTH_PUBLIC_ORIGIN.
+var authIssuer = ResolveAuthIssuer(builder);
+var mcpPublicOrigin = ResolveMcpPublicOrigin(builder);
+var resourceMetadataUrl = $"{mcpPublicOrigin}/.well-known/oauth-protected-resource";
+
+builder.Services.AddOpenIddict()
+    .AddValidation(options =>
+    {
+        options.SetIssuer(authIssuer);
+        options.AddAudiences(McpResourceIdentifiers.Audience);
+        options.UseSystemNetHttp();
+        options.UseAspNetCore();
+
+        // RFC 9728 §5.3: a Bearer challenge against a Protected Resource SHOULD include a
+        // resource_metadata parameter pointing at the discovery doc, so MCP clients can
+        // auto-discover the authorization server (issuer, scopes, …) without out-of-band
+        // configuration. OpenIddict.Validation.AspNetCore's AttachWwwAuthenticateHeader
+        // (order 50_000) serializes whatever sits on transaction.Response into the header,
+        // so we run *before* it (order 40_000) and seed the parameter.
+        options.AddEventHandler<ProcessChallengeContext>(handler =>
+            handler.UseInlineHandler(context =>
+            {
+                context.Response["resource_metadata"] = resourceMetadataUrl;
+                return default;
+            })
+            .SetOrder(40_000));
+    });
+
+builder.Services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
+builder.Services.AddAuthorization();
 
 // Channel writers required by the service graph (NotificationService, AdminNotifier).
 // No consumers are registered in this host — per architecture.md §3, email/push/admin-notify
@@ -122,7 +170,11 @@ builder.Services.AddMcpServer()
     .WithTools<PublicIssueTools>()
     .WithTools<PublicAuthorityTools>()
     .WithTools<PublicGamificationTools>()
-    .WithTools<PublicStaticDataTools>();
+    .WithTools<PublicStaticDataTools>()
+    // Diagnostic — exposed on both /mcp and /mcp/public. On the public mount it returns
+    // {authenticated: false}; on /mcp it dumps the validated principal so we can confirm
+    // the JWT round-trip end-to-end without needing PR 2's user-scoped tools.
+    .WithTools<WhoAmITools>();
 
 var app = builder.Build();
 
@@ -204,6 +256,30 @@ app.Use(async (context, next) =>
 
 app.UseRateLimiter();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
+// RFC 9728 Protected-Resource Metadata. Anonymous; rate-limited under the same per-IP policy
+// as the public MCP endpoint so a discovery flood can't drown the host. The "resource" value
+// is the *protected* endpoint (/mcp), not the metadata URL itself — clients use it to verify
+// the discovery doc applies to the resource they were challenged for.
+app.MapGet("/.well-known/oauth-protected-resource", () => Results.Json(new
+{
+    resource = $"{mcpPublicOrigin}/mcp",
+    authorization_servers = new[] { authIssuer.ToString() },
+    scopes_supported = new[]
+    {
+        "civiti.read",
+        "civiti.write",
+        "civiti.admin.read",
+        "civiti.admin.write"
+    },
+    bearer_methods_supported = new[] { "header" }
+}))
+.AllowAnonymous()
+.ExcludeFromDescription()
+.RequireRateLimiting(McpPublicRateLimitPolicy);
+
 app.MapGet("/api/health", async (CivitiDbContext ctx, IHostEnvironment env) =>
 {
     try
@@ -230,8 +306,16 @@ app.MapGet("/api/health", async (CivitiDbContext ctx, IHostEnvironment env) =>
 
 app.MapMcp("/mcp/public").RequireRateLimiting(McpPublicRateLimitPolicy);
 
+// Authenticated mount. RequireAuthorization() with no policy name = "any authenticated
+// principal"; per-scope policies land in PR 2 alongside the §2.1 user-scoped tools that
+// need them. Same per-IP rate-limit policy as the public mount for now; PR 2+ may
+// partition by sub for higher per-user ceilings.
+app.MapMcp("/mcp").RequireAuthorization().RequireRateLimiting(McpPublicRateLimitPolicy);
+
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8081";
-Log.Information("Civiti.Mcp starting on port {Port}; /mcp/public (anonymous, {ToolCount} tools)", port, 6);
+Log.Information(
+    "Civiti.Mcp starting on port {Port}; /mcp/public (anonymous), /mcp (bearer, issuer={Issuer}, audience={Audience})",
+    port, authIssuer, McpResourceIdentifiers.Audience);
 await app.RunAsync($"http://0.0.0.0:{port}");
 return;
 
@@ -253,4 +337,55 @@ static string ResolveConnectionString(WebApplicationBuilder builder)
     var password = userInfo.Length > 1 ? userInfo[1] : string.Empty;
     var includeErrorDetail = builder.Environment.IsDevelopment() ? ";Include Error Detail=true" : string.Empty;
     return $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={username};Password={password};SSL Mode=Require;Timeout=30;Command Timeout=30;Connection Idle Lifetime=300;Maximum Pool Size=50{includeErrorDetail}";
+}
+
+static Uri ResolveAuthIssuer(WebApplicationBuilder builder)
+{
+    var raw = Environment.GetEnvironmentVariable("CIVITI_AUTH_ISSUER")
+        ?? builder.Configuration["Auth:Issuer"]
+        ?? throw new InvalidOperationException(
+            "CIVITI_AUTH_ISSUER env var (or Auth:Issuer config) must be set to the Civiti.Auth deploy URL, e.g. https://civiti-auth-development.up.railway.app/");
+
+    if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+    {
+        throw new InvalidOperationException(
+            $"CIVITI_AUTH_ISSUER must be an absolute URL with scheme. Got: '{raw}'.");
+    }
+    if (uri.Scheme is not ("http" or "https"))
+    {
+        throw new InvalidOperationException(
+            $"CIVITI_AUTH_ISSUER must use http or https. Got: '{uri.Scheme}'.");
+    }
+
+    // OpenIddict's discovery client appends ".well-known/openid-configuration" to the issuer
+    // by string concat; a missing trailing slash truncates the path segment. Normalise here so
+    // a misconfigured env var ("…/up.railway.app" vs "…/up.railway.app/") doesn't silently
+    // fail discovery.
+    if (!uri.AbsolutePath.EndsWith('/'))
+    {
+        uri = new Uri(uri.AbsoluteUri + "/");
+    }
+    return uri;
+}
+
+static string ResolveMcpPublicOrigin(WebApplicationBuilder builder)
+{
+    var raw = Environment.GetEnvironmentVariable("CIVITI_MCP_PUBLIC_ORIGIN")
+        ?? builder.Configuration["Mcp:PublicOrigin"]
+        ?? throw new InvalidOperationException(
+            "CIVITI_MCP_PUBLIC_ORIGIN env var (or Mcp:PublicOrigin config) must be set to this Mcp deploy's public scheme+host, e.g. https://civiti-mcp-development.up.railway.app");
+
+    if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+    {
+        throw new InvalidOperationException(
+            $"CIVITI_MCP_PUBLIC_ORIGIN must be an absolute URL with scheme. Got: '{raw}'.");
+    }
+    if (uri.Scheme is not ("http" or "https"))
+    {
+        throw new InvalidOperationException(
+            $"CIVITI_MCP_PUBLIC_ORIGIN must use http or https. Got: '{uri.Scheme}'.");
+    }
+
+    // Trim trailing slash so callers can format "$origin/mcp" without doubling.
+    return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
 }
