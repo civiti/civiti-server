@@ -34,7 +34,7 @@ public sealed class MyBlockTools(IBlockService blocks, IMcpCitizenContext citize
     [McpServerTool(Name = "unblock_user")]
     [Description("Remove a previously-blocked user from the authenticated user's block list. Mirrors DELETE /api/users/me/blocks/{userId}. Requires civiti.write scope.")]
     public async Task<object> UnblockUser(
-        [Description("Identifier (Guid) of the user to unblock — Civiti's internal UserProfile.Id.")] Guid blockedUserId,
+        [Description("Identifier (Guid) of the user to unblock — Civiti's internal UserProfile.Id.")] Guid targetUserId,
         CancellationToken cancellationToken = default)
     {
         var auth = await citizenContext.RequireCitizenWriteAsync(cancellationToken);
@@ -43,11 +43,11 @@ public sealed class MyBlockTools(IBlockService blocks, IMcpCitizenContext citize
             return auth.ErrorPayload;
         }
 
-        var (success, error) = await blocks.UnblockUserAsync(blockedUserId, auth.Context.SupabaseUserId);
+        var (success, error) = await blocks.UnblockUserAsync(targetUserId, auth.Context.SupabaseUserId);
         if (!success)
         {
             return new { ok = false, reason = "service_error", message = error ?? "Unblock operation failed." };
         }
-        return new { ok = true, blockedUserId };
+        return new { ok = true, targetUserId };
     }
 }

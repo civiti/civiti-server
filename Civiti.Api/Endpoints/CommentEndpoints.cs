@@ -91,6 +91,14 @@ public static class CommentEndpoints
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Account Deleted");
             }
+            catch (ContentModerationException ex)
+            {
+                // Distinct from the InvalidOperationException catch below so we never confuse
+                // a moderation block with one of the other state-error signals the service
+                // raises. Same 400 status the previous fall-through used; clients see the
+                // BlockReason verbatim.
+                return Results.BadRequest(new { error = ex.Message });
+            }
             catch (InvalidOperationException ex)
             {
                 return ex.Message switch

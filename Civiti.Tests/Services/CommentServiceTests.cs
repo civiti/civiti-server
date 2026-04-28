@@ -1,5 +1,6 @@
 using Civiti.Domain.Constants;
 using Civiti.Domain.Entities;
+using Civiti.Domain.Exceptions;
 using Civiti.Application.Requests.Comments;
 using Civiti.Application.Responses.Moderation;
 using Civiti.Infrastructure.Services;
@@ -177,7 +178,7 @@ public class CommentServiceTests : IDisposable
         var act = () => svc.CreateCommentAsync(issue.Id,
             new CreateCommentRequest { Content = "bad content" }, user.SupabaseUserId);
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("Inappropriate language");
+        await act.Should().ThrowAsync<ContentModerationException>().WithMessage("Inappropriate language");
     }
 
     [Fact]

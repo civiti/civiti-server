@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Civiti.Application.Requests.Reports;
 using Civiti.Application.Services;
+using Civiti.Domain.Entities;
 using Civiti.Mcp.Authorization;
 using ModelContextProtocol.Server;
 
@@ -17,14 +18,12 @@ public sealed class MyReportTools(IReportService reports, IMcpCitizenContext cit
         "issue", "comment"
     };
 
-    // Mirrors ReportReason in Civiti.Domain/Entities/Report.cs. Keep in sync if a new reason
-    // value lands upstream — CreateReportRequest.Validate() does the canonical enum-name check
-    // server-side, but pre-validating here gives the agent a clearer error than "Field 'reason'
-    // must be one of: ..." with the full enum dump.
-    private static readonly HashSet<string> AllowedReportReasons = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Spam", "Harassment", "Inappropriate", "Misinformation", "Other"
-    };
+    // Built from Enum.GetNames so a new ReportReason value (e.g. Violence) is automatically
+    // accepted here without a parallel update — the service-side CreateReportRequest.Validate()
+    // does the canonical enum-name check anyway, this set just gives the agent a faster, more
+    // specific error than the validator's full enum dump.
+    private static readonly HashSet<string> AllowedReportReasons =
+        new(Enum.GetNames<ReportReason>(), StringComparer.OrdinalIgnoreCase);
 
     [McpServerTool(Name = "report_content")]
     [Description("File a moderation report against an issue or comment. targetType='issue' mirrors POST /api/issues/{id}/reports; targetType='comment' mirrors POST /api/comments/{id}/reports. Requires civiti.write scope.")]

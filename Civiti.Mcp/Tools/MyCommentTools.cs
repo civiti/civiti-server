@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Civiti.Application.Requests.Comments;
 using Civiti.Application.Services;
+using Civiti.Domain.Exceptions;
 using Civiti.Mcp.Authorization;
 using ModelContextProtocol.Server;
 
@@ -40,12 +41,14 @@ public sealed class MyCommentTools(ICommentService comments, IMcpCitizenContext 
         {
             return await comments.CreateCommentAsync(issueId, request, auth.Context.SupabaseUserId);
         }
-        catch (InvalidOperationException ex)
+        catch (ContentModerationException ex)
         {
-            // CommentService.CreateCommentAsync throws InvalidOperationException specifically on
-            // moderation rejection (see CommentService.cs line ~218). Other failures surface as
-            // different exception types and we let those bubble up so the MCP framework returns a
-            // proper transport-level error rather than a structured payload that hides the bug.
+            // Typed exception — only fires when the OpenAI moderation gate blocks the content,
+            // never for the unrelated state errors (issue not found, parent on different
+            // issue, rate-limited, duplicate, etc.) that CommentService surfaces as plain
+            // InvalidOperationException. Those are left to bubble so the MCP framework
+            // returns a proper transport-level error rather than a misleading
+            // {reason: "moderation_rejected"} payload.
             return new { ok = false, reason = "moderation_rejected", message = ex.Message };
         }
     }
