@@ -13,6 +13,8 @@ using Civiti.Infrastructure.Data;
 using Civiti.Infrastructure.Services;
 using Civiti.Infrastructure.Services.AdminNotify;
 using Civiti.Infrastructure.Services.Email;
+using Civiti.Infrastructure.Services.Supabase;
+using Civiti.Mcp.Authorization;
 using Civiti.Mcp.Tools;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -134,6 +136,31 @@ builder.Services.AddSingleton(new AdminNotifyConfiguration
     MaxSupabasePages = 50
 });
 
+// Supabase config + transport. Mcp's PR 2 citizen read tools call IUserService methods that
+// don't actually hit Supabase (GetUserProfileAsync / GetUserGamificationAsync / GetUserIdAsync
+// are pure Postgres lookups), but UserService's ctor requires ISupabaseService unconditionally
+// so the DI graph has to satisfy it. Reuse the same env-var contract Civiti.Auth uses so a
+// shared deploy can carry one set of values; ServiceRoleKey is optional here because none of
+// the tool methods need admin-API access — leave it empty if unset.
+var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL")
+    ?? builder.Configuration["Supabase:Url"]
+    ?? throw new InvalidOperationException(
+        "SUPABASE_URL env var (or Supabase:Url config) is required for v1c citizen read tools.");
+var supabasePublishableKey = Environment.GetEnvironmentVariable("SUPABASE_PUBLISHABLE_KEY")
+    ?? Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY")
+    ?? builder.Configuration["Supabase:PublishableKey"]
+    ?? throw new InvalidOperationException(
+        "SUPABASE_PUBLISHABLE_KEY env var (or Supabase:PublishableKey config) is required for v1c citizen read tools.");
+builder.Services.AddSingleton(new SupabaseConfiguration
+{
+    Url = supabaseUrl,
+    PublishableKey = supabasePublishableKey,
+    ServiceRoleKey = Environment.GetEnvironmentVariable("SUPABASE_SERVICE_KEY")
+        ?? builder.Configuration["Supabase:ServiceRoleKey"]
+        ?? string.Empty
+});
+builder.Services.AddHttpClient();
+
 // Service graph — the subset IIssueService / IAuthorityService / IGamificationService transitively need.
 builder.Services.AddSingleton<IEmailTemplateService, EmailTemplateService>();
 builder.Services.AddScoped<IActivityService, ActivityService>();
@@ -142,6 +169,11 @@ builder.Services.AddScoped<IGamificationService, GamificationService>();
 builder.Services.AddSingleton<IAdminNotifier, AdminNotifier>();
 builder.Services.AddScoped<IIssueService, IssueService>();
 builder.Services.AddScoped<IAuthorityService, AuthorityService>();
+// v1c PR 2 — citizen read tool dependencies.
+builder.Services.AddScoped<ISupabaseService, SupabaseService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IBlockService, BlockService>();
+builder.Services.AddScoped<IMcpCitizenContext, McpCitizenContext>();
 
 // Rate limiting per tool-inventory.md §1 `read.public` class: 30 requests / min per source IP.
 // Defense-in-depth on top of the service-layer per-IP cooldowns — an attacker still has to pay
@@ -173,8 +205,20 @@ builder.Services.AddMcpServer()
     .WithTools<PublicStaticDataTools>()
     // Diagnostic — exposed on both /mcp and /mcp/public. On the public mount it returns
     // {authenticated: false}; on /mcp it dumps the validated principal so we can confirm
-    // the JWT round-trip end-to-end without needing PR 2's user-scoped tools.
-    .WithTools<WhoAmITools>();
+    // the JWT round-trip end-to-end. Removal tracked in #116.
+    .WithTools<WhoAmITools>()
+    // §2.1 citizen read tools — see Civiti.Mcp/docs/tool-inventory.md §2.1. Each tool calls
+    // IMcpCitizenContext.RequireCitizenReadAsync (or ResolveCitizenAsync for tools needing the
+    // internal Guid) before doing any work; that helper enforces the civiti.read scope and
+    // structured-error contract per §2.3. The tools are registered on the shared MCP server
+    // so they're served on both /mcp and /mcp/public — but on /mcp/public the scope check
+    // fails closed and returns {ok: false, reason: "unauthenticated", ...}, so there's no
+    // privacy regression.
+    .WithTools<MyProfileTools>()
+    .WithTools<MyGamificationTools>()
+    .WithTools<MyIssuesTools>()
+    .WithTools<MyActivityTools>()
+    .WithTools<MyBlockedUsersTools>();
 
 var app = builder.Build();
 
