@@ -55,6 +55,23 @@ builder.Services.AddDbContext<CivitiDbContext>(options =>
 // and discovery would 400 with ID2083. See ProxyTrustStartupFilter for the full XFF/XFP rules.
 builder.Services.AddSingleton<IStartupFilter, Civiti.Auth.Startup.ProxyTrustStartupFilter>();
 
+// CORS for Anthropic-hosted Claude clients (Desktop, Code, claude.ai). Same IStartupFilter
+// trick as proxy trust — without it, OPTIONS preflight on /token would be intercepted by
+// OpenIddict's middleware and 400'd as an invalid_request before CORS could respond.
+// Origins limited to claude.ai + claude.com (both Anthropic-owned). Methods + headers
+// cover the OAuth dance (POST /token with PKCE verifier) and the OpenIddict discovery /
+// JWKS / revocation endpoints. Exposed: WWW-Authenticate so the browser can read it from
+// any (rare) 401 we'd issue; matches the Civiti.Mcp policy for symmetry.
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(Civiti.Auth.Startup.CorsStartupFilter.PolicyName, policy => policy
+        .WithOrigins("https://claude.ai", "https://claude.com")
+        .WithMethods("GET", "POST", "OPTIONS", "DELETE")
+        .WithHeaders("Content-Type", "Authorization", "Accept")
+        .WithExposedHeaders("WWW-Authenticate"));
+});
+builder.Services.AddSingleton<IStartupFilter, Civiti.Auth.Startup.CorsStartupFilter>();
+
 // Supabase configuration — same env var contract as Civiti.Api so deploys can share
 // SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY / SUPABASE_SERVICE_KEY between services. The
 // publishable key drives the password / OAuth-code exchanges on /auth/v1/token; the service
