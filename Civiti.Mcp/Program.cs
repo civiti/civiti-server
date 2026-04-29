@@ -98,6 +98,30 @@ builder.Services.AddOpenIddict()
 builder.Services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
 builder.Services.AddAuthorization();
 
+// CORS for Anthropic-hosted Claude clients (Desktop, Code, claude.ai). The "Connect" UX in
+// Claude Desktop runs in a claude.ai webview, so every fetch toward the MCP endpoint is
+// cross-origin and the browser blocks the preflight before reaching auth. Without this,
+// adding the connector fails with "Couldn't reach the MCP server" before the OAuth dance
+// even starts.
+//
+// Origins: claude.ai + claude.com only — both Anthropic-owned. Wildcard subdomains aren't
+// in CORS spec so we list bare origins; if a future Claude origin shows up (chat.claude.com,
+// app.claude.com, …) add it here.
+//
+// Exposed headers: WWW-Authenticate so the browser can read it from a 401 to extract the
+// resource_metadata parameter per RFC 9728 §5.3 / MCP Auth spec; MCP-Session-Id so future
+// stateful transports can round-trip the session id.
+const string ClaudeCorsPolicy = "Claude";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(ClaudeCorsPolicy, policy => policy
+        .WithOrigins("https://claude.ai", "https://claude.com")
+        .WithMethods("GET", "POST", "OPTIONS", "DELETE")
+        .WithHeaders("Content-Type", "Authorization", "Accept",
+                     "MCP-Protocol-Version", "MCP-Session-Id")
+        .WithExposedHeaders("WWW-Authenticate", "MCP-Session-Id"));
+});
+
 // Channel writers required by the service graph (NotificationService, AdminNotifier).
 // No consumers are registered in this host — per architecture.md §3, email/push/admin-notify
 // background services run only in Civiti.Api. DropWrite keeps any stray producer from blocking
@@ -339,6 +363,11 @@ app.Use(async (context, next) =>
 
     await next(context);
 });
+
+// CORS must run before UseAuthentication so the preflight OPTIONS short-circuits with 204
+// (no auth challenge). Same registration order ASP.NET Core docs recommend for endpoint
+// routing: Routing → CORS → Auth* → endpoints.
+app.UseCors(ClaudeCorsPolicy);
 
 app.UseRateLimiter();
 
