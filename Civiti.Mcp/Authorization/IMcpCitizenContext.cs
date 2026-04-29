@@ -27,6 +27,23 @@ public interface IMcpCitizenContext
     /// (currently <c>IActivityService.GetUserActivitiesAsync</c>).
     /// </summary>
     Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Verifies the principal is authenticated and carries <c>civiti.write</c>. Per
+    /// <c>auth-design.md §8</c> scopes are independent — a write-only token can call write
+    /// tools without also holding <c>civiti.read</c>. Returns the Supabase <c>sub</c>; does
+    /// NOT hit the DB to resolve the internal Guid.
+    /// </summary>
+    Task<CitizenAuthResult<CitizenContext>> RequireCitizenWriteAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Verifies the principal is authenticated and carries <c>civiti.write</c>, then resolves
+    /// the internal <c>UserProfile.Id</c>. Currently no §2.2 write tool needs the internal
+    /// Guid (every backing service for the v1c write surface accepts <c>string supabaseUserId</c>),
+    /// but kept symmetric with <see cref="ResolveCitizenAsync"/> so future write tools whose
+    /// service signatures change don't have to touch the helper.
+    /// </summary>
+    Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenWriteAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>

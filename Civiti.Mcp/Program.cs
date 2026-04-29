@@ -13,6 +13,7 @@ using Civiti.Infrastructure.Data;
 using Civiti.Infrastructure.Services;
 using Civiti.Infrastructure.Services.AdminNotify;
 using Civiti.Infrastructure.Services.Email;
+using Civiti.Infrastructure.Services.Moderation;
 using Civiti.Infrastructure.Services.Supabase;
 using Civiti.Mcp.Authorization;
 using Civiti.Mcp.Tools;
@@ -161,6 +162,33 @@ builder.Services.AddSingleton(new SupabaseConfiguration
 });
 builder.Services.AddHttpClient();
 
+// OpenAI moderation config — used by CommentService for the v1c PR 3 add_comment tool.
+// Mirrors Civiti.Api's pattern: graceful degradation if OPENAI_API_KEY is unset, no
+// fail-fast. Without the key, OpenAIModerationService.IsConfigured returns false and
+// every CreateCommentAsync call passes through unmoderated. That matches the existing
+// Civiti.Api behavior — flagging it here so a future hardening pass can decide whether
+// to fail-closed instead.
+var openAIConfig = new OpenAIConfiguration
+{
+    ApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
+        ?? builder.Configuration["OpenAI:ApiKey"]
+        ?? string.Empty,
+    ModerationModel = Environment.GetEnvironmentVariable("OPENAI_MODERATION_MODEL")
+        ?? builder.Configuration["OpenAI:ModerationModel"]
+        ?? OpenAIConfiguration.DefaultModerationModel,
+    TimeoutSeconds = int.TryParse(
+        Environment.GetEnvironmentVariable("OPENAI_TIMEOUT_SECONDS")
+            ?? builder.Configuration["OpenAI:TimeoutSeconds"], out var t)
+        ? t : OpenAIConfiguration.DefaultTimeoutSeconds
+};
+builder.Services.AddSingleton(openAIConfig);
+if (!openAIConfig.IsConfigured)
+{
+    Log.Warning(
+        "OPENAI_API_KEY not configured on Civiti.Mcp — add_comment will pass user content through unmoderated. " +
+        "Mirrors Civiti.Api's graceful-degradation behavior; set the env var to enable moderation.");
+}
+
 // Service graph — the subset IIssueService / IAuthorityService / IGamificationService transitively need.
 builder.Services.AddSingleton<IEmailTemplateService, EmailTemplateService>();
 builder.Services.AddScoped<IActivityService, ActivityService>();
@@ -174,6 +202,10 @@ builder.Services.AddScoped<ISupabaseService, SupabaseService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IBlockService, BlockService>();
 builder.Services.AddScoped<IMcpCitizenContext, McpCitizenContext>();
+// v1c PR 3 — citizen write tool dependencies.
+builder.Services.AddScoped<IContentModerationService, OpenAIModerationService>();
+builder.Services.AddScoped<ICommentService, CommentService>();
+builder.Services.AddScoped<IReportService, ReportService>();
 
 // Rate limiting per tool-inventory.md §1 `read.public` class: 30 requests / min per source IP.
 // Defense-in-depth on top of the service-layer per-IP cooldowns — an attacker still has to pay
@@ -218,7 +250,17 @@ builder.Services.AddMcpServer()
     .WithTools<MyGamificationTools>()
     .WithTools<MyIssuesTools>()
     .WithTools<MyActivityTools>()
-    .WithTools<MyBlockedUsersTools>();
+    .WithTools<MyBlockedUsersTools>()
+    // §2.2 citizen write tools — see Civiti.Mcp/docs/tool-inventory.md §2.2. Each tool calls
+    // IMcpCitizenContext.RequireCitizenWriteAsync first; the helper enforces civiti.write
+    // scope and the structured-error contract per §2.3. add_comment specifically catches
+    // ContentModerationException (the typed exception CommentService throws on moderation
+    // rejection) and surfaces it as {ok: false, reason: "moderation_rejected"}.
+    .WithTools<MyIssueWriteTools>()
+    .WithTools<MyCommentTools>()
+    .WithTools<MyProfileWriteTools>()
+    .WithTools<MyReportTools>()
+    .WithTools<MyBlockTools>();
 
 var app = builder.Build();
 
