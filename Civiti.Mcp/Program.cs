@@ -364,9 +364,20 @@ app.Use(async (context, next) =>
     await next(context);
 });
 
-// CORS must run before UseAuthentication so the preflight OPTIONS short-circuits with 204
-// (no auth challenge). Same registration order ASP.NET Core docs recommend for endpoint
-// routing: Routing → CORS → Auth* → endpoints.
+// CORS deliberately runs FIRST — before both UseRateLimiter and UseAuthentication. Two
+// distinct reasons:
+//
+// 1. Preflight OPTIONS must short-circuit with 204 before UseAuthentication, otherwise the
+//    auth pipeline answers it with 401 + WWW-Authenticate (correct for an OPTIONS that
+//    reached the authenticated /mcp endpoint, but the browser then sees no
+//    Access-Control-Allow-Origin header and blocks the actual POST).
+//
+// 2. Placing it before UseRateLimiter keeps preflights out of the rate-limit budget. Claude
+//    Desktop's webview issues several OPTIONS in quick succession during the Connect dance
+//    (one per OAuth-discovery hop); rate-limiting those would surface a 429 to the user as
+//    "Couldn't reach the MCP server" — exactly the failure mode this PR is meant to fix.
+//    Preflights are header-only with no business work, so the abuse vector of an unlimited
+//    OPTIONS flood is a thin one (no DB hit, no token validation).
 app.UseCors(ClaudeCorsPolicy);
 
 app.UseRateLimiter();
