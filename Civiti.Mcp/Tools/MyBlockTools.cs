@@ -28,7 +28,12 @@ public sealed class MyBlockTools(IBlockService blocks, IMcpCitizenContext citize
         {
             return new { ok = false, reason = "service_error", message = error ?? "Block operation failed." };
         }
-        return data ?? (object)new { ok = true, blockedUserId };
+        // BlockUserAsync's contract guarantees non-null data when success is true; previous
+        // `?? new { ok = true, ... }` fallback was dead code. Wrap in the same ok-envelope
+        // shape the other confirmation-style tools (vote_on_issue, vote_on_comment,
+        // report_content, unblock_user) use so the agent gets a consistent success
+        // contract — block payload (BlockedUserId + BlockedAt) carried under `data`.
+        return new { ok = true, blockedUserId, data };
     }
 
     [McpServerTool(Name = "unblock_user")]
