@@ -270,8 +270,9 @@ public sealed class RegisterClientRequest
 
 /// <summary>
 /// RFC 7591 §3.2.1 client registration response. <c>token_endpoint_auth_method = "none"</c>
-/// flags this as a public client (no secret); <c>application_type = "native"</c> matches the
-/// loopback-redirect rule.
+/// flags this as a public client (no secret). <c>application_type</c> is derived per
+/// registration via <see cref="LoopbackRedirectUriMatcher.DeriveApplicationType"/>:
+/// <c>"native"</c> when any redirect URI is loopback, <c>"web"</c> when all are HTTPS.
 /// </summary>
 public sealed record RegisterClientResponse(
     [property: JsonPropertyName("client_id")] string ClientId,
