@@ -216,6 +216,26 @@ builder.Services.AddOpenIddict()
             "civiti.admin.read",
             "civiti.admin.write");
 
+        // RFC 8707: ScopeAllowListSeeder writes the Mcp resource URL onto each scope's
+        // Resources collection so OpenIddict's Authentication.ValidateResources +
+        // Exchange.ValidateResources accept resource= parameters from Claude Desktop.
+        // ValidateResourcePermissions is a separate layer that requires every client (seeded
+        // or DCR-registered) to also carry a Permissions.Prefixes.Resource grant for each
+        // URL it can request. We bypass it here because (a) the audience claim on issued
+        // tokens is pinned to McpResourceIdentifiers.Audience via principal.SetResources(...)
+        // in AuthorizeEndpoint regardless of what the client requests, so per-client gating
+        // adds no security and (b) plumbing the URL into both ClientAllowListSeeder and
+        // RegisterEndpoint just to satisfy the gate would be pure boilerplate that drifts
+        // every time we add an environment.
+        //
+        // CAUTION: this bypass is only safe because of (a). If the audience pin in
+        // AuthorizeEndpoint ever changes (e.g. switching to URL-derived audiences for
+        // multi-MCP support), this call MUST be removed and per-client resource permissions
+        // wired into ClientAllowListSeeder + RegisterEndpoint at the same time. The doc
+        // comment on McpResourceIdentifiers.Audience flags the same coupling from the other
+        // side so a future refactorer sees it regardless of which file they touch first.
+        options.IgnoreResourcePermissions();
+
         // Ephemeral keys rotate on restart. That's fine because refresh tokens are server-side
         // reference values (opaque + hashed), so losing signing material only invalidates the
         // short-lived access tokens; the next refresh re-issues against the new JWKS. A
@@ -321,6 +341,18 @@ builder.Services.AddRateLimiter(rateLimiter =>
 // Allow-list seed runs once at startup and ensures every client in auth-design.md §6 exists in
 // OpenIddict's application store. Idempotent: on second boot it's a no-op.
 builder.Services.AddHostedService<Civiti.Auth.Startup.ClientAllowListSeeder>();
+
+// RFC 8707 resource indicators. OpenIddict's Authentication.ValidateResources rejects any
+// resource parameter on /authorize whose URL isn't bound to a requested scope's Resources
+// collection (error invalid_target / ID2190). Claude Desktop posts the MCP host as the
+// resource per RFC 8707, so we register that URL on every civiti scope. Resolved from
+// MCP_RESOURCES env var (comma-separated) or Auth:McpResources config (string[]); see
+// McpResourceConfiguration for the validation rules. The audience claim on issued JWTs is
+// still pinned to the constant "civiti-mcp" via principal.SetResources(...) in
+// AuthorizeEndpoint, so Civiti.Mcp's validator (AddAudiences("civiti-mcp")) is unaffected.
+builder.Services.AddSingleton(
+    Civiti.Auth.Startup.McpResourceConfiguration.FromConfiguration(builder.Configuration));
+builder.Services.AddHostedService<Civiti.Auth.Startup.ScopeAllowListSeeder>();
 
 // Background sweep — every 5 minutes, re-validates active admin-scoped sessions against the
 // upstream Supabase user. Closes the gap between refresh-token rotations for long-lived

@@ -130,6 +130,11 @@ public static class AuthorizeEndpoint
 
         var principal = new ClaimsPrincipal(identity);
         principal.SetScopes(allowedScopes);
+        // Pin the access token's aud claim to the constant "civiti-mcp" regardless of any
+        // RFC 8707 resource= parameter the client sent. Civiti.Mcp's validator only accepts
+        // that audience. Civiti.Auth/Program.cs's options.IgnoreResourcePermissions() depends
+        // on this pin holding — see the doc comment on McpResourceIdentifiers.Audience for
+        // the full coupling.
         principal.SetResources(McpResourceIdentifiers.Audience);
 
         logger.LogInformation(
