@@ -49,17 +49,32 @@ internal sealed class AdvertiseRegistrationEndpointHandler(IHttpContextAccessor 
 
         // Append "none" to the advertised auth methods if it isn't already there. We
         // preserve whatever OpenIddict put in the array first so a future framework change
-        // that adds a new method just flows through. The current contents are accessible
-        // via GetUnnamedParameters() — each child has an explicit string conversion.
+        // that adds a new method just flows through.
+        //
+        // Read via the explicit ImmutableArray<string>? cast: OpenIddict's built-in
+        // AttachClientAuthenticationMethods stores the value as ImmutableArray<string>
+        // (matching the implicit operator on OpenIddictParameter), and
+        // GetUnnamedParameters() only unwraps string[] / JsonElement-backed parameters —
+        // it returns empty for an ImmutableArray-backed one. The previous version of this
+        // code went down that path and silently wiped the three confidential methods,
+        // leaving callers with just ["none"]. The explicit cast goes through the
+        // op_Explicit overload that handles every storage shape OpenIddictParameter wraps.
         var existingMethods = new List<string>(4);
         if (context.Metadata.TryGetValue(TokenAuthMethodsKey, out var raw))
         {
-            foreach (var child in raw.GetUnnamedParameters())
+            // OpenIddictParameter's explicit operator targets ImmutableArray<string?>, not
+            // ImmutableArray<string>. C# nullability annotations would let us substitute one
+            // for the other in many places, but not in the explicit-cast overload-resolution
+            // path — the compiler picks the operator by exact generic-argument match.
+            var asArray = (ImmutableArray<string?>?)raw;
+            if (asArray.HasValue && !asArray.Value.IsDefault)
             {
-                var value = (string?)child;
-                if (value is not null)
+                foreach (var item in asArray.Value)
                 {
-                    existingMethods.Add(value);
+                    if (item is not null)
+                    {
+                        existingMethods.Add(item);
+                    }
                 }
             }
         }
