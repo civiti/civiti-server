@@ -175,6 +175,14 @@ internal static class LoopbackRedirectUriMatcher
     }
 
     /// <summary>
+    /// True when <paramref name="raw"/> parses as an absolute URI whose host is the IPv4
+    /// loopback (<c>127.0.0.1</c>) or IPv6 loopback (<c>::1</c>). Used by both the
+    /// authorize/token validators and <c>RegisterEndpoint</c> (DCR) so all three apply the
+    /// same RFC 8252 §8.3 host check.
+    /// </summary>
+    public static bool IsLoopback(string raw) => TryParseLoopback(raw, out _);
+
+    /// <summary>
     /// Loopback per RFC 8252 §8.3: <c>127.0.0.1</c> or <c>::1</c>. <c>localhost</c> is
     /// deliberately excluded — the spec recommends against it because it depends on local
     /// DNS resolution that varies across platforms.

@@ -261,12 +261,41 @@ builder.Services.AddOpenIddict()
         options.AddEventHandler<OpenIddictServerEvents.ValidateTokenRequestContext>(handler =>
             handler.UseScopedHandler<LoopbackAwareTokenRedirectUriValidator>()
                    .SetOrder(OpenIddictServerHandlers.Exchange.ValidateRedirectUri.Descriptor.Order));
+
+        // Advertise registration_endpoint in /.well-known/openid-configuration and
+        // /.well-known/oauth-authorization-server so MCP clients (Claude Desktop, Code, …)
+        // discover the DCR endpoint per RFC 7591. OpenIddict 7.5 has no built-in DCR, so
+        // /register is hand-rolled in RegisterEndpoint.cs and this handler bridges the
+        // discovery doc to it. Scoped because IHttpContextAccessor is scoped.
+        options.AddEventHandler<OpenIddictServerEvents.HandleConfigurationRequestContext>(handler =>
+            handler.UseScopedHandler<AdvertiseRegistrationEndpointHandler>());
     });
 
 builder.Services.AddScoped<McpSessionWriteHandler>();
 builder.Services.AddScoped<McpSessionRevokeHandler>();
 builder.Services.AddScoped<LoopbackAwareAuthorizationRedirectUriValidator>();
 builder.Services.AddScoped<LoopbackAwareTokenRedirectUriValidator>();
+builder.Services.AddScoped<AdvertiseRegistrationEndpointHandler>();
+builder.Services.AddHttpContextAccessor();
+
+// Per-IP rate limit on /register per auth-design.md §6: 20 registrations per source IP per
+// 24h. The actual /register endpoint mounts this via RequireRateLimiting(...). Partition by
+// the post-ProxyTrustStartupFilter RemoteIpAddress so we throttle the real client, not the
+// Railway edge. FixedWindow is fine — DCR is one-shot per client install, no need for the
+// smoothing a sliding window would provide.
+builder.Services.AddRateLimiter(rateLimiter =>
+{
+    rateLimiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    rateLimiter.AddPolicy(Civiti.Auth.Endpoints.RegisterEndpoint.RateLimitPolicy, httpContext =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromHours(24),
+                QueueLimit = 0
+            }));
+});
 
 // Allow-list seed runs once at startup and ensures every client in auth-design.md §6 exists in
 // OpenIddict's application store. Idempotent: on second boot it's a no-op.
@@ -285,8 +314,16 @@ var app = builder.Build();
 // OpenIddict's own scheme is plumbed via its IStartupFilter and needs no extra wiring.
 app.UseStaticFiles();
 app.UseAuthentication();
+app.UseRateLimiter();
 
 app.MapRazorPages();
+
+// RFC 7591 Dynamic Client Registration. See RegisterEndpoint.cs for the full guardrails
+// (loopback redirect URIs only, civiti.admin.* stripped, PKCE required) and
+// AdvertiseRegistrationEndpointHandler.cs for the discovery-doc pointer. Required by
+// Claude Desktop / Code / etc. — without DCR the Connect flow has no way to bootstrap a
+// client_id and hangs on Connect.
+Civiti.Auth.Endpoints.RegisterEndpoint.Map(app);
 
 app.MapGet("/api/health", async (CivitiDbContext ctx, IHostEnvironment env) =>
 {
