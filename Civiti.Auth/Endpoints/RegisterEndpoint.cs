@@ -143,13 +143,21 @@ public static class RegisterEndpoint
             ? $"Dynamically registered client ({clientId[..8]})"
             : trimmedName;
 
+        // RFC 7591 §2: "native" covers installed apps with loopback / custom URI schemes;
+        // "web" covers HTTPS callback registrations. A registration with only HTTPS URIs
+        // (e.g. Claude Desktop's claude.ai relay) is semantically a web client even though
+        // we issue it as a public client (no secret, PKCE-required). A loopback URI in the
+        // set forces "native" because the caller has a local listener.
+        var applicationType = LoopbackRedirectUriMatcher.DeriveApplicationType(redirectUris);
+
         var descriptor = new OpenIddictApplicationDescriptor
         {
             ClientId = clientId,
             DisplayName = displayName,
-            // Public client: no secret, native app per RFC 8252.
+            // Public client: no secret. PKCE is required below, which is what makes a
+            // public client safe regardless of native/web application_type.
             ClientType = OpenIddictConstants.ClientTypes.Public,
-            ApplicationType = OpenIddictConstants.ApplicationTypes.Native,
+            ApplicationType = applicationType,
             // Explicit consent required every time — there's no Trust-on-First-Use for DCR
             // clients since the user has no out-of-band reason to trust them.
             ConsentType = OpenIddictConstants.ConsentTypes.Explicit
@@ -211,7 +219,7 @@ public static class RegisterEndpoint
                 GrantTypes: ["authorization_code", "refresh_token"],
                 ResponseTypes: ["code"],
                 TokenEndpointAuthMethod: "none",
-                ApplicationType: "native",
+                ApplicationType: applicationType,
                 Scope: string.Join(' ', grantedScopes.OrderBy(s => s, StringComparer.Ordinal))),
             statusCode: StatusCodes.Status201Created);
     }

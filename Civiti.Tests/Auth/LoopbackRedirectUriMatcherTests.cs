@@ -1,5 +1,6 @@
 using Civiti.Auth.Endpoints;
 using FluentAssertions;
+using OpenIddict.Abstractions;
 
 namespace Civiti.Tests.Auth;
 
@@ -53,6 +54,52 @@ public class LoopbackRedirectUriMatcherTests
     public void IsAcceptableDcrRedirectUri_RejectsEverythingElse(string uri)
     {
         LoopbackRedirectUriMatcher.IsAcceptableDcrRedirectUri(uri).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:0/cb")]
+    [InlineData("http://[::1]:54321/cb")]
+    public void DeriveApplicationType_LoopbackOnly_ReturnsNative(string uri)
+    {
+        LoopbackRedirectUriMatcher.DeriveApplicationType(new[] { uri })
+            .Should().Be(OpenIddictConstants.ApplicationTypes.Native);
+    }
+
+    [Theory]
+    [InlineData("https://claude.ai/api/mcp/auth_callback")]
+    [InlineData("https://example.com/cb")]
+    public void DeriveApplicationType_HttpsOnly_ReturnsWeb(string uri)
+    {
+        LoopbackRedirectUriMatcher.DeriveApplicationType(new[] { uri })
+            .Should().Be(OpenIddictConstants.ApplicationTypes.Web);
+    }
+
+    [Fact]
+    public void DeriveApplicationType_LoopbackPlusHttps_ReturnsNative()
+    {
+        // Mixed — loopback presence implies a native/installed component, so RFC 7591
+        // "native" is the right label even when an HTTPS callback is also registered.
+        LoopbackRedirectUriMatcher.DeriveApplicationType(
+            new[] { "https://claude.ai/api/mcp/auth_callback", "http://127.0.0.1:0/cb" })
+            .Should().Be(OpenIddictConstants.ApplicationTypes.Native);
+    }
+
+    [Fact]
+    public void DeriveApplicationType_NonHttpsNonLoopback_ReturnsNative()
+    {
+        // Defensive: anything that isn't HTTPS and isn't loopback (custom URI scheme,
+        // malformed string, http://...) falls back to "native". RegisterEndpoint will have
+        // already rejected non-acceptable URIs by this point, so this is unreachable in
+        // practice — but the helper still returns a valid RFC 7591 value either way.
+        LoopbackRedirectUriMatcher.DeriveApplicationType(new[] { "cursor://anysphere/sso" })
+            .Should().Be(OpenIddictConstants.ApplicationTypes.Native);
+    }
+
+    [Fact]
+    public void DeriveApplicationType_Empty_ReturnsNative()
+    {
+        LoopbackRedirectUriMatcher.DeriveApplicationType(Array.Empty<string>())
+            .Should().Be(OpenIddictConstants.ApplicationTypes.Native);
     }
 
     [Fact]

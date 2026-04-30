@@ -5,28 +5,32 @@ using static OpenIddict.Server.OpenIddictServerEvents;
 namespace Civiti.Auth.Endpoints;
 
 /// <summary>
-/// RFC 8252 §8.3 loopback port wildcard for native MCP clients (claude-desktop,
-/// claude-code). Native apps bind to an ephemeral loopback port at runtime and register a
+/// Redirect-URI policy for the OAuth surface, split into two concerns served from this file:
+///
+/// <list type="number">
+/// <item><b>Loopback port wildcard</b> at /authorize and /token — RFC 8252 §8.3. Native MCP
+/// clients (Claude Code, Cursor) bind an ephemeral loopback port at runtime and register a
 /// placeholder URI like <c>http://127.0.0.1:0/callback</c>. OpenIddict's built-in
-/// redirect_uri validators do exact-string matching against the registered URI, so an
-/// incoming <c>http://127.0.0.1:54321/callback</c> is rejected.
-///
-/// Strategy: <em>replace</em> OpenIddict's built-in <c>ValidateClientRedirectUri</c>
-/// (authorization phase) and <c>Exchange.ValidateRedirectUri</c> (token-exchange phase) with
-/// the two handlers in this file. Each one keeps the original exact-match check via
-/// <see cref="IOpenIddictApplicationManager.ValidateRedirectUriAsync"/> and adds a
-/// loopback-wildcard fallback that accepts any port when both the registered and requested
-/// URIs are loopback with matching scheme/path/query/fragment.
-///
-/// Why replace instead of swap-the-URI-then-restore-it: <see cref="ValidateAuthorizationRequestContext.SetRedirectUri"/>
+/// redirect_uri validators do exact-string matching, so an incoming
+/// <c>http://127.0.0.1:54321/callback</c> would be rejected against the placeholder. The
+/// two <c>LoopbackAware*RedirectUriValidator</c> handlers <em>replace</em> OpenIddict's
+/// built-in <c>ValidateClientRedirectUri</c> (authorize) and
+/// <c>Exchange.ValidateRedirectUri</c> (token), each keeping the original exact-match check
+/// via <see cref="IOpenIddictApplicationManager.ValidateRedirectUriAsync"/> and adding a
+/// loopback-wildcard fallback that accepts any port when scheme/path/query/fragment match.
+/// (Why replace instead of swap-the-URI-then-restore: <see cref="ValidateAuthorizationRequestContext.SetRedirectUri"/>
 /// is for the fallback case where the client didn't send a redirect_uri at all. Calling it
-/// when the client did supply one trips OpenIddict's internal consistency check against
-/// <c>Request.RedirectUri</c> and 500s. Replacing the validator entirely avoids touching the
-/// request payload.
+/// with one supplied trips OpenIddict's internal consistency check and 500s.)</item>
 ///
-/// Non-loopback redirect URIs (claude-ai HTTPS, chatgpt-connector HTTPS) get the same
-/// exact-match treatment as before — port mismatches are meaningful for fixed-host callbacks
-/// and we don't want to relax that.
+/// <item><b>DCR registration policy</b> via <see cref="LoopbackRedirectUriMatcher.IsAcceptableDcrRedirectUri"/>
+/// and <see cref="LoopbackRedirectUriMatcher.AllowlistedDcrRedirectUris"/>. Used by
+/// <see cref="RegisterEndpoint"/> at /register time to admit either a loopback URI or a
+/// narrowly-scoped allowlist of cloud-relay callbacks (Claude Desktop's
+/// <c>https://claude.ai/api/mcp/auth_callback</c> today). Once an allowlisted URI is on
+/// record for a client, the authorize/token validators above accept it via the unchanged
+/// exact-match path — port mismatches are meaningful for fixed-host HTTPS callbacks and the
+/// loopback wildcard deliberately doesn't apply to them.</item>
+/// </list>
 /// </summary>
 public sealed class LoopbackAwareAuthorizationRedirectUriValidator(
     IOpenIddictApplicationManager applicationManager,
@@ -212,6 +216,36 @@ public static class LoopbackRedirectUriMatcher
     /// </summary>
     public static bool IsAcceptableDcrRedirectUri(string raw) =>
         IsLoopback(raw) || AllowlistedDcrRedirectUris.Contains(raw);
+
+    /// <summary>
+    /// Derives the RFC 7591 §2 <c>application_type</c> for a registration. <c>"native"</c>
+    /// covers installed apps with custom URI schemes or loopback redirects;
+    /// <c>"web"</c> covers apps with HTTPS-only callbacks. A loopback URI in the set forces
+    /// <c>"native"</c> regardless of the rest, since presence of a loopback callback implies
+    /// a native/installed component on the user's machine. An empty set falls through to
+    /// <c>"native"</c> defensively, but <see cref="RegisterEndpoint"/> rejects empty
+    /// <c>redirect_uris</c> earlier so this branch is unreachable in practice.
+    /// </summary>
+    public static string DeriveApplicationType(IEnumerable<string> redirectUris)
+    {
+        var hasAny = false;
+        var allHttps = true;
+        foreach (var uri in redirectUris)
+        {
+            hasAny = true;
+            if (IsLoopback(uri))
+            {
+                return OpenIddictConstants.ApplicationTypes.Native;
+            }
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps)
+            {
+                allHttps = false;
+            }
+        }
+        return hasAny && allHttps
+            ? OpenIddictConstants.ApplicationTypes.Web
+            : OpenIddictConstants.ApplicationTypes.Native;
+    }
 
     /// <summary>
     /// Loopback per RFC 8252 §8.3: <c>127.0.0.1</c> or <c>::1</c>. <c>localhost</c> is
