@@ -43,6 +43,13 @@
             ~/memory/feedback_test_project_version_pinning.md.
         -->
         <ProjectReference Include="..\Civiti.Mcp\Civiti.Mcp.csproj" />
+        <!--
+            Civiti.Auth reference covers DCR redirect-URI matcher tests
+            (Civiti.Tests/Auth/LoopbackRedirectUriMatcherTests.cs). Same OpenIddict 7.5.0
+            transitive surface as Civiti.Mcp; no extra version pin required. The matching
+            COPY line in /Dockerfile is required for the Railway build's isolated restore.
+        -->
+        <ProjectReference Include="..\Civiti.Auth\Civiti.Auth.csproj" />
     </ItemGroup>
 
 </Project>

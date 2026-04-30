@@ -13,11 +13,13 @@ COPY ["Civiti.Domain/Civiti.Domain.csproj", "Civiti.Domain/"]
 COPY ["Civiti.Application/Civiti.Application.csproj", "Civiti.Application/"]
 COPY ["Civiti.Infrastructure/Civiti.Infrastructure.csproj", "Civiti.Infrastructure/"]
 COPY ["Civiti.Api/Civiti.Api.csproj", "Civiti.Api/"]
-# Civiti.Mcp.csproj is required by Civiti.Tests (transitive ProjectReference). Same trap
-# the comment above warns about: omitting it makes restore skip Mcp silently, then the
-# `dotnet test` step blows up with NETSDK1004. Add a corresponding COPY line whenever a
-# new ProjectReference lands in Civiti.Tests.csproj.
+# Civiti.Mcp.csproj + Civiti.Auth.csproj are required by Civiti.Tests (transitive
+# ProjectReference). Same trap the comment above warns about: omitting either makes
+# restore skip that project silently, then the `dotnet test` step blows up with
+# NETSDK1004. Add a corresponding COPY line whenever a new ProjectReference lands in
+# Civiti.Tests.csproj.
 COPY ["Civiti.Mcp/Civiti.Mcp.csproj", "Civiti.Mcp/"]
+COPY ["Civiti.Auth/Civiti.Auth.csproj", "Civiti.Auth/"]
 COPY ["Civiti.Tests/Civiti.Tests.csproj", "Civiti.Tests/"]
 RUN dotnet restore "Civiti.Api/Civiti.Api.csproj"
 RUN dotnet restore "Civiti.Tests/Civiti.Tests.csproj"

@@ -148,7 +148,7 @@ public sealed class LoopbackAwareTokenRedirectUriValidator(
 /// Shared loopback wildcard matcher. RFC 8252 §8.3 only relaxes <em>port</em> — scheme, path,
 /// query, and fragment all still have to match exactly.
 /// </summary>
-internal static class LoopbackRedirectUriMatcher
+public static class LoopbackRedirectUriMatcher
 {
     public static async ValueTask<bool> MatchesAsync(
         IOpenIddictApplicationManager applicationManager,
@@ -181,6 +181,37 @@ internal static class LoopbackRedirectUriMatcher
     /// same RFC 8252 §8.3 host check.
     /// </summary>
     public static bool IsLoopback(string raw) => TryParseLoopback(raw, out _);
+
+    /// <summary>
+    /// Exact-match allowlist for DCR registrations from cloud-relay MCP clients that don't
+    /// bind a loopback port locally. Claude Desktop's "Add custom connector" flow round-trips
+    /// the OAuth code through Anthropic's infrastructure at
+    /// <c>https://claude.ai/api/mcp/auth_callback</c>; that's the public, documented relay
+    /// URI used by every other remote MCP server (Asana, Linear, Notion, GitHub). RFC 8252
+    /// §8.3's loopback recommendation only applies to native apps that <em>can</em> open a
+    /// loopback listener — the cloud-relay model falls outside its scope, so we admit those
+    /// URIs via an explicit, narrowly-scoped allowlist instead.
+    ///
+    /// Append-only with extreme caution: an attacker who registers a redirect URI under a
+    /// host they control can complete the auth-code flow and steal access tokens. Every
+    /// entry must be a first-party host that the client vendor itself controls and has
+    /// publicly documented as their MCP relay endpoint.
+    /// </summary>
+    public static readonly IReadOnlySet<string> AllowlistedDcrRedirectUris =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "https://claude.ai/api/mcp/auth_callback"
+        };
+
+    /// <summary>
+    /// True when <paramref name="raw"/> is acceptable as a DCR registration redirect URI:
+    /// either a loopback URI (RFC 8252 §8.3) or an exact match in
+    /// <see cref="AllowlistedDcrRedirectUris"/>. The two paths are mutually exclusive in
+    /// practice (loopback URIs are <c>http://127.0.0.1:.../</c> with arbitrary ports;
+    /// allowlisted URIs are HTTPS first-party callbacks) so order doesn't matter.
+    /// </summary>
+    public static bool IsAcceptableDcrRedirectUri(string raw) =>
+        IsLoopback(raw) || AllowlistedDcrRedirectUris.Contains(raw);
 
     /// <summary>
     /// Loopback per RFC 8252 §8.3: <c>127.0.0.1</c> or <c>::1</c>. <c>localhost</c> is

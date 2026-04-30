@@ -13,8 +13,12 @@ namespace Civiti.Auth.Endpoints;
 ///
 /// Guardrails per <c>auth-design.md §6</c>:
 /// <list type="bullet">
-/// <item>Loopback redirect URIs only — RFC 8252 §8.3 (<c>http://127.0.0.1:*/...</c> or
-/// <c>http://[::1]:*/...</c>). Reuses the same matcher the authorize/token validators use.</item>
+/// <item>Loopback redirect URIs (RFC 8252 §8.3 — <c>http://127.0.0.1:*/...</c> or
+/// <c>http://[::1]:*/...</c>) or an explicit allowlist of cloud-relay callbacks
+/// (<c>https://claude.ai/api/mcp/auth_callback</c> today). The allowlist exists because
+/// Claude Desktop's "Add custom connector" doesn't bind a loopback port — it relays the
+/// auth code through Anthropic's infrastructure. See
+/// <see cref="LoopbackRedirectUriMatcher.AllowlistedDcrRedirectUris"/>.</item>
 /// <item>Scope ceiling — <c>civiti.admin.*</c> is silently stripped from the requested
 /// scopes. DCR-registered clients can never hold admin scopes regardless of what their
 /// users grant on the consent screen. Pre-allow-listed clients (claude-desktop,
@@ -98,15 +102,17 @@ public static class RegisterEndpoint
         }
         foreach (var uri in redirectUris)
         {
-            if (string.IsNullOrWhiteSpace(uri) || !LoopbackRedirectUriMatcher.IsLoopback(uri))
+            if (string.IsNullOrWhiteSpace(uri) || !LoopbackRedirectUriMatcher.IsAcceptableDcrRedirectUri(uri))
             {
-                // Per the auth-design.md §6 guardrail: only loopback URIs are accepted via
-                // DCR. Allow-listed entries keep their first-party redirect URIs (HTTPS for
-                // claude-ai, custom URL scheme for cursor) — those are seeded explicitly,
-                // not registered.
+                // Per the auth-design.md §6 guardrail: DCR accepts loopback URIs (native apps
+                // that bind a local port — Claude Code, Cursor) plus a tiny allowlist of
+                // documented cloud-relay callbacks (Claude Desktop's claude.ai/api/mcp
+                // /auth_callback). Pre-seeded clients with their own first-party redirect
+                // URIs (e.g. custom URL schemes) are configured via ClientAllowListSeeder,
+                // not registered through this endpoint.
                 return RegistrationError(
                     "invalid_redirect_uri",
-                    $"redirect_uri '{uri}' is not allowed. Dynamically-registered clients must use a loopback URI per RFC 8252 §8.3 (http://127.0.0.1:*/... or http://[::1]:*/...).");
+                    $"redirect_uri '{uri}' is not allowed. Dynamically-registered clients must use a loopback URI per RFC 8252 §8.3 (http://127.0.0.1:*/... or http://[::1]:*/...) or one of the allowlisted cloud-relay callbacks: {string.Join(", ", LoopbackRedirectUriMatcher.AllowlistedDcrRedirectUris)}.");
             }
         }
 
