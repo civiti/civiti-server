@@ -13,8 +13,12 @@ namespace Civiti.Auth.Endpoints;
 ///
 /// Guardrails per <c>auth-design.md §6</c>:
 /// <list type="bullet">
-/// <item>Loopback redirect URIs only — RFC 8252 §8.3 (<c>http://127.0.0.1:*/...</c> or
-/// <c>http://[::1]:*/...</c>). Reuses the same matcher the authorize/token validators use.</item>
+/// <item>Loopback redirect URIs (RFC 8252 §8.3 — <c>http://127.0.0.1:*/...</c> or
+/// <c>http://[::1]:*/...</c>) or an explicit allowlist of cloud-relay callbacks
+/// (<c>https://claude.ai/api/mcp/auth_callback</c> today). The allowlist exists because
+/// Claude Desktop's "Add custom connector" doesn't bind a loopback port — it relays the
+/// auth code through Anthropic's infrastructure. See
+/// <see cref="LoopbackRedirectUriMatcher.AllowlistedDcrRedirectUris"/>.</item>
 /// <item>Scope ceiling — <c>civiti.admin.*</c> is silently stripped from the requested
 /// scopes. DCR-registered clients can never hold admin scopes regardless of what their
 /// users grant on the consent screen. Pre-allow-listed clients (claude-desktop,
@@ -98,15 +102,17 @@ public static class RegisterEndpoint
         }
         foreach (var uri in redirectUris)
         {
-            if (string.IsNullOrWhiteSpace(uri) || !LoopbackRedirectUriMatcher.IsLoopback(uri))
+            if (string.IsNullOrWhiteSpace(uri) || !LoopbackRedirectUriMatcher.IsAcceptableDcrRedirectUri(uri))
             {
-                // Per the auth-design.md §6 guardrail: only loopback URIs are accepted via
-                // DCR. Allow-listed entries keep their first-party redirect URIs (HTTPS for
-                // claude-ai, custom URL scheme for cursor) — those are seeded explicitly,
-                // not registered.
+                // Per the auth-design.md §6 guardrail: DCR accepts loopback URIs (native apps
+                // that bind a local port — Claude Code, Cursor) plus a tiny allowlist of
+                // documented cloud-relay callbacks (Claude Desktop's claude.ai/api/mcp
+                // /auth_callback). Pre-seeded clients with their own first-party redirect
+                // URIs (e.g. custom URL schemes) are configured via ClientAllowListSeeder,
+                // not registered through this endpoint.
                 return RegistrationError(
                     "invalid_redirect_uri",
-                    $"redirect_uri '{uri}' is not allowed. Dynamically-registered clients must use a loopback URI per RFC 8252 §8.3 (http://127.0.0.1:*/... or http://[::1]:*/...).");
+                    $"redirect_uri '{uri}' is not allowed. Dynamically-registered clients must use a loopback URI per RFC 8252 §8.3 (http://127.0.0.1:*/... or http://[::1]:*/...) or one of the allowlisted cloud-relay callbacks: {string.Join(", ", LoopbackRedirectUriMatcher.AllowlistedDcrRedirectUris)}.");
             }
         }
 
@@ -137,13 +143,21 @@ public static class RegisterEndpoint
             ? $"Dynamically registered client ({clientId[..8]})"
             : trimmedName;
 
+        // RFC 7591 §2: "native" covers installed apps with loopback / custom URI schemes;
+        // "web" covers HTTPS callback registrations. A registration with only HTTPS URIs
+        // (e.g. Claude Desktop's claude.ai relay) is semantically a web client even though
+        // we issue it as a public client (no secret, PKCE-required). A loopback URI in the
+        // set forces "native" because the caller has a local listener.
+        var applicationType = LoopbackRedirectUriMatcher.DeriveApplicationType(redirectUris);
+
         var descriptor = new OpenIddictApplicationDescriptor
         {
             ClientId = clientId,
             DisplayName = displayName,
-            // Public client: no secret, native app per RFC 8252.
+            // Public client: no secret. PKCE is required below, which is what makes a
+            // public client safe regardless of native/web application_type.
             ClientType = OpenIddictConstants.ClientTypes.Public,
-            ApplicationType = OpenIddictConstants.ApplicationTypes.Native,
+            ApplicationType = applicationType,
             // Explicit consent required every time — there's no Trust-on-First-Use for DCR
             // clients since the user has no out-of-band reason to trust them.
             ConsentType = OpenIddictConstants.ConsentTypes.Explicit
@@ -205,7 +219,7 @@ public static class RegisterEndpoint
                 GrantTypes: ["authorization_code", "refresh_token"],
                 ResponseTypes: ["code"],
                 TokenEndpointAuthMethod: "none",
-                ApplicationType: "native",
+                ApplicationType: applicationType,
                 Scope: string.Join(' ', grantedScopes.OrderBy(s => s, StringComparer.Ordinal))),
             statusCode: StatusCodes.Status201Created);
     }
@@ -256,8 +270,9 @@ public sealed class RegisterClientRequest
 
 /// <summary>
 /// RFC 7591 §3.2.1 client registration response. <c>token_endpoint_auth_method = "none"</c>
-/// flags this as a public client (no secret); <c>application_type = "native"</c> matches the
-/// loopback-redirect rule.
+/// flags this as a public client (no secret). <c>application_type</c> is derived per
+/// registration via <see cref="LoopbackRedirectUriMatcher.DeriveApplicationType"/>:
+/// <c>"native"</c> when any redirect URI is loopback, <c>"web"</c> when all are HTTPS.
 /// </summary>
 public sealed record RegisterClientResponse(
     [property: JsonPropertyName("client_id")] string ClientId,
