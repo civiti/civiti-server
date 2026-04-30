@@ -273,13 +273,23 @@ builder.Services.AddOpenIddict()
             handler.UseScopedHandler<LoopbackAwareTokenRedirectUriValidator>()
                    .SetOrder(OpenIddictServerHandlers.Exchange.ValidateRedirectUri.Descriptor.Order));
 
-        // Advertise registration_endpoint in /.well-known/openid-configuration and
+        // Advertise registration_endpoint and append "none" to
+        // token_endpoint_auth_methods_supported in /.well-known/openid-configuration +
         // /.well-known/oauth-authorization-server so MCP clients (Claude Desktop, Code, …)
-        // discover the DCR endpoint per RFC 7591. OpenIddict 7.5 has no built-in DCR, so
-        // /register is hand-rolled in RegisterEndpoint.cs and this handler bridges the
-        // discovery doc to it. Scoped because IHttpContextAccessor is scoped.
+        // can complete the Connect flow. OpenIddict 7.5 has no built-in DCR, so /register
+        // is hand-rolled in RegisterEndpoint.cs and this handler bridges the discovery doc
+        // to it.
+        //
+        // Order pinned to (AttachClientAuthenticationMethods + 1_000) so we run *after* the
+        // built-in handler that populates token_endpoint_auth_methods_supported with the
+        // confidential-client methods — we need it populated before we read+append "none".
+        // Without an explicit SetOrder, registration order would happen to put us after
+        // because OpenIddict registers its defaults first, but that's a fragile assumption
+        // and would break if OpenIddict ever changes how it stages built-in handlers.
+        // Scoped handler because IHttpContextAccessor is scoped.
         options.AddEventHandler<OpenIddictServerEvents.HandleConfigurationRequestContext>(handler =>
-            handler.UseScopedHandler<AdvertiseRegistrationEndpointHandler>());
+            handler.UseScopedHandler<AdvertiseRegistrationEndpointHandler>()
+                   .SetOrder(OpenIddictServerHandlers.Discovery.AttachClientAuthenticationMethods.Descriptor.Order + 1_000));
     });
 
 builder.Services.AddScoped<McpSessionWriteHandler>();
