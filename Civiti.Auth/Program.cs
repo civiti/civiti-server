@@ -199,6 +199,17 @@ builder.Services.AddOpenIddict()
         // MCP clients are all native/loopback or claimed-URL-scheme clients; PKCE is mandatory.
         options.RequireProofKeyForCodeExchange();
 
+        // Public clients (no client_secret). Every MCP client we serve — both the seeded
+        // entries (claude-desktop, claude-code, …) and DCR-registered ones from PR #125 —
+        // are ClientType.Public. OpenIddict's /token endpoint already accepts them in
+        // practice (we've been minting tokens for claude-desktop since v1b), but without
+        // this call the AS metadata's token_endpoint_auth_methods_supported doesn't include
+        // "none". Per RFC 7591, conformant DCR clients (Claude Desktop included) reject the
+        // AS when their token_endpoint_auth_method ("none" for public clients) isn't in the
+        // advertised list — symptom: connector setup says "failed to connect" after
+        // discovery but never actually POSTs /register.
+        options.AcceptAnonymousClients();
+
         options.RegisterScopes(
             "civiti.read",
             "civiti.write",
