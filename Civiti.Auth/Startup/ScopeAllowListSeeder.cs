@@ -62,14 +62,17 @@ public sealed class ScopeAllowListSeeder(
     {
         if (resources.Resources.Count == 0)
         {
-            // No resources configured — every /authorize request that includes a `resource`
-            // parameter will fall through to OpenIddict's ID2190 reject. Surface this loudly
-            // so operators see it in the very first log scrape rather than only after users
-            // start reporting "invalid_target" from Claude Desktop.
+            // No resources configured — surface this loudly so operators see the
+            // misconfiguration in the first log scrape rather than only after users start
+            // reporting "invalid_target" from Claude Desktop. Falling through (rather than
+            // returning early) is deliberate: a previous deployment may have left URLs on
+            // existing scope records, and re-stamping with an empty Resources collection
+            // is what actually makes the warning's claim true. Returning early would leave
+            // stale bindings active and the warning would be a lie.
             logger.LogWarning(
                 "ScopeAllowListSeeder: no MCP resource URLs configured (Auth:McpResources / MCP_RESOURCES). " +
-                "RFC 8707 resource indicators will be rejected with invalid_target.");
-            return;
+                "RFC 8707 resource indicators will be rejected with invalid_target. " +
+                "Existing scope records will have their Resources collection cleared.");
         }
 
         var backoff = InitialBackoff;

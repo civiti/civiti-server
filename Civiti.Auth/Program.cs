@@ -227,6 +227,13 @@ builder.Services.AddOpenIddict()
         // adds no security and (b) plumbing the URL into both ClientAllowListSeeder and
         // RegisterEndpoint just to satisfy the gate would be pure boilerplate that drifts
         // every time we add an environment.
+        //
+        // CAUTION: this bypass is only safe because of (a). If the audience pin in
+        // AuthorizeEndpoint ever changes (e.g. switching to URL-derived audiences for
+        // multi-MCP support), this call MUST be removed and per-client resource permissions
+        // wired into ClientAllowListSeeder + RegisterEndpoint at the same time. The doc
+        // comment on McpResourceIdentifiers.Audience flags the same coupling from the other
+        // side so a future refactorer sees it regardless of which file they touch first.
         options.IgnoreResourcePermissions();
 
         // Ephemeral keys rotate on restart. That's fine because refresh tokens are server-side
