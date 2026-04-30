@@ -1,5 +1,3 @@
-using System.Collections.Immutable;
-using OpenIddict.Abstractions;
 using OpenIddict.Server;
 using static OpenIddict.Server.OpenIddictServerEvents;
 
@@ -20,12 +18,18 @@ namespace Civiti.Auth.Endpoints;
 /// <item><b><c>"none"</c> in <c>token_endpoint_auth_methods_supported</c></b> — OpenIddict's
 /// default <c>AttachClientAuthenticationMethods</c> emits the three confidential-client
 /// methods (<c>client_secret_post</c>, <c>private_key_jwt</c>, <c>client_secret_basic</c>)
-/// even when public clients are accepted. Per RFC 7591 §5, conformant DCR clients reject
-/// an AS whose advertised methods don't cover what they need to use — Claude Desktop, which
+/// even when public clients are accepted. Per RFC 7591 §5, conformant DCR clients reject an
+/// AS whose advertised methods don't cover what they need to use — Claude Desktop, which
 /// registers as a public client (<c>token_endpoint_auth_method=none</c>), bails out before
 /// ever calling <c>/register</c> if <c>"none"</c> isn't in the advertised list. This handler
 /// appends it.</item>
 /// </list>
+///
+/// We add to the typed <c>context.TokenEndpointAuthenticationMethods</c> collection (the
+/// one OpenIddict's <c>AttachClientAuthenticationMethods</c> populates), not the
+/// <c>Metadata</c> dictionary. Earlier attempts wrote to <c>Metadata</c> directly and
+/// silently wiped the three confidential methods, because the dictionary is populated from
+/// the typed property in a later phase — at our handler's time it's still empty.
 ///
 /// Building the registration URL from <c>HttpContext.Request</c> is safe because
 /// <c>ProxyTrustStartupFilter</c> has already rewritten <c>Scheme</c> and <c>Host</c> to the
@@ -35,7 +39,6 @@ namespace Civiti.Auth.Endpoints;
 internal sealed class AdvertiseRegistrationEndpointHandler(IHttpContextAccessor accessor)
     : IOpenIddictServerHandler<HandleConfigurationRequestContext>
 {
-    private const string TokenAuthMethodsKey = "token_endpoint_auth_methods_supported";
     private const string NoneAuthMethod = "none";
 
     public ValueTask HandleAsync(HandleConfigurationRequestContext context)
@@ -47,44 +50,14 @@ internal sealed class AdvertiseRegistrationEndpointHandler(IHttpContextAccessor 
             context.Metadata["registration_endpoint"] = registrationUrl;
         }
 
-        // Append "none" to the advertised auth methods if it isn't already there. We
-        // preserve whatever OpenIddict put in the array first so a future framework change
-        // that adds a new method just flows through.
-        //
-        // Read via the explicit ImmutableArray<string>? cast: OpenIddict's built-in
-        // AttachClientAuthenticationMethods stores the value as ImmutableArray<string>
-        // (matching the implicit operator on OpenIddictParameter), and
-        // GetUnnamedParameters() only unwraps string[] / JsonElement-backed parameters —
-        // it returns empty for an ImmutableArray-backed one. The previous version of this
-        // code went down that path and silently wiped the three confidential methods,
-        // leaving callers with just ["none"]. The explicit cast goes through the
-        // op_Explicit overload that handles every storage shape OpenIddictParameter wraps.
-        var existingMethods = new List<string>(4);
-        if (context.Metadata.TryGetValue(TokenAuthMethodsKey, out var raw))
+        // Append "none" to the typed collection — idempotent if AttachClient already added
+        // it (it doesn't today), or if some future OpenIddict change starts emitting it.
+        // Order pinning in Program.cs (descriptor.Order + 1_000) keeps us after the
+        // default handler so the three confidential methods are already present when we
+        // run, but Add is the safe op either way.
+        if (!context.TokenEndpointAuthenticationMethods.Contains(NoneAuthMethod))
         {
-            // OpenIddictParameter's explicit operator targets ImmutableArray<string?>, not
-            // ImmutableArray<string>. C# nullability annotations would let us substitute one
-            // for the other in many places, but not in the explicit-cast overload-resolution
-            // path — the compiler picks the operator by exact generic-argument match.
-            var asArray = (ImmutableArray<string?>?)raw;
-            if (asArray.HasValue && !asArray.Value.IsDefault)
-            {
-                foreach (var item in asArray.Value)
-                {
-                    if (item is not null)
-                    {
-                        existingMethods.Add(item);
-                    }
-                }
-            }
-        }
-        if (!existingMethods.Contains(NoneAuthMethod, StringComparer.Ordinal))
-        {
-            existingMethods.Add(NoneAuthMethod);
-            // OpenIddictParameter's implicit conversion targets ImmutableArray<string>, not
-            // string[] — the latter is not in the operator overload set despite being the
-            // obvious shape. Materialise into the right type so the implicit cast fires.
-            context.Metadata[TokenAuthMethodsKey] = ImmutableArray.CreateRange<string?>(existingMethods);
+            context.TokenEndpointAuthenticationMethods.Add(NoneAuthMethod);
         }
 
         return ValueTask.CompletedTask;
