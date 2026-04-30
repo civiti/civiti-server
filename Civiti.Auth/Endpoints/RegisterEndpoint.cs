@@ -63,6 +63,16 @@ public static class RegisterEndpoint
     /// </summary>
     private const int MaxClientNameLength = 200;
 
+    /// <summary>
+    /// Cap on the number of redirect URIs accepted in a single registration. Real native
+    /// clients have one (a loopback callback) and at most a handful (one per OS / port
+    /// arrangement) — 10 is comfortable headroom. Without this cap the 20-req/IP/day rate
+    /// limit still leaves a path to write hundreds of thousands of OpenIddict
+    /// redirect-URI rows / day from a single source, which would slow every subsequent
+    /// <c>GetRedirectUrisAsync</c> on that application.
+    /// </summary>
+    private const int MaxRedirectUrisPerRegistration = 10;
+
     private static async Task<IResult> HandleAsync(
         [FromBody] RegisterClientRequest? request,
         IOpenIddictApplicationManager applicationManager,
@@ -79,6 +89,12 @@ public static class RegisterEndpoint
         if (redirectUris.Count == 0)
         {
             return RegistrationError("invalid_redirect_uri", "redirect_uris is required and must contain at least one URI.");
+        }
+        if (redirectUris.Count > MaxRedirectUrisPerRegistration)
+        {
+            return RegistrationError(
+                "invalid_redirect_uri",
+                $"redirect_uris exceeds the {MaxRedirectUrisPerRegistration}-entry limit per registration.");
         }
         foreach (var uri in redirectUris)
         {
