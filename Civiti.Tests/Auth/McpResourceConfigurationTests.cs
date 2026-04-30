@@ -38,14 +38,15 @@ public class ScopeAllowListSeederBuildDescriptorTests
     }
 
     [Fact]
-    public void BuildDescriptor_EmptyResources_OverwritesPreviousResources()
+    public void BuildDescriptor_EmptyResources_ProducesEmptyResourcesShapeForUpsert()
     {
-        // Sanity check for the seeder's "fall through to upsert when no resources are
-        // configured" path. UpdateAsync(existing, descriptor) replaces the persisted
-        // record's Resources with whatever the descriptor carries; if the descriptor's
-        // Resources is empty, the persisted record loses its prior URL bindings. This is
-        // what makes the empty-MCP_RESOURCES warning's claim ("RFC 8707 indicators will be
-        // rejected") actually true on a redeploy that unsets the env var.
+        // Pure shape check on the descriptor — the seeder relies on the fact that an
+        // empty input produces a descriptor whose Resources collection is also empty,
+        // because OpenIddict's UpdateAsync(existing, descriptor) writes the descriptor's
+        // Resources verbatim onto the persisted record. (The actual UpdateAsync overwrite
+        // semantics are OpenIddict's contract, not this test's; this just pins the input
+        // half so the seeder can reason about clearing stale bindings on a redeploy that
+        // unsets MCP_RESOURCES.)
         var existing = ScopeAllowListSeeder.BuildDescriptor(
             "civiti.read",
             new[] { "https://stale.example/mcp" });
@@ -53,8 +54,6 @@ public class ScopeAllowListSeederBuildDescriptorTests
             "civiti.read",
             Array.Empty<string>());
 
-        // OpenIddict's UpdateAsync overwrites by descriptor — the assertion mirrors what
-        // gets written to the DB, not how UpdateAsync copies fields internally.
         fresh.Resources.Should().BeEmpty();
         existing.Resources.Should().Contain("https://stale.example/mcp"); // sanity
     }
