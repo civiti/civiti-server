@@ -54,10 +54,19 @@ public static class RegisterEndpoint
             .ExcludeFromDescription();
     }
 
+    /// <summary>
+    /// Length cap on the client-supplied <c>client_name</c> before persistence. OpenIddict's
+    /// EF column for <c>DisplayName</c> doesn't enforce a tight limit, but a multi-MB name
+    /// would either silently truncate (data loss) or trip a DB error that falls through to a
+    /// generic "server_error" 400. 200 chars matches the default OpenIddict scaffolding and
+    /// is generous enough for any honest client identifier.
+    /// </summary>
+    private const int MaxClientNameLength = 200;
+
     private static async Task<IResult> HandleAsync(
         [FromBody] RegisterClientRequest? request,
         IOpenIddictApplicationManager applicationManager,
-        ILogger<RegisterClientRequest> logger,
+        ILogger<DynamicClientRegistration> logger,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -101,9 +110,16 @@ public static class RegisterEndpoint
         }
 
         var clientId = Guid.NewGuid().ToString("N");
-        var displayName = string.IsNullOrWhiteSpace(request.ClientName)
+        var trimmedName = request.ClientName?.Trim();
+        if (!string.IsNullOrEmpty(trimmedName) && trimmedName.Length > MaxClientNameLength)
+        {
+            return RegistrationError(
+                "invalid_client_metadata",
+                $"client_name exceeds the {MaxClientNameLength}-character limit.");
+        }
+        var displayName = string.IsNullOrEmpty(trimmedName)
             ? $"Dynamically registered client ({clientId[..8]})"
-            : request.ClientName.Trim();
+            : trimmedName;
 
         var descriptor = new OpenIddictApplicationDescriptor
         {
@@ -143,6 +159,13 @@ public static class RegisterEndpoint
         try
         {
             await applicationManager.CreateAsync(descriptor, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Client disconnected or the request timed out — not a server-side defect, so
+            // bubble up rather than logging an error and returning a misleading 400. The
+            // ASP.NET Core pipeline turns this into a 499/clean abort with no log noise.
+            throw;
         }
         catch (Exception ex)
         {
@@ -187,6 +210,16 @@ public static class RegisterEndpoint
             new { error, error_description = description },
             statusCode: StatusCodes.Status400BadRequest);
 }
+
+/// <summary>
+/// Logger-category marker. <see cref="RegisterEndpoint"/> is static and so can't be used as a
+/// generic type argument (CS0718), but ASP.NET Core's logger DI keys on the generic-type
+/// argument — so we route <c>ILogger&lt;DynamicClientRegistration&gt;</c> instead, which gives
+/// every log line emitted from the DCR endpoint the category
+/// <c>Civiti.Auth.Endpoints.DynamicClientRegistration</c> (instead of, say, the request DTO's
+/// name).
+/// </summary>
+internal sealed class DynamicClientRegistration { }
 
 /// <summary>
 /// RFC 7591 §2 client metadata fields. Only the bits we actually care about; everything
