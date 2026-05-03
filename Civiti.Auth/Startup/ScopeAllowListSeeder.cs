@@ -60,6 +60,14 @@ public sealed class ScopeAllowListSeeder(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Diagnostic entry log so we can confirm the seeder is being invoked and see what
+        // resource list it received. The "Updated" path below was previously LogDebug,
+        // which made first-deploy verification impossible — we couldn't tell from logs
+        // whether the seeder hit the Create or Update branch on each scope.
+        logger.LogInformation(
+            "ScopeAllowListSeeder starting with {ResourceCount} resource(s): [{Resources}]",
+            resources.Resources.Count, string.Join(',', resources.Resources));
+
         if (resources.Resources.Count == 0)
         {
             // No resources configured — surface this loudly so operators see the
@@ -97,11 +105,14 @@ public sealed class ScopeAllowListSeeder(
                     else
                     {
                         await manager.UpdateAsync(existing, descriptor, stoppingToken);
-                        logger.LogDebug(
+                        logger.LogInformation(
                             "Updated OpenIddict scope {Scope} with {ResourceCount} resource(s)",
                             scopeName, resources.Resources.Count);
                     }
                 }
+                logger.LogInformation(
+                    "ScopeAllowListSeeder complete: {Count} scope(s) processed.",
+                    CivitiScopes.Length);
                 return;
             }
             catch (OperationCanceledException)
