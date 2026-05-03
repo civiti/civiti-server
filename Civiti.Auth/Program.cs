@@ -217,27 +217,33 @@ builder.Services.AddOpenIddict()
             "civiti.admin.write");
 
         // RFC 8707: Claude Desktop and other remote MCP clients send
-        // resource=<MCP-URL> on /authorize and /token. OpenIddict's built-in
-        // Authentication.ValidateResources + Exchange.ValidateResources reject the
-        // request unless the URL is registered against a requested scope's Resources
-        // collection — failing every Connect attempt with invalid_target / ID2190.
+        // resource=<MCP-URL> on /authorize and /token. OpenIddict layers TWO independent
+        // checks on that parameter:
         //
-        // We deliberately remove both validators rather than registering the URL on
-        // each scope, because the validator's promise ("the issued token's audience
-        // will equal the resource the client requested") is one we don't keep:
+        //   1. Authentication/Exchange.ValidateResources — scope-level: rejects when the
+        //      requested URL isn't registered on any requested scope's Resources collection.
+        //   2. Authentication/Exchange.ValidateResourcePermissions — client-level: rejects
+        //      when the calling client doesn't carry a Permissions.Prefixes.Resource grant
+        //      for the URL.
+        //
+        // Together they would force us to (a) seed the URL on every scope and (b) grant
+        // the resource permission to every client (seeded + DCR-registered). We bypass
+        // both because the validators' shared promise — "the issued token's audience will
+        // equal the resource the client requested" — is one we don't keep:
         // AuthorizeEndpoint.cs explicitly calls principal.SetResources(McpResourceIdentifiers
-        // .Audience), pinning the access token's aud claim to the constant
-        // "civiti-mcp" regardless of what the client sent. Civiti.Mcp's validator only
-        // accepts that audience. So validating the resource at /authorize is theatre
-        // — we'd be enforcing a binding we then override in code. Skipping the
-        // validator achieves identical runtime security with less ceremony.
+        // .Audience), pinning the access token's aud claim to the constant "civiti-mcp"
+        // regardless of what the client sent. Civiti.Mcp's validator only accepts that
+        // audience. So enforcing the binding at /authorize is theatre — we'd be policing
+        // a constraint we then override in code. Skipping both layers achieves identical
+        // runtime security with less ceremony.
         //
         // If we ever migrate to RFC 8707 URL-as-audience semantics (e.g. when serving
-        // multiple MCP resource servers from one AS), restore both validators and
-        // register the URLs on scopes — see McpResourceIdentifiers.Audience for the
-        // coupling.
+        // multiple MCP resource servers from one AS), restore both validators, register
+        // the URLs on scopes, and grant per-client resource permissions — see
+        // McpResourceIdentifiers.Audience for the full coupling.
         options.RemoveEventHandler(OpenIddictServerHandlers.Authentication.ValidateResources.Descriptor);
         options.RemoveEventHandler(OpenIddictServerHandlers.Exchange.ValidateResources.Descriptor);
+        options.IgnoreResourcePermissions();
 
         // Ephemeral keys rotate on restart. That's fine because refresh tokens are server-side
         // reference values (opaque + hashed), so losing signing material only invalidates the
