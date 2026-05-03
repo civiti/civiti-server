@@ -225,16 +225,35 @@ builder.Services.AddOpenIddict()
             "civiti.write");
 
         // Accept civiti.admin.* in /authorize/token requests even though they're absent from
-        // RegisterScopes above. ValidateScopePermissions still runs and rejects requests from
-        // clients that lack a per-scope permission grant — we keep the per-client gate, just
-        // not the discovery-time advertisement. Allow-listed admin clients (claude-desktop /
-        // claude-code with allowsAdminScopes=true) carry Permissions.Prefixes.Scope +
-        // civiti.admin.* and continue to mint admin tokens; DCR clients lack that grant and
-        // get rejected if they manually craft an admin-scope request.
-        //
-        // Despite the name, DisableScopeValidation only disables the "is this scope name
-        // registered?" check; per-client ValidateScopePermissions remains active.
+        // RegisterScopes above. Despite the name, DisableScopeValidation only disables the
+        // "is this scope name registered?" check, not the per-client permission gate.
         options.DisableScopeValidation();
+
+        // ALSO bypass OpenIddict's per-client scope permission gate. Empirically, real-world
+        // remote MCP clients (Claude Desktop) hard-code their requested scope set rather than
+        // reading scopes_supported from discovery — we observed three fresh DCR registrations
+        // in a single Connect attempt, each posting
+        // scope=civiti.read+civiti.write+civiti.admin.read+civiti.admin.write+offline_access
+        // verbatim despite the discovery doc no longer advertising admin. OpenIddict's
+        // Authentication.ValidateScopePermissions then rejected with invalid_request / ID2051
+        // because DCR registration only ever grants Permissions.Prefixes.Scope + civiti.read
+        // and + civiti.write per RegisterEndpoint.AllowedDcrScopes (auth-design.md §6).
+        //
+        // The downstream AdminScopeFilter (Civiti.Auth/Endpoints/AdminScopeFilter.cs) is the
+        // load-bearing scope gate from this point forward. It runs at three places —
+        // AuthorizeEndpoint (before SignIn), Consent (rendering + POST), and TokenEndpoint
+        // (refresh-token rotation) — and strips civiti.admin.* unless BOTH (a) the client
+        // application carries the civiti.allows_admin_scopes=true property (set only by
+        // ClientAllowListSeeder, never by RegisterEndpoint/DCR) and (b) the user's Supabase
+        // role is "admin". DCR Claude Desktop hits (a)=false and the admin scopes are stripped
+        // before the principal is built — the issued token has only civiti.read/civiti.write.
+        //
+        // CAUTION: this bypass makes AdminScopeFilter the SOLE per-client scope gate. If the
+        // filter is ever weakened (e.g. dropping the property check, or a code path skips
+        // FilterAsync), DCR clients could mint admin-scoped tokens. Any change to
+        // AdminScopeFilter.FilterAsync, its three call sites, or this option toggle must be
+        // reviewed together.
+        options.IgnoreScopePermissions();
 
         // RFC 8707: Claude Desktop and other remote MCP clients send
         // resource=<MCP-URL> on /authorize and /token. OpenIddict layers TWO independent
