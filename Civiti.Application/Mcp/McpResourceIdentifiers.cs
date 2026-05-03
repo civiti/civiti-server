@@ -16,14 +16,21 @@ public static class McpResourceIdentifiers
     /// (see <c>Civiti.Auth/Endpoints/AuthorizeEndpoint.cs</c>'s <c>SetResources</c> call).
     ///
     /// <para>
-    /// <b>Coupling:</b> Civiti.Auth's <c>options.IgnoreResourcePermissions()</c> in
-    /// <c>Program.cs</c> is safe specifically because every issued token's audience is
-    /// pinned to this constant via that <c>SetResources</c> call, regardless of any RFC 8707
-    /// <c>resource</c> parameter the client sends. If that pin is ever removed (e.g.
-    /// switching to URL-derived audiences for multi-MCP support), the
-    /// <c>IgnoreResourcePermissions()</c> bypass MUST be revisited at the same time —
-    /// otherwise any DCR-registered client could request a token bound to any scope-known
-    /// resource without holding a per-resource permission grant.
+    /// <b>Load-bearing:</b> Civiti.Auth's <c>Program.cs</c> bypasses both layers of
+    /// OpenIddict's RFC 8707 enforcement — it removes the
+    /// <c>Authentication.ValidateResources</c> + <c>Exchange.ValidateResources</c> handlers
+    /// (scope-level) and calls <c>options.IgnoreResourcePermissions()</c> (client-level).
+    /// The AS therefore does NOT validate that the requested <c>resource</c> parameter
+    /// matches a known resource or that the calling client is permitted to request it.
+    /// The only thing keeping issued tokens bound to Civiti.Mcp is the explicit
+    /// <c>SetResources(Audience)</c> call in <c>AuthorizeEndpoint</c>; without it, the
+    /// issued token's <c>aud</c> claim would be whatever the client requested, and
+    /// Civiti.Mcp's validator (<c>options.AddAudiences(Audience)</c>) would reject every
+    /// token. If you ever drop or alter that pin, you MUST also restore both validator
+    /// layers (re-add the <c>ValidateResources</c> handlers, drop
+    /// <c>IgnoreResourcePermissions()</c>) and register the accepted URLs on each scope's
+    /// <c>Resources</c> collection plus the per-client <c>Permissions.Prefixes.Resource</c>
+    /// grants.
     /// </para>
     /// </summary>
     public const string Audience = "civiti-mcp";

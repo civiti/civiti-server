@@ -132,9 +132,10 @@ public static class AuthorizeEndpoint
         principal.SetScopes(allowedScopes);
         // Pin the access token's aud claim to the constant "civiti-mcp" regardless of any
         // RFC 8707 resource= parameter the client sent. Civiti.Mcp's validator only accepts
-        // that audience. Civiti.Auth/Program.cs's options.IgnoreResourcePermissions() depends
-        // on this pin holding — see the doc comment on McpResourceIdentifiers.Audience for
-        // the full coupling.
+        // that audience. This pin is load-bearing — Civiti.Auth/Program.cs removes
+        // OpenIddict's ValidateResources handlers, so without this call the token's aud
+        // would track the request's resource= verbatim and Civiti.Mcp would reject every
+        // token. See the doc comment on McpResourceIdentifiers.Audience for the full picture.
         principal.SetResources(McpResourceIdentifiers.Audience);
 
         logger.LogInformation(
