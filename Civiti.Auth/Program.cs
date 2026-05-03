@@ -248,11 +248,19 @@ builder.Services.AddOpenIddict()
         // role is "admin". DCR Claude Desktop hits (a)=false and the admin scopes are stripped
         // before the principal is built — the issued token has only civiti.read/civiti.write.
         //
-        // CAUTION: this bypass makes AdminScopeFilter the SOLE per-client scope gate. If the
-        // filter is ever weakened (e.g. dropping the property check, or a code path skips
+        // CAUTION 1: this bypass makes AdminScopeFilter the SOLE per-client scope gate. If
+        // the filter is ever weakened (e.g. dropping the property check, or a code path skips
         // FilterAsync), DCR clients could mint admin-scoped tokens. Any change to
         // AdminScopeFilter.FilterAsync, its three call sites, or this option toggle must be
         // reviewed together.
+        //
+        // CAUTION 2: IgnoreScopePermissions() bypasses the gate for ALL scopes, not just
+        // admin. AdminScopeFilter only enforces the static AdminScopes set
+        // ({civiti.admin.read, civiti.admin.write}). If a new privileged scope is ever
+        // introduced (e.g. civiti.moderator.write, civiti.billing.read), it must be added to
+        // AdminScopeFilter.AdminScopes at the same time — otherwise DCR clients could request
+        // and receive it without any per-client check, since OpenIddict's gate is bypassed
+        // and AdminScopeFilter wouldn't recognize the scope as needing protection.
         options.IgnoreScopePermissions();
 
         // RFC 8707: Claude Desktop and other remote MCP clients send
