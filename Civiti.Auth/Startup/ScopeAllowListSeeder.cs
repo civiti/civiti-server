@@ -109,6 +109,19 @@ public sealed class ScopeAllowListSeeder(
                             "Updated OpenIddict scope {Scope} with {ResourceCount} resource(s)",
                             scopeName, resources.Resources.Count);
                     }
+
+                    // Diag: re-read the scope and log its actually-persisted Resources.
+                    // Splits two failure modes: UpdateAsync didn't persist (verification
+                    // logs []) vs OpenIddict's request-time scope cache is stale
+                    // (verification logs [url] but ValidateResources still rejects).
+                    var verify = await manager.FindByNameAsync(scopeName, stoppingToken);
+                    if (verify is not null)
+                    {
+                        var actualResources = await manager.GetResourcesAsync(verify, stoppingToken);
+                        logger.LogInformation(
+                            "Verified scope {Scope} persisted resources: [{Resources}]",
+                            scopeName, string.Join(',', actualResources.ToArray()));
+                    }
                 }
                 logger.LogInformation(
                     "ScopeAllowListSeeder complete: {Count} scope(s) processed.",
