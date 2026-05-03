@@ -210,11 +210,31 @@ builder.Services.AddOpenIddict()
         // discovery but never actually POSTs /register.
         options.AcceptAnonymousClients();
 
+        // Discovery (scopes_supported) advertises only the citizen-tier scopes so well-behaved
+        // remote MCP clients (Claude Desktop) discover and request just those. The admin
+        // scopes (civiti.admin.read/write) are reachable only by allow-listed clients that
+        // carry the explicit Permissions.Prefixes.Scope + civiti.admin.* grants from
+        // ClientAllowListSeeder; they remain valid scope names at runtime via
+        // AcceptAnonymousScopes() below. Without this split, Claude Desktop's connector
+        // discovers all four civiti scopes from the doc, requests them, and OpenIddict's
+        // ValidateScopePermissions rejects with invalid_request / ID2051 — because DCR
+        // registration only ever grants civiti.read + civiti.write per
+        // RegisterEndpoint.AllowedDcrScopes.
         options.RegisterScopes(
             "civiti.read",
-            "civiti.write",
-            "civiti.admin.read",
-            "civiti.admin.write");
+            "civiti.write");
+
+        // Accept civiti.admin.* in /authorize/token requests even though they're absent from
+        // RegisterScopes above. ValidateScopePermissions still runs and rejects requests from
+        // clients that lack a per-scope permission grant — we keep the per-client gate, just
+        // not the discovery-time advertisement. Allow-listed admin clients (claude-desktop /
+        // claude-code with allowsAdminScopes=true) carry Permissions.Prefixes.Scope +
+        // civiti.admin.* and continue to mint admin tokens; DCR clients lack that grant and
+        // get rejected if they manually craft an admin-scope request.
+        //
+        // Despite the name, DisableScopeValidation only disables the "is this scope name
+        // registered?" check; per-client ValidateScopePermissions remains active.
+        options.DisableScopeValidation();
 
         // RFC 8707: Claude Desktop and other remote MCP clients send
         // resource=<MCP-URL> on /authorize and /token. OpenIddict layers TWO independent
