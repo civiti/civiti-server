@@ -120,7 +120,10 @@ public sealed class ConsentModel(
         {
             // Cookie session evaporated between consent render and submit — bounce back through
             // /authorize, which will redirect to /Login. The ctx-encoded URL is the only safe
-            // source of truth for the redirect target.
+            // source of truth for the redirect target. Delete the consent cookie too: this is
+            // a "successful POST" from the cookie's POV (we consumed it to read ctx), so the
+            // documented one-time-use invariant on DeleteContextCookie applies.
+            DeleteContextCookie();
             return LocalRedirect(ctx.AuthorizeUrl);
         }
 
