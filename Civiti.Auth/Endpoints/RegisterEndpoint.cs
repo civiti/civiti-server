@@ -130,7 +130,7 @@ public static class RegisterEndpoint
         {
             return RegistrationError(
                 "invalid_client_metadata",
-                $"None of the requested scopes are grantable via DCR. Allowed: {string.Join(", ", AllowedDcrScopes)}.");
+                $"At least one citizen scope is required. Allowed citizen scopes: {string.Join(", ", AllowedDcrScopes)}. The offline_access scope is granted automatically on top of citizen scopes and cannot be requested on its own.");
         }
 
         // offline_access is always added on top of the citizen-scope ceiling. Without it the
