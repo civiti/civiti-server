@@ -100,7 +100,12 @@ public static class AuthorizeEndpoint
                 new CookieOptions
                 {
                     HttpOnly = true,
-                    SameSite = SameSiteMode.Lax,
+                    // Strict (not Lax): the cookie is always written by /authorize and read by
+                    // /Consent within the same same-site redirect chain, so Strict has no
+                    // functional cost. Defense-in-depth on top of Path=/Consent scoping and the
+                    // encrypted payload — blocks the browser from attaching the cookie on any
+                    // cross-site top-level navigation to /Consent.
+                    SameSite = SameSiteMode.Strict,
                     Secure = httpContext.Request.IsHttps,
                     Path = AuthEndpointConstants.ConsentPath,
                     MaxAge = TimeSpan.FromMinutes(10),
