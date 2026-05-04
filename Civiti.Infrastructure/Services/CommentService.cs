@@ -211,11 +211,14 @@ public class CommentService(
                 throw new InvalidOperationException("Comment content cannot be empty or whitespace only");
             }
 
-            // Moderate content before saving
+            // Moderate content before saving. ContentModerationException is a typed signal so
+            // callers can distinguish a moderation block from the many other
+            // InvalidOperationException signals this method raises (user not found, issue not
+            // active, parent comment on different issue, etc.) — see the type's XML doc.
             ContentModerationResponse moderationResult = await contentModerationService.ModerateContentAsync(trimmedContent);
             if (!moderationResult.IsAllowed)
             {
-                throw new InvalidOperationException(
+                throw new ContentModerationException(
                     moderationResult.BlockReason ?? "Content violates community guidelines");
             }
 

@@ -1,6 +1,5 @@
-using System.Collections.Specialized;
 using System.Security.Claims;
-using System.Web;
+using Civiti.Auth.Authentication;
 using Civiti.Auth.Endpoints;
 using Civiti.Domain.Entities;
 using Civiti.Infrastructure.Data;
@@ -21,25 +20,28 @@ namespace Civiti.Auth.Pages;
 /// <see cref="AdminScopeFilter"/> allowed for this user+client (matching the all-or-nothing
 /// check in <see cref="AuthorizeEndpoint"/>'s <c>HasConsentForScopesAsync</c>); Deny redirects
 /// back to the client's <c>redirect_uri</c> with <c>error=access_denied</c> so the OAuth
-/// client can react cleanly. Partial-scope grants would require splitting the requested set
-/// against the stored set inside <c>HasConsentForScopesAsync</c> + driving a follow-up
-/// /Consent visit for any new scope, which we don't ship today.
+/// client can react cleanly.
+///
+/// v1b.4(a): the OAuth context (clientId, redirect_uri, state, allowed scopes, original
+/// /authorize URL) flows through a Data-Protection-encrypted cookie set by /authorize, not
+/// through a form-posted <c>ReturnUrl</c> the user could edit before submit. Every render and
+/// POST decision reads from <see cref="ConsentContextProtector"/>; the form carries no payload
+/// other than the antiforgery token. A user tampering with the cookie value gets a
+/// <c>CryptographicException</c>-driven null and a 400.
 ///
 /// "Remember this decision" toggle is intentionally absent: the preference row is always
 /// persisted, so a user-visible toggle would be misleading. Per-session (ephemeral) consent
 /// requires a <c>RememberedAt</c> column + cleanup sweep tied to cookie expiry — that's
-/// v1b.4 work, blocked on the not-yet-built Connected AI Assistants UI which would let
+/// v1b.4(b) work, blocked on the not-yet-built Connected AI Assistants UI which would let
 /// users see and revoke remembered grants.
 /// </summary>
 public sealed class ConsentModel(
     IOpenIddictApplicationManager applicationManager,
     AdminScopeFilter adminScopeFilter,
+    ConsentContextProtector consentContextProtector,
     CivitiDbContext dbContext,
     ILogger<ConsentModel> logger) : PageModel
 {
-    [BindProperty(SupportsGet = true)]
-    public string? ReturnUrl { get; set; }
-
     public string ClientId { get; set; } = string.Empty;
 
     public string ClientDisplayName { get; set; } = string.Empty;
@@ -50,28 +52,31 @@ public sealed class ConsentModel(
 
     public IReadOnlyList<string> StrippedScopes { get; set; } = [];
 
+    // OnGet renders this to a hidden field; the POST handlers check it matches the cookie's
+    // nonce. Keeps two simultaneous /authorize flows in the same browser (e.g. two tabs for
+    // different clients) from clobbering each other — the second tab's cookie overwrites the
+    // first's, so the first tab's stale form Nonce won't match and the POST returns 400.
+    [BindProperty]
+    public string? Nonce { get; set; }
+
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
     {
-        if (!IsSafeReturnUrl(ReturnUrl))
+        var ctx = ReadContext();
+        if (ctx is null)
         {
-            return BadRequest("Invalid returnUrl.");
+            return BadRequest("Consent context missing or expired. Restart the OAuth flow.");
         }
 
-        var oauthParams = ParseOAuthParams(ReturnUrl);
-        if (oauthParams is null)
-        {
-            return BadRequest("returnUrl is not a recognised /authorize URL.");
-        }
-
-        var application = await applicationManager.FindByClientIdAsync(oauthParams.ClientId, cancellationToken);
+        var application = await applicationManager.FindByClientIdAsync(ctx.ClientId, cancellationToken);
         if (application is null)
         {
-            return BadRequest($"Unknown client: {oauthParams.ClientId}");
+            return BadRequest($"Unknown client: {ctx.ClientId}");
         }
 
-        ClientId = oauthParams.ClientId;
+        ClientId = ctx.ClientId;
+        Nonce = ctx.Nonce;
         ClientDisplayName = await applicationManager.GetDisplayNameAsync(application, cancellationToken)
-            ?? oauthParams.ClientId;
+            ?? ctx.ClientId;
         // Trust badge tracks the `civiti.is_allow_listed` property the seeder stamps on every
         // pre-registered client. Once DCR lands, dynamically-registered apps won't carry this
         // marker and will render the "Unverified" badge automatically — keeping the user-facing
@@ -80,9 +85,12 @@ public sealed class ConsentModel(
         IsTrusted = properties.TryGetValue("civiti.is_allow_listed", out var trustElement)
                     && trustElement.ValueKind == System.Text.Json.JsonValueKind.True;
 
+        // The ctx already carries the post-filter scope set, but re-running the filter is
+        // defence-in-depth: a role change or allow-list edit during the 10-min cookie window
+        // would otherwise let a user about-to-be-demoted see admin scopes on the consent screen.
         var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
         var filterResult = await adminScopeFilter.FilterAsync(
-            ClientId, userRole, oauthParams.Scopes, cancellationToken);
+            ctx.ClientId, userRole, ctx.AllowedScopes, cancellationToken);
 
         Scopes = filterResult.Allowed.Select(ScopeDescriptor.For).ToList();
         StrippedScopes = filterResult.Stripped;
@@ -91,35 +99,40 @@ public sealed class ConsentModel(
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
-        if (!IsSafeReturnUrl(ReturnUrl))
+        var ctx = ReadContext();
+        if (ctx is null)
         {
-            return BadRequest("Invalid returnUrl.");
+            return BadRequest("Consent context missing or expired. Restart the OAuth flow.");
         }
 
-        var oauthParams = ParseOAuthParams(ReturnUrl);
-        if (oauthParams is null)
+        if (!string.Equals(Nonce, ctx.Nonce, StringComparison.Ordinal))
         {
-            return BadRequest("returnUrl is not a recognised /authorize URL.");
+            // Form's hidden Nonce doesn't match the cookie's nonce — most likely a concurrent
+            // OAuth flow in another tab overwrote the cookie between this page's render and
+            // submit. Refusing protects the user from silently approving consent for a different
+            // client than the one shown.
+            logger.LogWarning("Consent POST: nonce mismatch (cookie minted a fresh flow during render); refusing");
+            return BadRequest("This consent form is stale. Restart the OAuth flow.");
         }
 
         var supabaseUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(supabaseUserId))
         {
             // Cookie session evaporated between consent render and submit — bounce back through
-            // /authorize, which will redirect to /Login.
-            return LocalRedirect(ReturnUrl ?? "/");
+            // /authorize, which will redirect to /Login. The ctx-encoded URL is the only safe
+            // source of truth for the redirect target. Delete the consent cookie too: this is
+            // a "successful POST" from the cookie's POV (we consumed it to read ctx), so the
+            // documented one-time-use invariant on DeleteContextCookie applies.
+            DeleteContextCookie();
+            return LocalRedirect(ctx.AuthorizeUrl);
         }
 
-        // Approve grants the full set of scopes the AdminScopeFilter allowed — same set the page
-        // rendered. Per-scope toggles were considered for v1b.2 but the implementation required
-        // partial-grant semantics in HasConsentForScopesAsync that we don't have, so /authorize
-        // would loop back to /Consent forever after a partial approve. Industry consent screens
-        // (Google, GitHub, Microsoft) ship as all-or-nothing for the same reason — a user who
-        // wants to limit access uses Deny + a different client, not a smaller scope subset on
-        // the same flow.
+        // Re-run the admin filter on POST so a role change between /authorize (when ctx was
+        // minted) and POST is reflected. The filter only strips, never adds, so the result is
+        // always a subset of ctx.AllowedScopes.
         var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
         var filterResult = await adminScopeFilter.FilterAsync(
-            oauthParams.ClientId, userRole, oauthParams.Scopes, cancellationToken);
+            ctx.ClientId, userRole, ctx.AllowedScopes, cancellationToken);
 
         // Distinct guards against the edge case of duplicate tokens in the upstream `?scope=`
         // parameter (RFC 6749 doesn't forbid duplicates). HasConsentForScopesAsync is safe
@@ -129,30 +142,31 @@ public sealed class ConsentModel(
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-        await UpsertPreferenceAsync(supabaseUserId, oauthParams.ClientId, grantedScopes, cancellationToken);
+        await UpsertPreferenceAsync(supabaseUserId, ctx.ClientId, grantedScopes, cancellationToken);
+
+        DeleteContextCookie();
 
         logger.LogInformation(
             "Consent granted: sub {Sub}, client {ClientId}, scopes={Scopes}",
-            supabaseUserId, oauthParams.ClientId, string.Join(',', grantedScopes));
+            supabaseUserId, ctx.ClientId, string.Join(',', grantedScopes));
 
-        return LocalRedirect(ReturnUrl ?? "/");
+        return LocalRedirect(ctx.AuthorizeUrl);
     }
 
     public async Task<IActionResult> OnPostDenyAsync(CancellationToken cancellationToken)
     {
-        // Same guard as OnGetAsync / OnPostAsync — `ParseOAuthParams` already path-checks for
-        // /authorize but the IsSafeReturnUrl helper additionally rejects protocol-relative URLs
-        // and absolute schemes; keeping all three handlers symmetric closes a defence-in-depth
-        // gap (no exploit today, but the inconsistency is what Greptile keeps flagging).
-        if (!IsSafeReturnUrl(ReturnUrl))
+        var ctx = ReadContext();
+        if (ctx is null)
         {
-            return BadRequest("Invalid returnUrl.");
+            return BadRequest("Consent context missing or expired. Restart the OAuth flow.");
         }
 
-        var oauthParams = ParseOAuthParams(ReturnUrl);
-        if (oauthParams is null)
+        if (!string.Equals(Nonce, ctx.Nonce, StringComparison.Ordinal))
         {
-            return BadRequest("returnUrl is not a recognised /authorize URL.");
+            // Same concurrent-tab guard as OnPostAsync: refuse Deny for a stale form so we don't
+            // emit access_denied to the wrong client's redirect_uri.
+            logger.LogWarning("Consent Deny: nonce mismatch; refusing");
+            return BadRequest("This consent form is stale. Restart the OAuth flow.");
         }
 
         // Sign the user out of the Civiti.Auth cookie session — refusing consent should not leave
@@ -160,37 +174,57 @@ public sealed class ConsentModel(
         await HttpContext.SignOutAsync(AuthEndpointConstants.CookieScheme);
 
         // OAuth 2.0 §4.1.2.1 — return access_denied to the client's registered redirect_uri.
-        // We do NOT redirect to client-supplied URIs without first verifying it matches the
-        // app's registered redirect_uri, since this page can be reached by any signed-in user.
-        var application = await applicationManager.FindByClientIdAsync(oauthParams.ClientId, cancellationToken);
+        // ctx.RedirectUri was OpenIddict-validated at /authorize entry, but re-validate here as
+        // defence-in-depth (the registered list could have been edited between /authorize and
+        // now). Loopback wildcard mirrors the LoopbackRedirectUriHandlers used by /authorize and
+        // /token so native MCP clients (claude-desktop / claude-code at 127.0.0.1:N) receive a
+        // clean access_denied bounce instead of a 400.
+        var application = await applicationManager.FindByClientIdAsync(ctx.ClientId, cancellationToken);
         if (application is null)
         {
             return BadRequest("Cannot return error to an unrecognised redirect_uri.");
         }
 
-        // Mirror the RFC 8252 §8.3 loopback wildcard the authorize/token phase handlers in
-        // LoopbackRedirectUriHandlers.cs already apply. Without this, a native MCP client
-        // (claude-desktop, claude-code) bound to an ephemeral 127.0.0.1:N port lands on
-        // /Consent, clicks Deny, and gets a 400 because the exact-match validator rejects
-        // the port mismatch against the placeholder registered URI (http://127.0.0.1:0/...).
-        var redirectUriValid = await applicationManager.ValidateRedirectUriAsync(application, oauthParams.RedirectUri, cancellationToken)
-            || await LoopbackRedirectUriMatcher.MatchesAsync(applicationManager, application, oauthParams.RedirectUri, cancellationToken);
+        var redirectUriValid = await applicationManager.ValidateRedirectUriAsync(application, ctx.RedirectUri, cancellationToken)
+            || await LoopbackRedirectUriMatcher.MatchesAsync(applicationManager, application, ctx.RedirectUri, cancellationToken);
         if (!redirectUriValid)
         {
             return BadRequest("Cannot return error to an unrecognised redirect_uri.");
         }
 
-        var separator = oauthParams.RedirectUri.Contains('?') ? '&' : '?';
-        var url = $"{oauthParams.RedirectUri}{separator}error=access_denied&error_description=The+user+denied+the+request";
-        if (!string.IsNullOrEmpty(oauthParams.State))
+        var separator = ctx.RedirectUri.Contains('?') ? '&' : '?';
+        var url = $"{ctx.RedirectUri}{separator}error=access_denied&error_description=The+user+denied+the+request";
+        if (!string.IsNullOrEmpty(ctx.State))
         {
-            url += $"&state={Uri.EscapeDataString(oauthParams.State)}";
+            url += $"&state={Uri.EscapeDataString(ctx.State)}";
         }
 
+        DeleteContextCookie();
+
         logger.LogInformation("Consent denied: sub {Sub}, client {ClientId}",
-            User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "(anonymous)", oauthParams.ClientId);
+            User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "(anonymous)", ctx.ClientId);
 
         return Redirect(url);
+    }
+
+    private ConsentContext? ReadContext()
+    {
+        if (!Request.Cookies.TryGetValue(AuthEndpointConstants.ConsentContextCookie, out var protectedCtx)
+            || string.IsNullOrEmpty(protectedCtx))
+        {
+            return null;
+        }
+        return consentContextProtector.Unprotect(protectedCtx);
+    }
+
+    private void DeleteContextCookie()
+    {
+        // One-time use: any successful POST consumes the cookie, so a stolen value can't be
+        // replayed across multiple consent submits and a back-button revisit doesn't render
+        // stale state.
+        Response.Cookies.Delete(
+            AuthEndpointConstants.ConsentContextCookie,
+            new CookieOptions { Path = AuthEndpointConstants.ConsentPath });
     }
 
     private async Task UpsertPreferenceAsync(
@@ -229,41 +263,6 @@ public sealed class ConsentModel(
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }
-
-    private static OAuthParams? ParseOAuthParams(string? returnUrl)
-    {
-        if (string.IsNullOrEmpty(returnUrl)) return null;
-
-        // returnUrl is relative ("/authorize?client_id=...&..."); split off the query manually
-        // because Uri-parsing requires an absolute URL.
-        var queryStart = returnUrl.IndexOf('?');
-        if (queryStart < 0) return null;
-        var path = returnUrl[..queryStart];
-        if (!string.Equals(path, "/authorize", StringComparison.Ordinal)) return null;
-
-        var query = HttpUtility.ParseQueryString(returnUrl[(queryStart + 1)..]);
-        var clientId = query["client_id"];
-        var redirectUri = query["redirect_uri"];
-        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(redirectUri)) return null;
-
-        var scopeRaw = query["scope"] ?? string.Empty;
-        var scopes = scopeRaw.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        return new OAuthParams(clientId, redirectUri, query["state"], scopes);
-    }
-
-    // Consent always needs a /authorize URL to resume — null/empty rejected. Reject
-    // protocol-relative URLs (`//evil.com`) and any absolute scheme too: see Login.cshtml.cs's
-    // helper for the rationale (Uri.TryCreate accepts `//evil.com` as a valid relative URI per
-    // RFC 3986 §4.2 even though browsers resolve it to a remote host).
-    private static bool IsSafeReturnUrl(string? url)
-    {
-        if (string.IsNullOrEmpty(url)) return false;
-        if (!url.StartsWith('/') || url.StartsWith("//", StringComparison.Ordinal)) return false;
-        return Uri.TryCreate(url, UriKind.Relative, out _);
-    }
-
-    private sealed record OAuthParams(string ClientId, string RedirectUri, string? State, IReadOnlyList<string> Scopes);
 
     public sealed record ScopeDescriptor(string Name, string DisplayName, string Description)
     {

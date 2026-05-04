@@ -55,6 +55,23 @@ builder.Services.AddDbContext<CivitiDbContext>(options =>
 // and discovery would 400 with ID2083. See ProxyTrustStartupFilter for the full XFF/XFP rules.
 builder.Services.AddSingleton<IStartupFilter, Civiti.Auth.Startup.ProxyTrustStartupFilter>();
 
+// CORS for Anthropic-hosted Claude clients (Desktop, Code, claude.ai). Same IStartupFilter
+// trick as proxy trust — without it, OPTIONS preflight on /token would be intercepted by
+// OpenIddict's middleware and 400'd as an invalid_request before CORS could respond.
+// Origins limited to claude.ai + claude.com (both Anthropic-owned). Methods + headers
+// cover the OAuth dance (POST /token with PKCE verifier) and the OpenIddict discovery /
+// JWKS / revocation endpoints. Exposed: WWW-Authenticate so the browser can read it from
+// any (rare) 401 we'd issue; matches the Civiti.Mcp policy for symmetry.
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(Civiti.Auth.Startup.CorsStartupFilter.PolicyName, policy => policy
+        .WithOrigins("https://claude.ai", "https://claude.com")
+        .WithMethods("GET", "POST", "OPTIONS", "DELETE")
+        .WithHeaders("Content-Type", "Authorization", "Accept")
+        .WithExposedHeaders("WWW-Authenticate"));
+});
+builder.Services.AddSingleton<IStartupFilter, Civiti.Auth.Startup.CorsStartupFilter>();
+
 // Supabase configuration — same env var contract as Civiti.Api so deploys can share
 // SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY / SUPABASE_SERVICE_KEY between services. The
 // publishable key drives the password / OAuth-code exchanges on /auth/v1/token; the service
@@ -151,6 +168,7 @@ builder.Services.AddAuthentication(AuthEndpointConstants.CookieScheme)
     });
 
 builder.Services.AddSingleton<SupabasePkceStateProtector>();
+builder.Services.AddSingleton<ConsentContextProtector>();
 builder.Services.AddSingleton<SupabaseTokenValidator>();
 builder.Services.AddScoped<SupabaseLoginCompletion>();
 builder.Services.AddScoped<AdminScopeFilter>();
@@ -181,11 +199,104 @@ builder.Services.AddOpenIddict()
         // MCP clients are all native/loopback or claimed-URL-scheme clients; PKCE is mandatory.
         options.RequireProofKeyForCodeExchange();
 
+        // Public clients (no client_secret). Every MCP client we serve — both the seeded
+        // entries (claude-desktop, claude-code, …) and DCR-registered ones from PR #125 —
+        // are ClientType.Public. OpenIddict's /token endpoint already accepts them in
+        // practice (we've been minting tokens for claude-desktop since v1b), but without
+        // this call the AS metadata's token_endpoint_auth_methods_supported doesn't include
+        // "none". Per RFC 7591, conformant DCR clients (Claude Desktop included) reject the
+        // AS when their token_endpoint_auth_method ("none" for public clients) isn't in the
+        // advertised list — symptom: connector setup says "failed to connect" after
+        // discovery but never actually POSTs /register.
+        options.AcceptAnonymousClients();
+
+        // Discovery (scopes_supported) advertises the citizen-tier scopes plus offline_access
+        // so well-behaved remote MCP clients (Claude Desktop) discover and request just
+        // those. offline_access is the OIDC control scope that signals "issue a refresh
+        // token"; it must appear in scopes_supported so DCR clients know they can include it
+        // on /authorize and obtain the refresh_token grant their registration response
+        // advertises (see RegisterEndpoint).
+        //
+        // The admin scopes (civiti.admin.read/write) are reachable only by allow-listed
+        // clients that carry the explicit Permissions.Prefixes.Scope + civiti.admin.* grants
+        // from ClientAllowListSeeder; they remain valid scope names at runtime via
+        // AcceptAnonymousScopes() below. Without this split, Claude Desktop's connector
+        // discovers all four civiti scopes from the doc, requests them, and OpenIddict's
+        // ValidateScopePermissions rejects with invalid_request / ID2051 — because DCR
+        // registration only ever grants civiti.read + civiti.write per
+        // RegisterEndpoint.AllowedDcrScopes.
         options.RegisterScopes(
             "civiti.read",
             "civiti.write",
-            "civiti.admin.read",
-            "civiti.admin.write");
+            OpenIddictConstants.Scopes.OfflineAccess);
+
+        // Accept civiti.admin.* in /authorize/token requests even though they're absent from
+        // RegisterScopes above. Despite the name, DisableScopeValidation only disables the
+        // "is this scope name registered?" check, not the per-client permission gate.
+        options.DisableScopeValidation();
+
+        // ALSO bypass OpenIddict's per-client scope permission gate. Empirically, real-world
+        // remote MCP clients (Claude Desktop) hard-code their requested scope set rather than
+        // reading scopes_supported from discovery — we observed three fresh DCR registrations
+        // in a single Connect attempt, each posting
+        // scope=civiti.read+civiti.write+civiti.admin.read+civiti.admin.write+offline_access
+        // verbatim despite the discovery doc no longer advertising admin. OpenIddict's
+        // Authentication.ValidateScopePermissions then rejected with invalid_request / ID2051
+        // because DCR registration only ever grants Permissions.Prefixes.Scope + civiti.read
+        // and + civiti.write per RegisterEndpoint.AllowedDcrScopes (auth-design.md §6).
+        //
+        // The downstream AdminScopeFilter (Civiti.Auth/Endpoints/AdminScopeFilter.cs) is the
+        // load-bearing scope gate from this point forward. It runs at three places —
+        // AuthorizeEndpoint (before SignIn), Consent (rendering + POST), and TokenEndpoint
+        // (refresh-token rotation) — and strips civiti.admin.* unless BOTH (a) the client
+        // application carries the civiti.allows_admin_scopes=true property (set only by
+        // ClientAllowListSeeder, never by RegisterEndpoint/DCR) and (b) the user's Supabase
+        // role is "admin". DCR Claude Desktop hits (a)=false and the admin scopes are stripped
+        // before the principal is built — the issued token has only civiti.read/civiti.write.
+        //
+        // CAUTION 1: this bypass makes AdminScopeFilter the SOLE per-client scope gate. If
+        // the filter is ever weakened (e.g. dropping the property check, or a code path skips
+        // FilterAsync), DCR clients could mint admin-scoped tokens. Any change to
+        // AdminScopeFilter.FilterAsync, its three call sites, or this option toggle must be
+        // reviewed together.
+        //
+        // CAUTION 2: IgnoreScopePermissions() bypasses the gate for ALL scopes, not just
+        // admin. AdminScopeFilter only enforces the static AdminScopes set
+        // ({civiti.admin.read, civiti.admin.write}). If a new privileged scope is ever
+        // introduced (e.g. civiti.moderator.write, civiti.billing.read), it must be added to
+        // AdminScopeFilter.AdminScopes at the same time — otherwise DCR clients could request
+        // and receive it without any per-client check, since OpenIddict's gate is bypassed
+        // and AdminScopeFilter wouldn't recognize the scope as needing protection.
+        options.IgnoreScopePermissions();
+
+        // RFC 8707: Claude Desktop and other remote MCP clients send
+        // resource=<MCP-URL> on /authorize and /token. OpenIddict layers TWO independent
+        // checks on that parameter:
+        //
+        //   1. Authentication/Exchange.ValidateResources — scope-level: rejects when the
+        //      requested URL isn't registered on any requested scope's Resources collection.
+        //   2. Authentication/Exchange.ValidateResourcePermissions — client-level: rejects
+        //      when the calling client doesn't carry a Permissions.Prefixes.Resource grant
+        //      for the URL.
+        //
+        // Together they would force us to (a) seed the URL on every scope and (b) grant
+        // the resource permission to every client (seeded + DCR-registered). We bypass
+        // both because the validators' shared promise — "the issued token's audience will
+        // equal the resource the client requested" — is one we don't keep:
+        // AuthorizeEndpoint.cs explicitly calls principal.SetResources(McpResourceIdentifiers
+        // .Audience), pinning the access token's aud claim to the constant "civiti-mcp"
+        // regardless of what the client sent. Civiti.Mcp's validator only accepts that
+        // audience. So enforcing the binding at /authorize is theatre — we'd be policing
+        // a constraint we then override in code. Skipping both layers achieves identical
+        // runtime security with less ceremony.
+        //
+        // If we ever migrate to RFC 8707 URL-as-audience semantics (e.g. when serving
+        // multiple MCP resource servers from one AS), restore both validators, register
+        // the URLs on scopes, and grant per-client resource permissions — see
+        // McpResourceIdentifiers.Audience for the full coupling.
+        options.RemoveEventHandler(OpenIddictServerHandlers.Authentication.ValidateResources.Descriptor);
+        options.RemoveEventHandler(OpenIddictServerHandlers.Exchange.ValidateResources.Descriptor);
+        options.IgnoreResourcePermissions();
 
         // Ephemeral keys rotate on restart. That's fine because refresh tokens are server-side
         // reference values (opaque + hashed), so losing signing material only invalidates the
@@ -243,12 +354,51 @@ builder.Services.AddOpenIddict()
         options.AddEventHandler<OpenIddictServerEvents.ValidateTokenRequestContext>(handler =>
             handler.UseScopedHandler<LoopbackAwareTokenRedirectUriValidator>()
                    .SetOrder(OpenIddictServerHandlers.Exchange.ValidateRedirectUri.Descriptor.Order));
+
+        // Advertise registration_endpoint and append "none" to
+        // token_endpoint_auth_methods_supported in /.well-known/openid-configuration +
+        // /.well-known/oauth-authorization-server so MCP clients (Claude Desktop, Code, …)
+        // can complete the Connect flow. OpenIddict 7.5 has no built-in DCR, so /register
+        // is hand-rolled in RegisterEndpoint.cs and this handler bridges the discovery doc
+        // to it.
+        //
+        // Order pinned to (AttachClientAuthenticationMethods + 1_000) so we run *after* the
+        // built-in handler that populates token_endpoint_auth_methods_supported with the
+        // confidential-client methods — we need it populated before we read+append "none".
+        // Without an explicit SetOrder, registration order would happen to put us after
+        // because OpenIddict registers its defaults first, but that's a fragile assumption
+        // and would break if OpenIddict ever changes how it stages built-in handlers.
+        // Scoped handler because IHttpContextAccessor is scoped.
+        options.AddEventHandler<OpenIddictServerEvents.HandleConfigurationRequestContext>(handler =>
+            handler.UseScopedHandler<AdvertiseRegistrationEndpointHandler>()
+                   .SetOrder(OpenIddictServerHandlers.Discovery.AttachClientAuthenticationMethods.Descriptor.Order + 1_000));
     });
 
 builder.Services.AddScoped<McpSessionWriteHandler>();
 builder.Services.AddScoped<McpSessionRevokeHandler>();
 builder.Services.AddScoped<LoopbackAwareAuthorizationRedirectUriValidator>();
 builder.Services.AddScoped<LoopbackAwareTokenRedirectUriValidator>();
+builder.Services.AddScoped<AdvertiseRegistrationEndpointHandler>();
+builder.Services.AddHttpContextAccessor();
+
+// Per-IP rate limit on /register per auth-design.md §6: 20 registrations per source IP per
+// 24h. The actual /register endpoint mounts this via RequireRateLimiting(...). Partition by
+// the post-ProxyTrustStartupFilter RemoteIpAddress so we throttle the real client, not the
+// Railway edge. FixedWindow is fine — DCR is one-shot per client install, no need for the
+// smoothing a sliding window would provide.
+builder.Services.AddRateLimiter(rateLimiter =>
+{
+    rateLimiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    rateLimiter.AddPolicy(Civiti.Auth.Endpoints.RegisterEndpoint.RateLimitPolicy, httpContext =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromHours(24),
+                QueueLimit = 0
+            }));
+});
 
 // Allow-list seed runs once at startup and ensures every client in auth-design.md §6 exists in
 // OpenIddict's application store. Idempotent: on second boot it's a no-op.
@@ -267,8 +417,16 @@ var app = builder.Build();
 // OpenIddict's own scheme is plumbed via its IStartupFilter and needs no extra wiring.
 app.UseStaticFiles();
 app.UseAuthentication();
+app.UseRateLimiter();
 
 app.MapRazorPages();
+
+// RFC 7591 Dynamic Client Registration. See RegisterEndpoint.cs for the full guardrails
+// (loopback redirect URIs only, civiti.admin.* stripped, PKCE required) and
+// AdvertiseRegistrationEndpointHandler.cs for the discovery-doc pointer. Required by
+// Claude Desktop / Code / etc. — without DCR the Connect flow has no way to bootstrap a
+// client_id and hangs on Connect.
+Civiti.Auth.Endpoints.RegisterEndpoint.Map(app);
 
 app.MapGet("/api/health", async (CivitiDbContext ctx, IHostEnvironment env) =>
 {

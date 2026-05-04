@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Civiti.Application.Mcp;
 using Civiti.Auth.Authentication;
 using Civiti.Infrastructure.Data;
 using Microsoft.AspNetCore;
@@ -15,10 +16,13 @@ namespace Civiti.Auth.Endpoints;
 /// 1. <b>No cookie session</b> — redirect to <c>/Login?returnUrl=/authorize?...</c>. The
 ///    Login Razor page handles email+password and the "Sign in with Google" button (which
 ///    bounces through Supabase's PKCE flow and lands on <c>/supabase-callback</c>).
-/// 2. <b>Cookie session, but no consent record covering the requested scopes</b> — redirect
-///    to <c>/Consent?returnUrl=/authorize?...</c>. The Consent page upserts an
-///    <c>McpUserClientPreference</c> row on approve and redirects back here, where this path
-///    is then satisfied.
+/// 2. <b>Cookie session, but no consent record covering the requested scopes</b> — encrypt
+///    the (clientId, allowed-scopes, redirect_uri, state, original-/authorize-URL) tuple via
+///    <see cref="ConsentContextProtector"/>, set it in a cookie scoped to <c>/Consent</c>, and
+///    redirect to <c>/Consent</c>. The page reads the cookie for every render and POST decision,
+///    so a user editing form fields can't reroute the consent to a different client. The
+///    Consent page upserts an <c>McpUserClientPreference</c> row on approve and redirects back
+///    here using <c>AuthorizeUrl</c> from the cookie, where this path is then satisfied.
 /// 3. <b>Cookie session + consent (or scopes don't need consent)</b> — apply
 ///    <see cref="AdminScopeFilter"/>, build the OpenIddict <see cref="ClaimsPrincipal"/>, set
 ///    claim destinations, and SignIn so the OpenIddict middleware emits the auth-code redirect.
@@ -28,6 +32,7 @@ public static class AuthorizeEndpoint
     public static async Task<IResult> HandleAsync(
         HttpContext httpContext,
         AdminScopeFilter adminScopeFilter,
+        ConsentContextProtector consentContextProtector,
         CivitiDbContext dbContext,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -75,13 +80,41 @@ public static class AuthorizeEndpoint
         if (!hasConsent)
         {
             // Path 2 — drive the user through the consent screen, which will bounce back here
-            // with the McpUserClientPreference row in place. We re-render /authorize on return
-            // so the OpenIddict request payload (PKCE challenge, redirect_uri, …) is intact.
-            var returnUrl = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
+            // with the McpUserClientPreference row in place. The OAuth context (clientId, scopes,
+            // redirect_uri, state, original /authorize URL) travels in a Data-Protection-encrypted
+            // cookie scoped to /Consent rather than as form fields the user can edit. v1b.4(a)
+            // hardening: without this, a user could submit /Consent for one (clientId, scopes)
+            // tuple while the form rendered another, pre-approving access for a different client.
+            var authorizeUrl = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
+            var ctx = new ConsentContext(
+                AuthorizeUrl: authorizeUrl,
+                ClientId: clientId,
+                RedirectUri: oidcRequest.RedirectUri ?? string.Empty,
+                State: oidcRequest.State,
+                AllowedScopes: allowedScopes,
+                IssuedAtUnix: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Nonce: Guid.NewGuid().ToString("N"));
+            httpContext.Response.Cookies.Append(
+                AuthEndpointConstants.ConsentContextCookie,
+                consentContextProtector.Protect(ctx),
+                new CookieOptions
+                {
+                    HttpOnly = true,
+                    // Strict (not Lax): the cookie is always written by /authorize and read by
+                    // /Consent within the same same-site redirect chain, so Strict has no
+                    // functional cost. Defense-in-depth on top of Path=/Consent scoping and the
+                    // encrypted payload — blocks the browser from attaching the cookie on any
+                    // cross-site top-level navigation to /Consent.
+                    SameSite = SameSiteMode.Strict,
+                    Secure = httpContext.Request.IsHttps,
+                    Path = AuthEndpointConstants.ConsentPath,
+                    MaxAge = TimeSpan.FromMinutes(10),
+                });
+
             logger.LogInformation(
                 "/authorize: cookie session present but no consent covering scopes [{Scopes}] for client {ClientId}; redirecting to /Consent",
                 string.Join(',', allowedScopes), clientId);
-            return Results.Redirect($"/Consent?returnUrl={Uri.EscapeDataString(returnUrl)}");
+            return Results.Redirect(AuthEndpointConstants.ConsentPath);
         }
 
         // Path 3 — issue the authorization code.
@@ -102,7 +135,13 @@ public static class AuthorizeEndpoint
 
         var principal = new ClaimsPrincipal(identity);
         principal.SetScopes(allowedScopes);
-        principal.SetResources(AuthEndpointConstants.ResourceServer);
+        // Pin the access token's aud claim to the constant "civiti-mcp" regardless of any
+        // RFC 8707 resource= parameter the client sent. Civiti.Mcp's validator only accepts
+        // that audience. This pin is load-bearing — Civiti.Auth/Program.cs removes
+        // OpenIddict's ValidateResources handlers, so without this call the token's aud
+        // would track the request's resource= verbatim and Civiti.Mcp would reject every
+        // token. See the doc comment on McpResourceIdentifiers.Audience for the full picture.
+        principal.SetResources(McpResourceIdentifiers.Audience);
 
         logger.LogInformation(
             "/authorize: issuing authorization code for sub {Sub}, scopes {Scopes}",
