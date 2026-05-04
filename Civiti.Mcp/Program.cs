@@ -407,12 +407,18 @@ app.MapGet("/.well-known/oauth-protected-resource", (HttpContext ctx) =>
     {
         resource = $"{mcpPublicOrigin}/mcp",
         authorization_servers = new[] { authorizationServer },
+        // scopes_supported advertises only the citizen-tier scopes — mirrors the AS-side
+        // hiding in Civiti.Auth/Program.cs RegisterScopes() (PR #135). The admin scopes
+        // (civiti.admin.read/write) are reachable only by allow-listed clients (those don't
+        // read PRM — they're hardcoded), so advertising them here would only mislead DCR
+        // clients (Claude Desktop) which follow the RFC 9728 flow: read PRM first, then
+        // request the advertised scopes. Anything they request gets stripped by
+        // AdminScopeFilter at the AS, but the silent strip is confusing — hide the scopes
+        // from the doc instead so the contract is honest.
         scopes_supported = new[]
         {
             "civiti.read",
-            "civiti.write",
-            "civiti.admin.read",
-            "civiti.admin.write"
+            "civiti.write"
         },
         bearer_methods_supported = new[] { "header" }
     });
