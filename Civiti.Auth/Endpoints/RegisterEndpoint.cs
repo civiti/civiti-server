@@ -41,10 +41,12 @@ public static class RegisterEndpoint
     /// <summary>Path the endpoint is mounted at; mirrors the value advertised in the discovery doc.</summary>
     public const string Path = "/register";
 
-    // Scope ceiling per auth-design.md §6: DCR-registered clients can only request the
-    // citizen scopes; civiti.admin.* is reserved for pre-allow-listed entries that carry
-    // the allowsAdminScopes flag (claude-desktop, claude-code today). Mirrors the
+    // Citizen-scope ceiling per auth-design.md §6: DCR-registered clients can only request
+    // these resource scopes; civiti.admin.* is reserved for pre-allow-listed entries that
+    // carry the allowsAdminScopes flag (claude-desktop, claude-code today). Mirrors the
     // CivitiReadScope / CivitiWriteScope literals in Civiti.Mcp.Authorization.McpCitizenContext.
+    // offline_access is granted unconditionally on top of this ceiling — see grantedScopes
+    // construction below.
     private static readonly HashSet<string> AllowedDcrScopes = new(StringComparer.Ordinal)
     {
         "civiti.read",
@@ -128,8 +130,18 @@ public static class RegisterEndpoint
         {
             return RegistrationError(
                 "invalid_client_metadata",
-                $"None of the requested scopes are grantable via DCR. Allowed: {string.Join(", ", AllowedDcrScopes)}.");
+                $"At least one citizen scope is required. Allowed citizen scopes: {string.Join(", ", AllowedDcrScopes)}. The offline_access scope is granted automatically on top of citizen scopes and cannot be requested on its own.");
         }
+
+        // offline_access is always added on top of the citizen-scope ceiling. Without it the
+        // registration response's advertised grant_types: ["authorization_code", "refresh_token"]
+        // is a lie — OpenIddict only mints a refresh token when the /authorize request
+        // includes scope=offline_access, and a client that doesn't see offline_access in the
+        // returned scope set has no way to know to request it. Adding it here also lets the
+        // descriptor-permission loop below grant Permissions.Scopes.OfflineAccess, which
+        // keeps the per-client scope gate honest if IgnoreScopePermissions() in Program.cs
+        // is ever removed.
+        grantedScopes.Add(OpenIddictConstants.Scopes.OfflineAccess);
 
         var clientId = Guid.NewGuid().ToString("N");
         var trimmedName = request.ClientName?.Trim();
