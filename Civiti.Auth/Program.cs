@@ -210,11 +210,16 @@ builder.Services.AddOpenIddict()
         // discovery but never actually POSTs /register.
         options.AcceptAnonymousClients();
 
-        // Discovery (scopes_supported) advertises only the citizen-tier scopes so well-behaved
-        // remote MCP clients (Claude Desktop) discover and request just those. The admin
-        // scopes (civiti.admin.read/write) are reachable only by allow-listed clients that
-        // carry the explicit Permissions.Prefixes.Scope + civiti.admin.* grants from
-        // ClientAllowListSeeder; they remain valid scope names at runtime via
+        // Discovery (scopes_supported) advertises the citizen-tier scopes plus offline_access
+        // so well-behaved remote MCP clients (Claude Desktop) discover and request just
+        // those. offline_access is the OIDC control scope that signals "issue a refresh
+        // token"; it must appear in scopes_supported so DCR clients know they can include it
+        // on /authorize and obtain the refresh_token grant their registration response
+        // advertises (see RegisterEndpoint).
+        //
+        // The admin scopes (civiti.admin.read/write) are reachable only by allow-listed
+        // clients that carry the explicit Permissions.Prefixes.Scope + civiti.admin.* grants
+        // from ClientAllowListSeeder; they remain valid scope names at runtime via
         // AcceptAnonymousScopes() below. Without this split, Claude Desktop's connector
         // discovers all four civiti scopes from the doc, requests them, and OpenIddict's
         // ValidateScopePermissions rejects with invalid_request / ID2051 — because DCR
@@ -222,7 +227,8 @@ builder.Services.AddOpenIddict()
         // RegisterEndpoint.AllowedDcrScopes.
         options.RegisterScopes(
             "civiti.read",
-            "civiti.write");
+            "civiti.write",
+            OpenIddictConstants.Scopes.OfflineAccess);
 
         // Accept civiti.admin.* in /authorize/token requests even though they're absent from
         // RegisterScopes above. Despite the name, DisableScopeValidation only disables the
