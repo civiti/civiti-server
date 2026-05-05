@@ -172,6 +172,13 @@ public static class IssueEndpoints
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Account Deleted");
             }
+            catch (ContentModerationException ex)
+            {
+                // Distinct from the InvalidOperationException catch below so a moderation
+                // block never falls through to the generic 400 with a misleading "Issue
+                // creation failed" feel — clients see the BlockReason verbatim.
+                return TypedResults.BadRequest(ex.Message);
+            }
             catch (InvalidOperationException ex) when (ex.Message is DomainErrors.UserNotFound or DomainErrors.UserProfileNotFound)
             {
                 return TypedResults.Problem(
