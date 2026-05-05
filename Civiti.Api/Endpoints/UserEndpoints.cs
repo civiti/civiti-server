@@ -168,6 +168,10 @@ public static class UserEndpoints
                         statusCode: StatusCodes.Status403Forbidden,
                         title: "Account Deleted");
                 }
+                catch (ContentModerationException ex)
+                {
+                    return Results.BadRequest(new { error = ex.Message });
+                }
                 catch (InvalidOperationException ex) when (ex.Message == DomainErrors.UserNotFound)
                 {
                     // Profile was deleted between get and update - very rare edge case
@@ -182,10 +186,19 @@ public static class UserEndpoints
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Account Deleted");
             }
+            catch (ContentModerationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
             catch (InvalidOperationException ex) when (ex.Message == DomainErrors.UserNotFound)
             {
                 // Profile was deleted between existence check and update
                 return Results.NotFound(new { error = "User profile not found" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                // DisplayName length cap, PhotoUrl scheme/length validation
+                return Results.BadRequest(new { error = ex.Message });
             }
             catch (ArgumentException ex)
             {
@@ -226,9 +239,21 @@ public static class UserEndpoints
                     statusCode: StatusCodes.Status403Forbidden,
                     title: "Account Deleted");
             }
-            catch (InvalidOperationException)
+            catch (ContentModerationException ex)
+            {
+                // Distinct from InvalidOperationException so a DisplayName moderation block
+                // surfaces as 400 with the BlockReason instead of being swallowed by the
+                // 404 mapping below.
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex) when (ex.Message == DomainErrors.UserNotFound)
             {
                 return Results.NotFound(new { error = "User profile not found" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                // DisplayName length cap, PhotoUrl scheme/length validation
+                return Results.BadRequest(new { error = ex.Message });
             }
         })
         .WithName("UpdateUserProfile")

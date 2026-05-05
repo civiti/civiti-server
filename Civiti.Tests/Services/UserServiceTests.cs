@@ -2,6 +2,7 @@ using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Domain.Entities;
 using Civiti.Application.Requests.Auth;
+using Civiti.Application.Responses.Moderation;
 using Civiti.Infrastructure.Services;
 using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
@@ -19,15 +20,22 @@ public class UserServiceTests : IDisposable
     private readonly Mock<IGamificationService> _gamificationService = new();
     private readonly Mock<INotificationService> _notificationService = new();
     private readonly Mock<ISupabaseService> _supabaseService = new();
+    private readonly Mock<IContentModerationService> _contentModerationService = new();
 
     private UserService CreateService()
     {
         var context = _dbFactory.CreateContext();
-        return new UserService(_logger.Object, context, _gamificationService.Object, _notificationService.Object, _supabaseService.Object);
+        return new UserService(_logger.Object, context, _gamificationService.Object, _notificationService.Object, _supabaseService.Object, _contentModerationService.Object);
     }
 
     public UserServiceTests()
     {
+        // Default: allow all content. Tests asserting moderation rejection override
+        // per-test, mirroring the CommentServiceTests precedent.
+        _contentModerationService
+            .Setup(m => m.ModerateContentAsync(It.IsAny<string>()))
+            .ReturnsAsync(new ContentModerationResponse { IsAllowed = true });
+
         // Default: gamification queries return empty lists
         _gamificationService
             .Setup(g => g.GetUserBadgesAsync(It.IsAny<Guid>()))
@@ -147,6 +155,78 @@ public class UserServiceTests : IDisposable
             new UpdateUserProfileRequest { DisplayName = "X" });
 
         await act.Should().ThrowAsync<AccountDeletedException>();
+    }
+
+    [Fact]
+    public async Task UpdateUserProfile_Should_Throw_ContentModerationException_When_DisplayName_Rejected()
+    {
+        // DisplayName surfaces unmodified through CommentResponse / IssueDetailResponse /
+        // BlockedUserResponse / ActivityResponse, so a moderation hit here must propagate as
+        // the typed exception for MCP write tools to surface as {ok:false, reason:
+        // "moderation_rejected"}.
+        _contentModerationService
+            .Setup(m => m.ModerateContentAsync(It.IsAny<string>()))
+            .ReturnsAsync(new ContentModerationResponse
+            {
+                IsAllowed = false,
+                BlockReason = "test moderation block"
+            });
+
+        var user = TestDataBuilder.CreateUser(supabaseUserId: "moderate_displayname_user");
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+        var act = () => svc.UpdateUserProfileAsync(
+            "moderate_displayname_user",
+            new UpdateUserProfileRequest { DisplayName = "Malicious display name" });
+
+        await act.Should().ThrowAsync<ContentModerationException>()
+            .WithMessage("test moderation block");
+    }
+
+    [Fact]
+    public async Task UpdateUserProfile_Should_Throw_For_Non_Http_PhotoUrl()
+    {
+        // PhotoUrl scheme validation must reject javascript:/data:/file: URIs.
+        var user = TestDataBuilder.CreateUser(supabaseUserId: "bad_photo_url_user");
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+        var act = () => svc.UpdateUserProfileAsync(
+            "bad_photo_url_user",
+            new UpdateUserProfileRequest { PhotoUrl = "javascript:alert(1)" });
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*http or https*");
+    }
+
+    [Fact]
+    public async Task UpdateUserProfile_Should_Throw_For_DisplayName_Over_Limit()
+    {
+        // 100-char cap in code (the [MaxLength] attribute on UpdateUserProfileRequest is
+        // decorative on the MCP path).
+        var user = TestDataBuilder.CreateUser(supabaseUserId: "long_displayname_user");
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+        var act = () => svc.UpdateUserProfileAsync(
+            "long_displayname_user",
+            new UpdateUserProfileRequest { DisplayName = new string('x', 101) });
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*100-character limit*");
     }
 
     // ── DeleteUserAsync ──

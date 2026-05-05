@@ -8,6 +8,7 @@ using Civiti.Application.Requests.Issues;
 using Civiti.Application.Responses.Authority;
 using Civiti.Application.Responses.Common;
 using Civiti.Application.Responses.Issues;
+using Civiti.Application.Responses.Moderation;
 using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -22,7 +23,8 @@ public class IssueService(
     IMemoryCache memoryCache,
     IActivityService activityService,
     INotificationService notificationService,
-    IAdminNotifier adminNotifier)
+    IAdminNotifier adminNotifier,
+    IContentModerationService contentModerationService)
     : IIssueService
 {
     private static readonly TimeSpan EmailCooldownDuration = TimeSpan.FromHours(1);
@@ -301,6 +303,63 @@ public class IssueService(
 
     public async Task<CreateIssueResponse> CreateIssueAsync(CreateIssueRequest request, string supabaseUserId)
     {
+        // Pre-transaction validation: moderation (external HTTP) and PhotoUrl scheme/length
+        // checks happen before BeginTransactionAsync so we don't hold a pooled DB connection
+        // across the OpenAI round-trip (300ms-2s). Under concurrency, holding the connection
+        // across that RTT exhausts the pool and causes cascading timeouts unrelated to
+        // moderation itself.
+
+        // Moderate every free-text field that surfaces unmodified through read tools
+        // (search_issues / get_issue / list_my_activity). Concatenating in one call keeps
+        // the OpenAI moderation cost at one round-trip; rejecting the whole submission on
+        // any flagged field is correct — an issue with a moderation hit anywhere is not
+        // safe to publish. See the 2026-05-05 prompt-injection review for the threat model.
+        // ContentModerationException is the typed signal that callers (CommentService
+        // precedent, MCP write tools) distinguish from the unrelated
+        // InvalidOperationException family.
+        string moderationInput = string.Join(
+            "\n\n",
+            request.Title ?? string.Empty,
+            request.Description ?? string.Empty,
+            request.Address ?? string.Empty,
+            request.District ?? string.Empty,
+            request.DesiredOutcome ?? string.Empty,
+            request.CommunityImpact ?? string.Empty);
+        ContentModerationResponse moderationResult =
+            await contentModerationService.ModerateContentAsync(moderationInput);
+        if (!moderationResult.IsAllowed)
+        {
+            throw new ContentModerationException(
+                moderationResult.BlockReason ?? "Content violates community guidelines");
+        }
+
+        // PhotoUrls: same scheme-and-length guard as UserService.UpdateUserProfileAsync's
+        // profile PhotoUrl. Issue photos are surfaced in IssueDetailResponse.Photos and any
+        // MCP/REST client that renders them naively could execute attacker-supplied URIs
+        // (javascript:, data:, file:). Validate up-front so the rejection is uniform across
+        // every photo and we don't write a partially-validated set.
+        if (request.PhotoUrls != null)
+        {
+            foreach (string? url in request.PhotoUrls)
+            {
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    continue;
+                }
+                if (url.Length > 1000)
+                {
+                    throw new InvalidOperationException(
+                        "Issue photo URL exceeds the 1000-character limit.");
+                }
+                if (!Uri.TryCreate(url, UriKind.Absolute, out var photoUri)
+                    || (photoUri.Scheme != Uri.UriSchemeHttp && photoUri.Scheme != Uri.UriSchemeHttps))
+                {
+                    throw new InvalidOperationException(
+                        "Issue photo URLs must be absolute http or https URLs.");
+                }
+            }
+        }
+
         IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync(async () =>
