@@ -1,6 +1,7 @@
 using Civiti.Infrastructure.Data;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Entities;
+using Civiti.Domain.Exceptions;
 using Civiti.Application.Requests.Issues;
 using Civiti.Application.Responses.Moderation;
 using Civiti.Infrastructure.Services;
@@ -569,5 +570,78 @@ public class IssueServiceTests : IDisposable
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage(DomainErrors.UserProfileNotFound);
+    }
+
+    // ── CreateIssueAsync ──
+
+    [Fact]
+    public async Task CreateIssue_Should_Throw_ContentModerationException_When_Moderation_Rejects()
+    {
+        // Override the default-allow setup with a deny so we exercise the rejection path
+        // added in this PR. The service should throw ContentModerationException before any
+        // DB transaction is opened (moderation runs pre-transaction to avoid holding a
+        // pooled connection across the OpenAI RTT).
+        _contentModerationService
+            .Setup(m => m.ModerateContentAsync(It.IsAny<string>()))
+            .ReturnsAsync(new ContentModerationResponse
+            {
+                IsAllowed = false,
+                BlockReason = "test moderation block"
+            });
+
+        var user = TestDataBuilder.CreateUser(supabaseUserId: "moderate_create_user");
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+        var act = () => svc.CreateIssueAsync(
+            new CreateIssueRequest
+            {
+                Title = "Bad title",
+                Description = "Bad description",
+                Category = IssueCategory.Infrastructure,
+                Address = "Str. Test 1",
+                District = "Sector 1",
+                Latitude = 44.4,
+                Longitude = 26.1
+            },
+            "moderate_create_user");
+
+        await act.Should().ThrowAsync<ContentModerationException>()
+            .WithMessage("test moderation block");
+    }
+
+    [Fact]
+    public async Task CreateIssue_Should_Throw_For_Non_Http_PhotoUrl()
+    {
+        // PhotoUrls validation must reject javascript:/data:/file: URIs before they reach
+        // the DB — same defense added on the profile photo path in this PR.
+        var user = TestDataBuilder.CreateUser(supabaseUserId: "bad_photo_user");
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+        var act = () => svc.CreateIssueAsync(
+            new CreateIssueRequest
+            {
+                Title = "Title",
+                Description = "Description",
+                Category = IssueCategory.Infrastructure,
+                Address = "Str. Test 1",
+                District = "Sector 1",
+                Latitude = 44.4,
+                Longitude = 26.1,
+                PhotoUrls = new List<string> { "javascript:alert(1)" }
+            },
+            "bad_photo_user");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*http or https*");
     }
 }
