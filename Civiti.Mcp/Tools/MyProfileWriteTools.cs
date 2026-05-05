@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Civiti.Application.Requests.Auth;
 using Civiti.Application.Services;
+using Civiti.Domain.Exceptions;
 using Civiti.Mcp.Authorization;
 using ModelContextProtocol.Server;
 
@@ -36,6 +37,16 @@ public sealed class MyProfileWriteTools(IUserService users, IMcpCitizenContext c
             City = city,
             District = district
         };
-        return await users.UpdateUserProfileAsync(auth.Context.SupabaseUserId, request);
+        try
+        {
+            return await users.UpdateUserProfileAsync(auth.Context.SupabaseUserId, request);
+        }
+        catch (ContentModerationException ex)
+        {
+            // Moderation block on DisplayName. Other validation errors (length cap,
+            // PhotoUrl scheme/length) come back as InvalidOperationException and are left
+            // to bubble — those map to MCP transport-level errors with the right semantics.
+            return new { ok = false, reason = "moderation_rejected", message = ex.Message };
+        }
     }
 }

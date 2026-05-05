@@ -2,6 +2,7 @@ using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Domain.Entities;
 using Civiti.Application.Requests.Auth;
+using Civiti.Application.Responses.Moderation;
 using Civiti.Infrastructure.Services;
 using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
@@ -19,15 +20,22 @@ public class UserServiceTests : IDisposable
     private readonly Mock<IGamificationService> _gamificationService = new();
     private readonly Mock<INotificationService> _notificationService = new();
     private readonly Mock<ISupabaseService> _supabaseService = new();
+    private readonly Mock<IContentModerationService> _contentModerationService = new();
 
     private UserService CreateService()
     {
         var context = _dbFactory.CreateContext();
-        return new UserService(_logger.Object, context, _gamificationService.Object, _notificationService.Object, _supabaseService.Object);
+        return new UserService(_logger.Object, context, _gamificationService.Object, _notificationService.Object, _supabaseService.Object, _contentModerationService.Object);
     }
 
     public UserServiceTests()
     {
+        // Default: allow all content. Tests asserting moderation rejection override
+        // per-test, mirroring the CommentServiceTests precedent.
+        _contentModerationService
+            .Setup(m => m.ModerateContentAsync(It.IsAny<string>()))
+            .ReturnsAsync(new ContentModerationResponse { IsAllowed = true });
+
         // Default: gamification queries return empty lists
         _gamificationService
             .Setup(g => g.GetUserBadgesAsync(It.IsAny<Guid>()))

@@ -2,6 +2,7 @@ using Civiti.Infrastructure.Data;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Entities;
 using Civiti.Application.Requests.Issues;
+using Civiti.Application.Responses.Moderation;
 using Civiti.Infrastructure.Services;
 using Civiti.Application.Services;
 using Civiti.Tests.Helpers;
@@ -21,7 +22,17 @@ public class IssueServiceTests : IDisposable
     private readonly Mock<IActivityService> _activityService = new();
     private readonly Mock<INotificationService> _notificationService = new();
     private readonly Mock<IAdminNotifier> _adminNotifier = new();
+    private readonly Mock<IContentModerationService> _contentModerationService = new();
     private readonly IMemoryCache _memoryCache = new MemoryCache(new MemoryCacheOptions());
+
+    public IssueServiceTests()
+    {
+        // Default: allow all content. Tests that need to assert moderation rejection
+        // override this on a per-test basis, mirroring the CommentServiceTests precedent.
+        _contentModerationService
+            .Setup(m => m.ModerateContentAsync(It.IsAny<string>()))
+            .ReturnsAsync(new ContentModerationResponse { IsAllowed = true });
+    }
 
     private IssueService CreateService(CivitiDbContext? context = null)
     {
@@ -30,7 +41,7 @@ public class IssueServiceTests : IDisposable
             _logger.Object, context,
             _gamificationService.Object, _memoryCache,
             _activityService.Object, _notificationService.Object,
-            _adminNotifier.Object);
+            _adminNotifier.Object, _contentModerationService.Object);
     }
 
     public void Dispose()

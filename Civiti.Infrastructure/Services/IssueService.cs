@@ -8,6 +8,7 @@ using Civiti.Application.Requests.Issues;
 using Civiti.Application.Responses.Authority;
 using Civiti.Application.Responses.Common;
 using Civiti.Application.Responses.Issues;
+using Civiti.Application.Responses.Moderation;
 using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -22,7 +23,8 @@ public class IssueService(
     IMemoryCache memoryCache,
     IActivityService activityService,
     INotificationService notificationService,
-    IAdminNotifier adminNotifier)
+    IAdminNotifier adminNotifier,
+    IContentModerationService contentModerationService)
     : IIssueService
 {
     private static readonly TimeSpan EmailCooldownDuration = TimeSpan.FromHours(1);
@@ -322,6 +324,30 @@ public class IssueService(
             if (userProfile.IsDeleted)
                 throw new AccountDeletedException();
 
+            // Moderate every free-text field that surfaces unmodified through read tools
+            // (search_issues / get_issue / list_my_activity). Concatenating in one call keeps
+            // the OpenAI moderation cost at one round-trip; the moderator only flags the
+            // aggregate, but rejecting the whole submission is the correct response anyway —
+            // an issue with a moderation hit in any field is not safe to publish. See the
+            // 2026-05-05 prompt-injection review for the threat model. ContentModerationException
+            // is the typed signal that callers (CommentService precedent, MCP write tools)
+            // distinguish from the unrelated InvalidOperationException family.
+            string moderationInput = string.Join(
+                "\n\n",
+                request.Title ?? string.Empty,
+                request.Description ?? string.Empty,
+                request.Address ?? string.Empty,
+                request.District ?? string.Empty,
+                request.DesiredOutcome ?? string.Empty,
+                request.CommunityImpact ?? string.Empty);
+            ContentModerationResponse moderationResult =
+                await contentModerationService.ModerateContentAsync(moderationInput);
+            if (!moderationResult.IsAllowed)
+            {
+                throw new ContentModerationException(
+                    moderationResult.BlockReason ?? "Content violates community guidelines");
+            }
+
             // Create the issue
             Issue issue = new()
             {
@@ -518,6 +544,14 @@ public class IssueService(
         }
             catch (AccountDeletedException)
             {
+                await transaction.RollbackAsync();
+                throw;
+            }
+            catch (ContentModerationException)
+            {
+                // Moderation rejection is expected user behavior, not a server error — roll
+                // back without logging at Error level. Callers (REST controller, MCP write
+                // tools) catch this typed exception and surface a structured rejection.
                 await transaction.RollbackAsync();
                 throw;
             }

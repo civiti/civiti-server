@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Civiti.Application.Requests.Issues;
 using Civiti.Application.Services;
 using Civiti.Domain.Entities;
+using Civiti.Domain.Exceptions;
 using Civiti.Mcp.Authorization;
 using ModelContextProtocol.Server;
 
@@ -47,7 +48,19 @@ public sealed class MyIssueWriteTools(IIssueService issues, IMcpCitizenContext c
             DesiredOutcome = desiredOutcome,
             CommunityImpact = communityImpact
         };
-        return await issues.CreateIssueAsync(request, auth.Context.SupabaseUserId);
+        try
+        {
+            return await issues.CreateIssueAsync(request, auth.Context.SupabaseUserId);
+        }
+        catch (ContentModerationException ex)
+        {
+            // Typed exception — only fires when the OpenAI moderation gate blocks one of the
+            // free-text fields (Title / Description / Address / District / DesiredOutcome /
+            // CommunityImpact). InvalidOperationException family (user not found, account
+            // deleted, etc.) is left to bubble so the MCP framework returns a transport-level
+            // error rather than a misleading {reason: "moderation_rejected"} payload.
+            return new { ok = false, reason = "moderation_rejected", message = ex.Message };
+        }
     }
 
     [McpServerTool(Name = "vote_on_issue")]
