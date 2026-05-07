@@ -1,4 +1,5 @@
 using Civiti.Application.Services;
+using Civiti.Domain.Exceptions;
 using Microsoft.Extensions.Logging;
 using OpenIddict.Abstractions;
 
@@ -16,13 +17,40 @@ public sealed class McpCitizenContext(
         => Task.FromResult(RequireScope(CivitiReadScope));
 
     public Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenAsync(CancellationToken cancellationToken = default)
-        => ResolveWithScopeAsync(CivitiReadScope);
+        => ResolveWithScopeAsync(CivitiReadScope, cancellationToken);
 
     public Task<CitizenAuthResult<CitizenContext>> RequireCitizenWriteAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(RequireScope(CivitiWriteScope));
 
     public Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenWriteAsync(CancellationToken cancellationToken = default)
-        => ResolveWithScopeAsync(CivitiWriteScope);
+        => ResolveWithScopeAsync(CivitiWriteScope, cancellationToken);
+
+    public async Task<Guid?> TryResolveCitizenAsync(CancellationToken cancellationToken = default)
+    {
+        var user = httpContextAccessor.HttpContext?.User;
+        if (user?.Identity is not { IsAuthenticated: true })
+        {
+            return null;
+        }
+
+        var sub = user.FindFirst(OpenIddictConstants.Claims.Subject)?.Value;
+        if (string.IsNullOrEmpty(sub))
+        {
+            return null;
+        }
+
+        try
+        {
+            return await userService.GetUserIdAsync(sub, cancellationToken);
+        }
+        catch (AccountDeletedException)
+        {
+            // Soft-deleted profile with a still-valid JWT. Best-effort contract:
+            // degrade to anonymous (null) so authenticated read tools fall through
+            // to the public-tier data set rather than surfacing a 500 to the agent.
+            return null;
+        }
+    }
 
     private CitizenAuthResult<CitizenContext> RequireScope(string requiredScope)
     {
@@ -32,7 +60,7 @@ public sealed class McpCitizenContext(
             : CitizenAuthResult<CitizenContext>.FromContext(new CitizenContext(sub!));
     }
 
-    private async Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveWithScopeAsync(string requiredScope)
+    private async Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveWithScopeAsync(string requiredScope, CancellationToken cancellationToken)
     {
         var (sub, error) = AuthenticateAndExtractSub(requiredScope);
         if (error is not null)
@@ -40,7 +68,7 @@ public sealed class McpCitizenContext(
             return new CitizenAuthResult<IdentifiedCitizenContext>(null, error);
         }
 
-        var internalId = await userService.GetUserIdAsync(sub!);
+        var internalId = await userService.GetUserIdAsync(sub!, cancellationToken);
         if (internalId is null)
         {
             // The token is valid but no UserProfile row matches the sub. That happens for

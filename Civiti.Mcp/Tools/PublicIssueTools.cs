@@ -3,6 +3,7 @@ using Civiti.Application.Requests.Issues;
 using Civiti.Application.Responses.Issues;
 using Civiti.Application.Services;
 using Civiti.Domain.Entities;
+using Civiti.Mcp.Authorization;
 using ModelContextProtocol.Server;
 
 namespace Civiti.Mcp.Tools;
@@ -10,12 +11,23 @@ namespace Civiti.Mcp.Tools;
 /// <summary>
 /// §1 Public issue tools — anonymous reads of civic data, plus the email-sent counter bump.
 /// See Civiti.Mcp/docs/tool-inventory.md §1.
+///
+/// On the authenticated <c>/mcp</c> mount, <c>search_issues</c> and <c>get_issue</c>
+/// resolve the caller's internal <c>UserProfile.Id</c> via
+/// <see cref="IMcpCitizenContext.TryResolveCitizenAsync"/> and forward it to
+/// <see cref="IIssueService"/>. That enables (a) the service-layer block-list filter to drop
+/// content from users the caller has blocked, and (b) the <c>HasVoted</c> enrichment on
+/// returned issues. On <c>/mcp/public</c> the helper returns <c>null</c> and the calls
+/// behave exactly as they did before this change — the public-tier data set is unchanged.
 /// </summary>
 [McpServerToolType]
-public sealed class PublicIssueTools(IIssueService issues, IHttpContextAccessor httpContextAccessor)
+public sealed class PublicIssueTools(
+    IIssueService issues,
+    IHttpContextAccessor httpContextAccessor,
+    IMcpCitizenContext citizenContext)
 {
     [McpServerTool(Name = "search_issues")]
-    [Description("Search reported civic issues. Returns a paged list of active, publicly visible issues. Mirrors GET /api/issues on the Civiti REST API.")]
+    [Description("Search reported civic issues. Returns a paged list of active, publicly visible issues. Mirrors GET /api/issues on the Civiti REST API. On the authenticated mount, results exclude content from users the caller has blocked and include HasVoted on each returned issue.")]
     public async Task<object> SearchIssues(
         [Description("Page number, 1-based. Default 1.")] int? page = null,
         [Description("Items per page, 1–100. Default 12.")] int? pageSize = null,
@@ -25,7 +37,8 @@ public sealed class PublicIssueTools(IIssueService issues, IHttpContextAccessor 
         [Description("Optional district filter (e.g. \"Sector 1\").")] string? district = null,
         [Description("Optional free-text address filter.")] string? address = null,
         [Description("Sort key: date | popularity | votes | urgency. Default date.")] string? sortBy = null,
-        [Description("Sort descending. Default true.")] bool? sortDescending = null)
+        [Description("Sort descending. Default true.")] bool? sortDescending = null,
+        CancellationToken cancellationToken = default)
     {
         var request = new GetIssuesRequest
         {
@@ -63,7 +76,8 @@ public sealed class PublicIssueTools(IIssueService issues, IHttpContextAccessor 
             }
         }
 
-        var result = await issues.GetAllIssuesAsync(request, currentUserId: null);
+        var currentUserId = await citizenContext.TryResolveCitizenAsync(cancellationToken);
+        var result = await issues.GetAllIssuesAsync(request, currentUserId);
         return new
         {
             items = result.Items,
@@ -75,10 +89,14 @@ public sealed class PublicIssueTools(IIssueService issues, IHttpContextAccessor 
     }
 
     [McpServerTool(Name = "get_issue")]
-    [Description("Get full details for a single issue by id. Returns null if the issue is not found or not publicly visible.")]
-    public Task<IssueDetailResponse?> GetIssue(
-        [Description("Issue id (uuid).")] Guid id)
-        => issues.GetIssueByIdAsync(id, currentUserId: null);
+    [Description("Get full details for a single issue by id. Returns null if the issue is not found, not publicly visible, or (on the authenticated mount) the issue's author is on the caller's block list.")]
+    public async Task<IssueDetailResponse?> GetIssue(
+        [Description("Issue id (uuid).")] Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var currentUserId = await citizenContext.TryResolveCitizenAsync(cancellationToken);
+        return await issues.GetIssueByIdAsync(id, currentUserId);
+    }
 
     [McpServerTool(Name = "mark_email_sent")]
     [Description("Increment the public petition-email counter for an issue. The petition itself is sent by the citizen from their own inbox; this tool only records that one was sent. Rate-limited to 1 per IP per issue per hour on the service side.")]

@@ -84,14 +84,14 @@ public class UserService(
         };
     }
 
-    public async Task<Guid?> GetUserIdAsync(string supabaseUserId)
+    public async Task<Guid?> GetUserIdAsync(string supabaseUserId, CancellationToken cancellationToken = default)
     {
         var user = await context.UserProfiles
             .AsNoTracking()
             .IgnoreQueryFilters()
             .Where(u => u.SupabaseUserId == supabaseUserId)
             .Select(u => new { u.Id, u.IsDeleted })
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (user == null)
             return null;
