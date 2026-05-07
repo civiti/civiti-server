@@ -229,6 +229,37 @@ public class UserServiceTests : IDisposable
             .WithMessage("*100-character limit*");
     }
 
+    [Theory]
+    [InlineData("County")]
+    [InlineData("City")]
+    [InlineData("District")]
+    public async Task UpdateUserProfile_Should_Throw_For_Location_Field_Over_Limit(string field)
+    {
+        // Same 100-char cap applies to County, City, District — documented as max 100 on
+        // the MCP tool description but not enforced before this PR.
+        var user = TestDataBuilder.CreateUser(supabaseUserId: $"long_{field.ToLowerInvariant()}_user");
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            await ctx.SaveChangesAsync();
+        }
+
+        var oversize = new string('x', 101);
+        var request = field switch
+        {
+            "County" => new UpdateUserProfileRequest { County = oversize },
+            "City" => new UpdateUserProfileRequest { City = oversize },
+            "District" => new UpdateUserProfileRequest { District = oversize },
+            _ => throw new ArgumentOutOfRangeException(nameof(field))
+        };
+
+        var svc = CreateService();
+        var act = () => svc.UpdateUserProfileAsync($"long_{field.ToLowerInvariant()}_user", request);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage($"*{field} exceeds the 100-character limit*");
+    }
+
     // ── DeleteUserAsync ──
 
     [Fact]
