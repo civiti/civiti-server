@@ -14,8 +14,8 @@ public sealed class PublicGamificationTools(IGamificationService gamification)
     [McpServerTool(Name = "get_leaderboard")]
     [Description("Return the top contributors by points or another category. Mirrors GET /api/gamification/leaderboard.")]
     public async Task<object> GetLeaderboard(
-        [Description("Time window: all | month | week. Default \"all\".")] string? period = null,
-        [Description("Ranking category: points | issues | votes. Default \"points\".")] string? category = null,
+        [Description("Time window: all | week | month | year. Default \"all\".")] string? period = null,
+        [Description("Ranking category: points | issues | resolved | votes. Default \"points\".")] string? category = null,
         [Description("Number of rows to return, 1–50. Default 50.")] int? limit = null)
     {
         var result = await gamification.GetLeaderboardAsync(

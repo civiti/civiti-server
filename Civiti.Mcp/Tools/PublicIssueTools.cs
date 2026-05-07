@@ -32,11 +32,11 @@ public sealed class PublicIssueTools(
         [Description("Page number, 1-based. Default 1.")] int? page = null,
         [Description("Items per page, 1–100. Default 12.")] int? pageSize = null,
         [Description("Optional category filter. One of: Infrastructure, Environment, Transportation, PublicServices, Safety, Other.")] string? category = null,
-        [Description("Optional urgency filter. One of: Low, Medium, High, Critical.")] string? urgency = null,
+        [Description("Optional urgency filter. One of: Low, Medium, High, Urgent.")] string? urgency = null,
         [Description("Optional comma-separated IssueStatus list. Default: Active. Only publicly visible statuses are returned regardless.")] string? status = null,
         [Description("Optional district filter (e.g. \"Sector 1\").")] string? district = null,
         [Description("Optional free-text address filter.")] string? address = null,
-        [Description("Sort key: date | popularity | votes | urgency. Default date.")] string? sortBy = null,
+        [Description("Sort key: date | emails | votes | urgency. Default date.")] string? sortBy = null,
         [Description("Sort descending. Default true.")] bool? sortDescending = null,
         CancellationToken cancellationToken = default)
     {
