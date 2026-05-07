@@ -1,3 +1,4 @@
+using Civiti.Domain.Attributes;
 using Civiti.Domain.Entities;
 
 namespace Civiti.Application.Responses.Issues;
@@ -5,10 +6,10 @@ namespace Civiti.Application.Responses.Issues;
 public class IssueListResponse
 {
     public Guid Id { get; set; }
-    public string Title { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
+    [Untrusted] public string Title { get; set; } = string.Empty;
+    [Untrusted] public string Description { get; set; } = string.Empty;
     public IssueCategory Category { get; set; }
-    public string Address { get; set; } = string.Empty;
+    [Untrusted] public string Address { get; set; } = string.Empty;
     public UrgencyLevel Urgency { get; set; }
     public int EmailsSent { get; set; }
     public int CommunityVotes { get; set; }

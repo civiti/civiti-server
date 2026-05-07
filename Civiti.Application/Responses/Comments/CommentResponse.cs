@@ -1,3 +1,5 @@
+using Civiti.Domain.Attributes;
+
 namespace Civiti.Application.Responses.Comments;
 
 /// <summary>
@@ -7,7 +9,7 @@ public class CommentResponse
 {
     public Guid Id { get; set; }
     public Guid IssueId { get; set; }
-    public string Content { get; set; } = string.Empty;
+    [Untrusted] public string Content { get; set; } = string.Empty;
     public int HelpfulCount { get; set; }
     public bool IsEdited { get; set; }
     public bool IsDeleted { get; set; }
