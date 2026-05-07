@@ -16,13 +16,13 @@ public sealed class McpCitizenContext(
         => Task.FromResult(RequireScope(CivitiReadScope));
 
     public Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenAsync(CancellationToken cancellationToken = default)
-        => ResolveWithScopeAsync(CivitiReadScope);
+        => ResolveWithScopeAsync(CivitiReadScope, cancellationToken);
 
     public Task<CitizenAuthResult<CitizenContext>> RequireCitizenWriteAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(RequireScope(CivitiWriteScope));
 
     public Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenWriteAsync(CancellationToken cancellationToken = default)
-        => ResolveWithScopeAsync(CivitiWriteScope);
+        => ResolveWithScopeAsync(CivitiWriteScope, cancellationToken);
 
     public async Task<Guid?> TryResolveCitizenAsync(CancellationToken cancellationToken = default)
     {
@@ -38,7 +38,7 @@ public sealed class McpCitizenContext(
             return null;
         }
 
-        return await userService.GetUserIdAsync(sub);
+        return await userService.GetUserIdAsync(sub, cancellationToken);
     }
 
     private CitizenAuthResult<CitizenContext> RequireScope(string requiredScope)
@@ -49,7 +49,7 @@ public sealed class McpCitizenContext(
             : CitizenAuthResult<CitizenContext>.FromContext(new CitizenContext(sub!));
     }
 
-    private async Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveWithScopeAsync(string requiredScope)
+    private async Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveWithScopeAsync(string requiredScope, CancellationToken cancellationToken)
     {
         var (sub, error) = AuthenticateAndExtractSub(requiredScope);
         if (error is not null)
@@ -57,7 +57,7 @@ public sealed class McpCitizenContext(
             return new CitizenAuthResult<IdentifiedCitizenContext>(null, error);
         }
 
-        var internalId = await userService.GetUserIdAsync(sub!);
+        var internalId = await userService.GetUserIdAsync(sub!, cancellationToken);
         if (internalId is null)
         {
             // The token is valid but no UserProfile row matches the sub. That happens for
