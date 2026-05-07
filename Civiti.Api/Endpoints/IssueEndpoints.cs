@@ -176,8 +176,11 @@ public static class IssueEndpoints
             {
                 // Distinct from the InvalidOperationException catch below so a moderation
                 // block never falls through to the generic 400 with a misleading "Issue
-                // creation failed" feel — clients see the BlockReason verbatim.
-                return TypedResults.BadRequest(ex.Message);
+                // creation failed" feel — clients see the BlockReason verbatim. Wrapped in
+                // { error } to match the response shape used by UserEndpoints and
+                // CommentEndpoints; clients reading the `error` field across endpoints get
+                // a uniform contract.
+                return TypedResults.BadRequest(new { error = ex.Message });
             }
             catch (InvalidOperationException ex) when (ex.Message is DomainErrors.UserNotFound or DomainErrors.UserProfileNotFound)
             {
@@ -188,7 +191,7 @@ public static class IssueEndpoints
             }
             catch (InvalidOperationException ex)
             {
-                return TypedResults.BadRequest(ex.Message);
+                return TypedResults.BadRequest(new { error = ex.Message });
             }
         })
         .WithName("CreateIssue")
