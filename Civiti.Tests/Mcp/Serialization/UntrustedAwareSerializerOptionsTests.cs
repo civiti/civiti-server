@@ -34,7 +34,8 @@ public class UntrustedAwareSerializerOptionsTests
         titleProperty.GetProperty("untrusted").GetBoolean().Should().BeTrue();
         titleProperty.GetProperty("source").GetString().Should().Be("user_supplied");
         titleProperty.GetProperty("value").GetString()
-            .Should().MatchRegex("^<untrusted-user-content nonce=\"[0-9A-F]{16}\">Pothole on Str\\. Test</untrusted-user-content>$");
+            .Should().MatchRegex("^<untrusted-user-content nonce=\"([0-9A-F]{16})\">Pothole on Str\\. Test</untrusted-user-content nonce=\"\\1\">$",
+                "the nonce stamped on the closing tag must equal the one on the opening tag — that's the break-out defense");
     }
 
     [Fact]
@@ -120,12 +121,12 @@ public class UntrustedAwareSerializerOptionsTests
     [Fact]
     public void Nonce_Is_Per_Property_And_Not_Reused_Across_Fields()
     {
-        // The nonce on the closing tag is the break-out defense — an attacker who plants
-        // hostile content in the DB can't include the literal closing tag because they
-        // don't know the nonce that will be generated at read time. If two fields shared
-        // a nonce in one serialization pass, an attacker who could observe one field's
-        // wrapper could craft content for the other field. Per-property keeps that surface
-        // closed.
+        // The matching nonce stamped on BOTH the opening and closing tags is the break-out
+        // defense — an attacker who plants hostile content in the DB can't terminate the
+        // envelope early because they'd need to know the nonce generated at read time both
+        // to craft the close and to make it match the open. If two fields shared a nonce in
+        // one serialization pass, an attacker who could observe one field's wrapper could
+        // craft content for the other field. Per-property keeps that surface closed.
         var dto = new IssueDetailResponse
         {
             Id = Guid.NewGuid(),
@@ -179,6 +180,35 @@ public class UntrustedAwareSerializerOptionsTests
                 CollectNonces(item, output);
             }
         }
+    }
+
+    [Fact]
+    public void ClosingTag_Carries_SameNonce_AsOpeningTag()
+    {
+        // Regression-locks the P1 break-out fix from PR #144 review: the closing tag must
+        // carry the same nonce as the opening tag. Without it, an attacker who stores the
+        // bare literal "</untrusted-user-content>" in their content terminates the envelope
+        // early and injects instructions outside the boundary the LLM is told to honor.
+        var dto = new IssueListResponse
+        {
+            Id = Guid.NewGuid(),
+            Title = "Pothole on Str. Test",
+            Description = "Big",
+            Address = "addr",
+            Category = IssueCategory.Infrastructure,
+            Status = IssueStatus.Active
+        };
+
+        var json = JsonSerializer.Serialize(dto, Options);
+        using var doc = JsonDocument.Parse(json);
+        var envelope = doc.RootElement.GetProperty("title").GetProperty("value").GetString() ?? string.Empty;
+
+        var openMatch = Regex.Match(envelope, "^<untrusted-user-content nonce=\"([0-9A-F]{16})\">");
+        var closeMatch = Regex.Match(envelope, "</untrusted-user-content nonce=\"([0-9A-F]{16})\">$");
+        openMatch.Success.Should().BeTrue("opening tag must carry the nonce attribute");
+        closeMatch.Success.Should().BeTrue("closing tag must carry the nonce attribute");
+        closeMatch.Groups[1].Value.Should().Be(openMatch.Groups[1].Value,
+            "the close-tag nonce must match the open-tag nonce so a literal `</untrusted-user-content>` an attacker plants in their content does not match either tag");
     }
 
     [Fact]

@@ -10,7 +10,7 @@ namespace Civiti.Mcp.Serialization;
 /// treats user-supplied content as data, not instructions:
 /// <code>
 /// {
-///   "value":     "&lt;untrusted-user-content nonce=\"a1b2…\"&gt;raw text&lt;/untrusted-user-content&gt;",
+///   "value":     "&lt;untrusted-user-content nonce=\"a1b2…\"&gt;raw text&lt;/untrusted-user-content nonce=\"a1b2…\"&gt;",
 ///   "untrusted": true,
 ///   "source":    "user_supplied"
 /// }
@@ -20,9 +20,11 @@ namespace Civiti.Mcp.Serialization;
 /// The structured envelope (typed marker + key/value flags) and the inline delimiter
 /// together implement OWASP LLM01:2025's "structured separation + delimited blocks" guidance
 /// — the architectural equivalent of SQL parameterization for LLM tool results. JSON-string
-/// escaping handles the inner-quote case; the per-string random nonce on the closing tag
-/// prevents an attacker from breaking out by including the closing literal in their content
-/// (they don't know the nonce at write time, so they can't craft a matching close).
+/// escaping handles the inner-quote case; the per-string random nonce stamped on BOTH the
+/// opening and closing tags prevents an attacker from breaking out by including the closing
+/// literal in their content. They don't know the nonce at write time, so they can neither
+/// guess a matching close nor inject a literal <c>&lt;/untrusted-user-content&gt;</c>
+/// (which now lacks the nonce and is therefore not the boundary the LLM is told to honor).
 /// </para>
 ///
 /// <para>
@@ -59,11 +61,12 @@ internal sealed class UntrustedStringConverter : JsonConverter<string>
 
     public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options)
     {
-        if (value is null)
-        {
-            writer.WriteNullValue();
-            return;
-        }
+        // No null guard needed: JsonConverter<string>.HandleNull defaults to false for
+        // reference types, so STJ writes null values directly and never invokes this method
+        // for them. The McpJsonUtilities.DefaultOptions also set
+        // JsonIgnoreCondition.WhenWritingNull, which drops null tagged properties from the
+        // JSON entirely (covered by NullTaggedProperty_Serializes_As_Null_NotEnvelope).
+        // Reintroducing a guard here would mask any future change that overrides HandleNull.
 
         // 8 random bytes → 16 hex chars. Sufficient unguessable surface for a per-string
         // delimiter — an attacker writing content into the DB cannot predict or read the
@@ -73,7 +76,14 @@ internal sealed class UntrustedStringConverter : JsonConverter<string>
         string nonce = Convert.ToHexString(nonceBytes);
 
         writer.WriteStartObject();
-        writer.WriteString("value", $"<untrusted-user-content nonce=\"{nonce}\">{value}</untrusted-user-content>");
+        // Stamp the nonce on BOTH tags. Without it on the close, an attacker who plants the
+        // bare literal "</untrusted-user-content>" anywhere in their content terminates the
+        // envelope early without ever needing to guess the nonce — defeating the break-out
+        // defense entirely. The closing form `</tag attr="x">` is non-standard XML; these
+        // are not parsed as XML by the receiving model, they're LLM delimiter tokens, and
+        // what we need is a matched opening/closing pair that an attacker who controls the
+        // inner content cannot reproduce without predicting the runtime-generated nonce.
+        writer.WriteString("value", $"<untrusted-user-content nonce=\"{nonce}\">{value}</untrusted-user-content nonce=\"{nonce}\">");
         writer.WriteBoolean("untrusted", true);
         writer.WriteString("source", "user_supplied");
         writer.WriteEndObject();
