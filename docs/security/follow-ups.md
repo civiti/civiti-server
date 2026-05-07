@@ -72,18 +72,61 @@ Each item carries:
   `Civiti.Auth/`, output a Markdown report, treat the findings as a backlog
   similar to this one.
 
-### Secret-management audit
+### Civiti-Server prod `SUPABASE_SERVICE_ROLE_KEY` is set to a Resend-prefix value
 
-- **Severity:** medium (one suspicious value already flagged; unknown count of
-  others).
+- **Severity:** **high** if the key is wrong (the service-role key bypasses
+  Supabase RLS and grants full DB access via the Supabase API; a misconfigured
+  value means either the Supabase admin path is broken in prod, or the slot is
+  holding the wrong secret entirely). Severity drops to low/cosmetic if it's
+  intentional dead config.
+- **Status:** in-progress (known since 2026-05-04, not yet fixed).
+- **Why it matters.** During the 2026-05-04 production deploy fix on Civiti-MCP,
+  while reading the `Civiti-Server` prod variables we noticed
+  `SUPABASE_SERVICE_ROLE_KEY` carries a value starting with `re_…` — the prefix
+  used by Resend keys, not Supabase. Three possibilities, ranked by likelihood
+  given other observations:
+  1. **Paste mix-up** — someone moved a Resend key into the wrong env var slot
+     and the real Supabase service-role key is missing entirely. Most likely
+     given the `RESEND_FROM_EMAIL ` (trailing-space duplicate) anomaly on the
+     same service suggests other paste-time errors.
+  2. **Dead field** — the service uses `DATABASE_URL` for direct Postgres
+     access (which it does, per `appsettings.Production.json` and the connection
+     string format) and never actually consumes `SUPABASE_SERVICE_ROLE_KEY`. In
+     that case the value is dead config — but the slot name implies it's read,
+     and a future code change might start reading it.
+  3. **Intentional** — unlikely given the value shape doesn't match either
+     legacy Supabase JWT format (`eyJ…`) or the new `sb_secret_…` format.
+- **Where to look.**
+  - Railway dashboard → `Civiti-Server` → `production` env → Variables.
+  - Confirm by comparing against the development env, and against what
+    Supabase's project dashboard shows as the current service-role key for
+    project `cmkznjhbwmcgtbnynkft`.
+  - Search the codebase for actual reads:
+    ```bash
+    grep -rn "SUPABASE_SERVICE_ROLE_KEY\|SUPABASE_SERVICE_KEY\|Supabase:ServiceRoleKey\|ServiceRoleKey" --include='*.cs' --include='*.json'
+    ```
+- **What to do.**
+  - **If the key is consumed in code:** rotate it. Generate a new service-role
+    key in Supabase (which invalidates the current one), set it on the
+    affected env var slot, redeploy. Whatever the `re_…` value is gets
+    invalidated as a Resend key only if it actually was a Resend key in
+    rotation; either way the rotated Supabase key becomes the source of truth.
+  - **If the key is not consumed in code:** delete the env var entirely so the
+    slot doesn't carry stale or wrong-typed config that could mislead a future
+    reader.
+  - Either way: while you're in there, fix the `RESEND_FROM_EMAIL ` (trailing
+    space) duplicate on the same service.
+
+### Secret-management audit (everything else)
+
+- **Severity:** medium (unknown count of other anomalies; one already known
+  and tracked separately above).
 - **Status:** open.
 - **Why it matters.** Production env vars are stored in plaintext on Railway.
-  We already caught one apparent misconfiguration during the production deploy
-  fix on 2026-05-04: `Civiti-Server` prod's `SUPABASE_SERVICE_ROLE_KEY` value
-  starts with `re_…` — the prefix used by Resend keys, not the Supabase JWT
-  format. Either someone pasted the wrong key or it's intentional, but it
-  warrants confirmation. Other variables across all three services are not
-  audited.
+  Beyond the known `SUPABASE_SERVICE_ROLE_KEY` anomaly, no systematic sweep
+  has been done across the three services × two environments to verify each
+  value matches its key name and that nothing else has the same kind of
+  paste-mix-up.
 - **Where to look.**
   - Railway dashboard → each service (`Civiti-Server`, `Civiti-Auth`,
     `Civiti-MCP`) → Variables tab, both `development` and `production`
@@ -96,14 +139,31 @@ Each item carries:
     ```
 - **Suggested checks.**
   - Each `*_API_KEY`, `*_SERVICE_KEY`, `*_SECRET` value matches the prefix
-    convention of its named service (Supabase JWTs, Resend `re_…`, OpenAI
-    `sk-…`, Anthropic `sk-ant-…`, Railway internal Postgres URLs).
+    convention of its named service:
+    - **Supabase JWTs** — start with `eyJ` (header.payload.signature, base64url).
+      This is the format service-role and legacy anon keys use.
+    - **Supabase API keys (newer format)** — `sb_publishable_…` (safe to
+      expose, equivalent to the anon JWT) and `sb_secret_…` (server-only,
+      equivalent to the service-role JWT).
+    - **Resend** — `re_…`.
+    - **OpenAI** — `sk-…` (project keys are `sk-proj-…`).
+    - **Anthropic** — `sk-ant-…`.
+    - **Railway internal Postgres URLs** — `postgresql://postgres:…@postgres.railway.internal:5432/railway`.
   - No copy-paste duplication where a value clearly belongs to a different
-    service.
-  - `RESEND_FROM_EMAIL ` (trailing space) duplicate on `Civiti-Server` prod —
-    cosmetic but worth cleaning up; the un-trimmed key is dead but lives on.
-  - No keys committed to git (sweep `git log --all -p | grep -E "sb_(secret|service)|sk-(proj|ant)|re_[A-Za-z0-9]{20,}"` — though the publishable Supabase
-    key is fine to commit since it's the anon key).
+    service. (The known case is tracked separately above; this sweep is for
+    finding others.)
+  - No keys accidentally committed to git. The sweep regex needs to cover
+    both Supabase formats and the other providers — running just `sb_secret_`
+    would miss legacy JWT-style service-role keys, which start with `eyJ` and
+    are visually indistinguishable from any other base64url payload:
+    ```bash
+    git log --all -p | grep -E '(sb_secret_|sb_publishable_)[A-Za-z0-9_-]{10,}|sk-(proj-|ant-)[A-Za-z0-9_-]{20,}|re_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}'
+    ```
+    The trailing JWT pattern is intentionally conservative — three
+    base64url-padded segments separated by dots — so it catches Supabase
+    JWTs without also matching every `eyJ` substring (e.g. unrelated base64
+    blobs in test fixtures). Run on a clean clone; review every match
+    individually rather than trusting the sweep blindly.
 
 ### `mark_email_sent` rate-limit per-IP under shared NAT
 
