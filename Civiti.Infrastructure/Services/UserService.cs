@@ -496,14 +496,41 @@ public class UserService(
                 user.PhotoUrl = request.PhotoUrl;
             }
 
+            // County / City / District: enforce documented 100-char caps in code (DTO
+            // [MaxLength] attributes are decorative on the MCP path — model-binding never
+            // runs there). No moderation: these are short location identifiers, not
+            // free-text prose, and the threat model in the 2026-05-05 review treats them as
+            // low-risk metadata. Length cap alone closes the abuse path of stuffing
+            // arbitrarily long prose into a "location" field.
             if (!string.IsNullOrWhiteSpace(request.County))
+            {
+                if (request.County.Length > 100)
+                {
+                    throw new InvalidOperationException(
+                        "County exceeds the 100-character limit.");
+                }
                 user.County = request.County;
+            }
 
             if (!string.IsNullOrWhiteSpace(request.City))
+            {
+                if (request.City.Length > 100)
+                {
+                    throw new InvalidOperationException(
+                        "City exceeds the 100-character limit.");
+                }
                 user.City = request.City;
+            }
 
             if (!string.IsNullOrWhiteSpace(request.District))
+            {
+                if (request.District.Length > 100)
+                {
+                    throw new InvalidOperationException(
+                        "District exceeds the 100-character limit.");
+                }
                 user.District = request.District;
+            }
 
             if (request.ResidenceType.HasValue)
                 user.ResidenceType = request.ResidenceType.Value;

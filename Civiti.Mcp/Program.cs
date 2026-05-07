@@ -187,12 +187,13 @@ builder.Services.AddSingleton(new SupabaseConfiguration
 });
 builder.Services.AddHttpClient();
 
-// OpenAI moderation config — used by CommentService for the v1c PR 3 add_comment tool.
-// Mirrors Civiti.Api's pattern: graceful degradation if OPENAI_API_KEY is unset, no
-// fail-fast. Without the key, OpenAIModerationService.IsConfigured returns false and
-// every CreateCommentAsync call passes through unmoderated. That matches the existing
-// Civiti.Api behavior — flagging it here so a future hardening pass can decide whether
-// to fail-closed instead.
+// OpenAI moderation config — used by CommentService for the v1c PR 3 add_comment tool, and
+// by IssueService / UserService for the citizen-write surface added in PR #141.
+// Fail-closed at startup outside Development when the key is missing; runtime fail-open on
+// transient timeouts/exceptions is intentional in OpenAIModerationService (outages shouldn't
+// block legitimate users), but missing-config-in-prod is a deployment mistake we want
+// surfaced before the service starts handling traffic. Resolves the LOW finding from
+// docs/security/mcp-prompt-injection-review-2026-05-05.md.
 var openAIConfig = new OpenAIConfiguration
 {
     ApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
@@ -209,9 +210,19 @@ var openAIConfig = new OpenAIConfiguration
 builder.Services.AddSingleton(openAIConfig);
 if (!openAIConfig.IsConfigured)
 {
-    Log.Warning(
-        "OPENAI_API_KEY not configured on Civiti.Mcp — add_comment will pass user content through unmoderated. " +
-        "Mirrors Civiti.Api's graceful-degradation behavior; set the env var to enable moderation.");
+    if (builder.Environment.IsDevelopment())
+    {
+        Log.Warning(
+            "OPENAI_API_KEY not configured on Civiti.Mcp — moderation will be skipped (Development). " +
+            "Set the env var to enable moderation locally.");
+    }
+    else
+    {
+        throw new InvalidOperationException(
+            $"OPENAI_API_KEY (or OpenAI:ApiKey config) is required when ASPNETCORE_ENVIRONMENT is "
+            + $"'{builder.Environment.EnvironmentName}'. Set the env var or run with "
+            + "ASPNETCORE_ENVIRONMENT=Development to skip moderation locally.");
+    }
 }
 
 // Service graph — the subset IIssueService / IAuthorityService / IGamificationService transitively need.
