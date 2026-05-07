@@ -139,12 +139,46 @@ public class UntrustedAwareSerializerOptionsTests
 
         var json = JsonSerializer.Serialize(dto, Options);
 
-        var nonces = Regex.Matches(json, "nonce=\\\\\"([0-9A-F]{16})\\\\\"")
-            .Select(m => m.Groups[1].Value)
-            .ToList();
+        // Walk the parsed JSON tree (sidestepping JSON-escape pitfalls in the raw string)
+        // and pull the nonce out of each envelope's "value" field. Title, Description,
+        // Address, and User.Name are tagged → 4 wrapped fields → 4 distinct nonces.
+        using var doc = JsonDocument.Parse(json);
+        var nonces = new List<string>();
+        CollectNonces(doc.RootElement, nonces);
+
         nonces.Should().HaveCountGreaterThan(1);
         nonces.Distinct().Should().HaveCount(nonces.Count,
             "every wrapped field gets its own randomly-generated nonce");
+    }
+
+    private static void CollectNonces(JsonElement element, List<string> output)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            if (element.TryGetProperty("untrusted", out var untrustedProp)
+                && untrustedProp.ValueKind == JsonValueKind.True
+                && element.TryGetProperty("value", out var valueProp)
+                && valueProp.ValueKind == JsonValueKind.String)
+            {
+                var match = Regex.Match(valueProp.GetString() ?? string.Empty,
+                    "nonce=\"([0-9A-F]{16})\"");
+                if (match.Success)
+                {
+                    output.Add(match.Groups[1].Value);
+                }
+            }
+            foreach (var prop in element.EnumerateObject())
+            {
+                CollectNonces(prop.Value, output);
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                CollectNonces(item, output);
+            }
+        }
     }
 
     [Fact]
