@@ -147,8 +147,12 @@ public static class IssueEndpoints
         .Produces<IssueDetailResponse>()
         .Produces(404);
 
-        // POST /api/issues
-        group.MapPost("/", [Authorize] async Task<Results<Created<CreateIssueResponse>, BadRequest<string>, UnauthorizedHttpResult, ProblemHttpResult>> (
+        // POST /api/issues — untyped async lambda (matches CommentEndpoints / UserEndpoints
+        // pattern) so the BadRequest return shape can be `{ error: "..." }` (anonymous type)
+        // alongside TypedResults.Created<CreateIssueResponse> on the success path. The
+        // explicit .Produces<>() declarations below carry the OpenAPI contract; the typed
+        // lambda return was redundant.
+        group.MapPost("/", [Authorize] async (
             IIssueService issueService,
             CreateIssueRequest request,
             HttpContext httpContext) =>
@@ -157,7 +161,7 @@ public static class IssueEndpoints
 
             if (string.IsNullOrEmpty(supabaseUserId))
             {
-                return TypedResults.Unauthorized();
+                return Results.Unauthorized();
             }
 
             try
@@ -176,8 +180,11 @@ public static class IssueEndpoints
             {
                 // Distinct from the InvalidOperationException catch below so a moderation
                 // block never falls through to the generic 400 with a misleading "Issue
-                // creation failed" feel — clients see the BlockReason verbatim.
-                return TypedResults.BadRequest(ex.Message);
+                // creation failed" feel — clients see the BlockReason verbatim. Wrapped in
+                // { error } via Results.BadRequest (not TypedResults) to match the response
+                // shape used by UserEndpoints and CommentEndpoints; clients reading the
+                // `error` field across endpoints get a uniform contract.
+                return Results.BadRequest(new { error = ex.Message });
             }
             catch (InvalidOperationException ex) when (ex.Message is DomainErrors.UserNotFound or DomainErrors.UserProfileNotFound)
             {
@@ -188,7 +195,7 @@ public static class IssueEndpoints
             }
             catch (InvalidOperationException ex)
             {
-                return TypedResults.BadRequest(ex.Message);
+                return Results.BadRequest(new { error = ex.Message });
             }
         })
         .WithName("CreateIssue")
