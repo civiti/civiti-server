@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Civiti.Application.Services;
+using Civiti.Domain.Exceptions;
 using Civiti.Mcp.Authorization;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
@@ -224,6 +225,100 @@ public class McpCitizenContextTests
 
         result.Authorized.Should().BeFalse();
         ReasonOf(result).Should().Be("user_profile_missing");
+    }
+
+    // ── TryResolveCitizenAsync (best-effort, no scope check) ──
+
+    [Fact]
+    public async Task TryResolveCitizenAsync_AnonymousPrincipal_ReturnsNull()
+    {
+        var sut = CreateSut(new ClaimsPrincipal(new ClaimsIdentity()));
+
+        var result = await sut.TryResolveCitizenAsync();
+
+        result.Should().BeNull();
+        _userService.Verify(s => s.GetUserIdAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TryResolveCitizenAsync_NoHttpContext_ReturnsNull()
+    {
+        var accessor = new Mock<IHttpContextAccessor>();
+        accessor.SetupGet(a => a.HttpContext).Returns((HttpContext?)null);
+        var sut = new McpCitizenContext(accessor.Object, _userService.Object, NullLogger<McpCitizenContext>.Instance);
+
+        var result = await sut.TryResolveCitizenAsync();
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task TryResolveCitizenAsync_AuthenticatedNoSub_ReturnsNull()
+    {
+        // Authenticated identity with no sub claim — treat as anonymous for personalization,
+        // don't surface an error (caller falls back to public-tier data).
+        var identity = new ClaimsIdentity("test");
+        var sut = CreateSut(new ClaimsPrincipal(identity));
+
+        var result = await sut.TryResolveCitizenAsync();
+
+        result.Should().BeNull();
+        _userService.Verify(s => s.GetUserIdAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TryResolveCitizenAsync_AuthenticatedSubButNoProfile_ReturnsNull()
+    {
+        // Token valid, sub present, but no UserProfile row (Google sign-in without onboarding).
+        // Best-effort path returns null — don't fail the read tool, just skip personalization.
+        _userService.Setup(s => s.GetUserIdAsync("abc-123")).ReturnsAsync((Guid?)null);
+        var sut = CreateSut(AuthenticatedPrincipal(sub: "abc-123"));
+
+        var result = await sut.TryResolveCitizenAsync();
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task TryResolveCitizenAsync_AuthenticatedAndResolvable_ReturnsInternalGuid()
+    {
+        var internalId = Guid.NewGuid();
+        _userService.Setup(s => s.GetUserIdAsync("abc-123")).ReturnsAsync(internalId);
+        var sut = CreateSut(AuthenticatedPrincipal(sub: "abc-123"));
+
+        var result = await sut.TryResolveCitizenAsync();
+
+        result.Should().Be(internalId);
+    }
+
+    [Fact]
+    public async Task TryResolveCitizenAsync_AuthenticatedWithoutCivitiReadScope_StillResolves()
+    {
+        // No scope check on this helper — block-list filtering is identity-based, not
+        // permission-based. A token with civiti.write only should still get personalization.
+        var internalId = Guid.NewGuid();
+        _userService.Setup(s => s.GetUserIdAsync("abc-456")).ReturnsAsync(internalId);
+        var sut = CreateSut(AuthenticatedPrincipal(sub: "abc-456", scope: "civiti.write"));
+
+        var result = await sut.TryResolveCitizenAsync();
+
+        result.Should().Be(internalId);
+    }
+
+    [Fact]
+    public async Task TryResolveCitizenAsync_AccountSoftDeleted_ReturnsNull()
+    {
+        // UserService.GetUserIdAsync throws AccountDeletedException for IsDeleted=true
+        // profiles. The best-effort contract on TryResolveCitizenAsync requires the
+        // caller to fall through to anonymous (null) rather than surfacing a 500 to
+        // the agent.
+        _userService.Setup(s => s.GetUserIdAsync("abc-deleted", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AccountDeletedException());
+        var sut = CreateSut(AuthenticatedPrincipal(sub: "abc-deleted"));
+
+        var result = await sut.TryResolveCitizenAsync();
+
+        result.Should().BeNull();
     }
 
     private McpCitizenContext CreateSut(ClaimsPrincipal user)

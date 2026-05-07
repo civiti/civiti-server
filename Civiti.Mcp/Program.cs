@@ -16,6 +16,7 @@ using Civiti.Infrastructure.Services.Email;
 using Civiti.Infrastructure.Services.Moderation;
 using Civiti.Infrastructure.Services.Supabase;
 using Civiti.Mcp.Authorization;
+using Civiti.Mcp.Serialization;
 using Civiti.Mcp.Tools;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -186,12 +187,13 @@ builder.Services.AddSingleton(new SupabaseConfiguration
 });
 builder.Services.AddHttpClient();
 
-// OpenAI moderation config — used by CommentService for the v1c PR 3 add_comment tool.
-// Mirrors Civiti.Api's pattern: graceful degradation if OPENAI_API_KEY is unset, no
-// fail-fast. Without the key, OpenAIModerationService.IsConfigured returns false and
-// every CreateCommentAsync call passes through unmoderated. That matches the existing
-// Civiti.Api behavior — flagging it here so a future hardening pass can decide whether
-// to fail-closed instead.
+// OpenAI moderation config — used by CommentService for the v1c PR 3 add_comment tool, and
+// by IssueService / UserService for the citizen-write surface added in PR #141.
+// Fail-closed at startup outside Development when the key is missing; runtime fail-open on
+// transient timeouts/exceptions is intentional in OpenAIModerationService (outages shouldn't
+// block legitimate users), but missing-config-in-prod is a deployment mistake we want
+// surfaced before the service starts handling traffic. Resolves the LOW finding from
+// docs/security/mcp-prompt-injection-review-2026-05-05.md.
 var openAIConfig = new OpenAIConfiguration
 {
     ApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
@@ -208,9 +210,19 @@ var openAIConfig = new OpenAIConfiguration
 builder.Services.AddSingleton(openAIConfig);
 if (!openAIConfig.IsConfigured)
 {
-    Log.Warning(
-        "OPENAI_API_KEY not configured on Civiti.Mcp — add_comment will pass user content through unmoderated. " +
-        "Mirrors Civiti.Api's graceful-degradation behavior; set the env var to enable moderation.");
+    if (builder.Environment.IsDevelopment())
+    {
+        Log.Warning(
+            "OPENAI_API_KEY not configured on Civiti.Mcp — moderation will be skipped (Development). " +
+            "Set the env var to enable moderation locally.");
+    }
+    else
+    {
+        throw new InvalidOperationException(
+            $"OPENAI_API_KEY (or OpenAI:ApiKey config) is required when ASPNETCORE_ENVIRONMENT is "
+            + $"'{builder.Environment.EnvironmentName}'. Set the env var or run with "
+            + "ASPNETCORE_ENVIRONMENT=Development to skip moderation locally.");
+    }
 }
 
 // Service graph — the subset IIssueService / IAuthorityService / IGamificationService transitively need.
@@ -253,16 +265,25 @@ builder.Services.AddRateLimiter(rateLimiter =>
 // MCP server with the six §1 public tools (see Civiti.Mcp/docs/tool-inventory.md).
 // Stateless transport: the public endpoint has no session, no client state; every request
 // carries all the context the handler needs.
+//
+// The shared serializer options layer an [Untrusted]-attribute-driven property modifier
+// over McpJsonUtilities.DefaultOptions. Tool result DTOs whose string properties carry
+// [Untrusted] are emitted as a quarantine envelope (value/untrusted/source) instead of a
+// bare string — see UntrustedStringConverter and the 2026-05-05 prompt-injection review
+// for the threat model. Each WithTools<T>(options) call below uses these options; the
+// REST API serialization is configured separately via ConfigureHttpJsonOptions and is
+// unaffected.
+var mcpSerializerOptions = UntrustedAwareSerializerOptions.Build();
 builder.Services.AddMcpServer()
     .WithHttpTransport(o => o.Stateless = true)
-    .WithTools<PublicIssueTools>()
-    .WithTools<PublicAuthorityTools>()
-    .WithTools<PublicGamificationTools>()
-    .WithTools<PublicStaticDataTools>()
+    .WithTools<PublicIssueTools>(mcpSerializerOptions)
+    .WithTools<PublicAuthorityTools>(mcpSerializerOptions)
+    .WithTools<PublicGamificationTools>(mcpSerializerOptions)
+    .WithTools<PublicStaticDataTools>(mcpSerializerOptions)
     // Diagnostic — exposed on both /mcp and /mcp/public. On the public mount it returns
     // {authenticated: false}; on /mcp it dumps the validated principal so we can confirm
     // the JWT round-trip end-to-end. Removal tracked in #116.
-    .WithTools<WhoAmITools>()
+    .WithTools<WhoAmITools>(mcpSerializerOptions)
     // §2.1 citizen read tools — see Civiti.Mcp/docs/tool-inventory.md §2.1. Each tool calls
     // IMcpCitizenContext.RequireCitizenReadAsync (or ResolveCitizenAsync for tools needing the
     // internal Guid) before doing any work; that helper enforces the civiti.read scope and
@@ -270,21 +291,21 @@ builder.Services.AddMcpServer()
     // so they're served on both /mcp and /mcp/public — but on /mcp/public the scope check
     // fails closed and returns {ok: false, reason: "unauthenticated", ...}, so there's no
     // privacy regression.
-    .WithTools<MyProfileTools>()
-    .WithTools<MyGamificationTools>()
-    .WithTools<MyIssuesTools>()
-    .WithTools<MyActivityTools>()
-    .WithTools<MyBlockedUsersTools>()
+    .WithTools<MyProfileTools>(mcpSerializerOptions)
+    .WithTools<MyGamificationTools>(mcpSerializerOptions)
+    .WithTools<MyIssuesTools>(mcpSerializerOptions)
+    .WithTools<MyActivityTools>(mcpSerializerOptions)
+    .WithTools<MyBlockedUsersTools>(mcpSerializerOptions)
     // §2.2 citizen write tools — see Civiti.Mcp/docs/tool-inventory.md §2.2. Each tool calls
     // IMcpCitizenContext.RequireCitizenWriteAsync first; the helper enforces civiti.write
     // scope and the structured-error contract per §2.3. add_comment specifically catches
     // ContentModerationException (the typed exception CommentService throws on moderation
     // rejection) and surfaces it as {ok: false, reason: "moderation_rejected"}.
-    .WithTools<MyIssueWriteTools>()
-    .WithTools<MyCommentTools>()
-    .WithTools<MyProfileWriteTools>()
-    .WithTools<MyReportTools>()
-    .WithTools<MyBlockTools>();
+    .WithTools<MyIssueWriteTools>(mcpSerializerOptions)
+    .WithTools<MyCommentTools>(mcpSerializerOptions)
+    .WithTools<MyProfileWriteTools>(mcpSerializerOptions)
+    .WithTools<MyReportTools>(mcpSerializerOptions)
+    .WithTools<MyBlockTools>(mcpSerializerOptions);
 
 var app = builder.Build();
 

@@ -44,6 +44,22 @@ public interface IMcpCitizenContext
     /// service signatures change don't have to touch the helper.
     /// </summary>
     Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenWriteAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Best-effort identity resolution for tools that work in both anonymous and authenticated
+    /// modes — currently <c>search_issues</c> and <c>get_issue</c>, registered on both
+    /// <c>/mcp</c> and <c>/mcp/public</c>. Returns the internal <c>UserProfile.Id</c> when the
+    /// principal is authenticated, carries a <c>sub</c> claim, and a matching profile exists;
+    /// otherwise <c>null</c> (anonymous mount, missing sub, profile not provisioned).
+    ///
+    /// <para>
+    /// Deliberately does NOT enforce a scope — this helper is for personalization
+    /// (block-list filtering, <c>HasVoted</c> enrichment), not authorization. Returning
+    /// <c>null</c> is a clean degrade: the downstream service treats it as anonymous and
+    /// returns the same data set the public mount sees today.
+    /// </para>
+    /// </summary>
+    Task<Guid?> TryResolveCitizenAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>

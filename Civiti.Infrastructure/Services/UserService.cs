@@ -6,6 +6,7 @@ using Civiti.Application.Requests.Auth;
 using Civiti.Domain.Entities;
 using Civiti.Application.Responses.Auth;
 using Civiti.Application.Responses.Gamification;
+using Civiti.Application.Responses.Moderation;
 using Civiti.Application.Responses.User;
 using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +19,8 @@ public class UserService(
     CivitiDbContext context,
     IGamificationService gamificationService,
     INotificationService notificationService,
-    ISupabaseService supabaseService)
+    ISupabaseService supabaseService,
+    IContentModerationService contentModerationService)
     : IUserService
 {
     // Note: UserProfile has a global query filter (HasQueryFilter) that automatically
@@ -82,14 +84,14 @@ public class UserService(
         };
     }
 
-    public async Task<Guid?> GetUserIdAsync(string supabaseUserId)
+    public async Task<Guid?> GetUserIdAsync(string supabaseUserId, CancellationToken cancellationToken = default)
     {
         var user = await context.UserProfiles
             .AsNoTracking()
             .IgnoreQueryFilters()
             .Where(u => u.SupabaseUserId == supabaseUserId)
             .Select(u => new { u.Id, u.IsDeleted })
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (user == null)
             return null;
@@ -446,21 +448,89 @@ public class UserService(
             if (user.IsDeleted)
                 throw new AccountDeletedException();
 
-            // Update only provided fields
+            // DisplayName: enforce the 100-char cap documented in tool descriptions (the
+            // [MaxLength] attribute on UpdateUserProfileRequest is only honored on the REST
+            // model-binding path; the MCP tool constructs the POCO directly so we re-check
+            // here), then run through OpenAI moderation. DisplayName surfaces unmodified
+            // through CommentResponse.User.DisplayName, IssueDetailResponse.User.Name,
+            // BlockedUserResponse.DisplayName, and ActivityResponse.ActorDisplayName — every
+            // read path that lets one user's name reach another user's LLM. See the
+            // 2026-05-05 prompt-injection review.
             if (!string.IsNullOrWhiteSpace(request.DisplayName))
+            {
+                if (request.DisplayName.Length > 100)
+                {
+                    throw new InvalidOperationException(
+                        "DisplayName exceeds the 100-character limit.");
+                }
+                ContentModerationResponse moderationResult =
+                    await contentModerationService.ModerateContentAsync(request.DisplayName);
+                if (!moderationResult.IsAllowed)
+                {
+                    throw new ContentModerationException(
+                        moderationResult.BlockReason ?? "Content violates community guidelines");
+                }
                 user.DisplayName = request.DisplayName;
+            }
 
+            // PhotoUrl: the [Url] attribute on UpdateUserProfileRequest is decorative on the
+            // MCP path. Validate scheme is http/https (rejects javascript:/data:/file:/etc.
+            // before they reach any client that might naively render the URL) and length cap
+            // matches the documented 500. Empty string is allowed as an explicit clear.
             if (request.PhotoUrl != null)
+            {
+                if (request.PhotoUrl.Length > 0)
+                {
+                    if (request.PhotoUrl.Length > 500)
+                    {
+                        throw new InvalidOperationException(
+                            "PhotoUrl exceeds the 500-character limit.");
+                    }
+                    if (!Uri.TryCreate(request.PhotoUrl, UriKind.Absolute, out var photoUri)
+                        || (photoUri.Scheme != Uri.UriSchemeHttp && photoUri.Scheme != Uri.UriSchemeHttps))
+                    {
+                        throw new InvalidOperationException(
+                            "PhotoUrl must be an absolute http or https URL.");
+                    }
+                }
                 user.PhotoUrl = request.PhotoUrl;
+            }
 
+            // County / City / District: enforce documented 100-char caps in code (DTO
+            // [MaxLength] attributes are decorative on the MCP path — model-binding never
+            // runs there). No moderation: these are short location identifiers, not
+            // free-text prose, and the threat model in the 2026-05-05 review treats them as
+            // low-risk metadata. Length cap alone closes the abuse path of stuffing
+            // arbitrarily long prose into a "location" field.
             if (!string.IsNullOrWhiteSpace(request.County))
+            {
+                if (request.County.Length > 100)
+                {
+                    throw new InvalidOperationException(
+                        "County exceeds the 100-character limit.");
+                }
                 user.County = request.County;
+            }
 
             if (!string.IsNullOrWhiteSpace(request.City))
+            {
+                if (request.City.Length > 100)
+                {
+                    throw new InvalidOperationException(
+                        "City exceeds the 100-character limit.");
+                }
                 user.City = request.City;
+            }
 
             if (!string.IsNullOrWhiteSpace(request.District))
+            {
+                if (request.District.Length > 100)
+                {
+                    throw new InvalidOperationException(
+                        "District exceeds the 100-character limit.");
+                }
                 user.District = request.District;
+            }
 
             if (request.ResidenceType.HasValue)
                 user.ResidenceType = request.ResidenceType.Value;
@@ -488,7 +558,7 @@ public class UserService(
 
             return (await GetUserProfileAsync(supabaseUserId))!;
         }
-        catch (Exception ex) when (ex is not InvalidOperationException and not AccountDeletedException)
+        catch (Exception ex) when (ex is not InvalidOperationException and not AccountDeletedException and not ContentModerationException)
         {
             logger.LogError(ex, "Error updating user profile for Supabase ID: {SupabaseUserId}", supabaseUserId);
             throw new InvalidOperationException($"Failed to update user profile for Supabase ID: {supabaseUserId}", ex);

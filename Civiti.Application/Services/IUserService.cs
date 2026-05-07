@@ -8,7 +8,7 @@ namespace Civiti.Application.Services;
 
 public interface IUserService
 {
-    Task<Guid?> GetUserIdAsync(string supabaseUserId);
+    Task<Guid?> GetUserIdAsync(string supabaseUserId, CancellationToken cancellationToken = default);
     Task<UserGamificationResponse?> GetUserGamificationAsync(string supabaseUserId);
     Task<UserProfileResponse?> GetUserProfileAsync(string supabaseUserId);
     Task<UserProfileResponse> GetOrCreateUserProfileAsync(string supabaseUserId, string email, string displayName, string? photoUrl, SignupMetadata? signupMetadata = null);

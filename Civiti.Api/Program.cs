@@ -377,9 +377,23 @@ if (openAIConfig.IsConfigured)
 {
     Log.Information("OpenAI content moderation configured with model: {Model}", openAIConfig.ModerationModel);
 }
+else if (builder.Environment.IsDevelopment())
+{
+    Log.Warning("OpenAI API key is not configured. Content moderation will be skipped (Development).");
+}
 else
 {
-    Log.Warning("OpenAI API key is not configured. Content moderation will be skipped.");
+    // Fail closed in non-Development environments: shipping to staging/production with no
+    // moderation key means user-write paths (add_comment, create_issue, update_my_profile)
+    // would silently bypass the OpenAI gate per OpenAIModerationService.cs:28-33. The
+    // runtime fail-open on transient OpenAI timeouts is intentional (outages shouldn't
+    // block legitimate users), but missing-config-in-prod is a deployment mistake we want
+    // surfaced before the service starts handling traffic. Resolves the LOW finding from
+    // docs/security/mcp-prompt-injection-review-2026-05-05.md.
+    throw new InvalidOperationException(
+        $"OPENAI_API_KEY (or OpenAI:ApiKey config) is required when ASPNETCORE_ENVIRONMENT is "
+        + $"'{builder.Environment.EnvironmentName}'. Set the env var or run with "
+        + "ASPNETCORE_ENVIRONMENT=Development to skip moderation locally.");
 }
 
 // Poster Configuration
