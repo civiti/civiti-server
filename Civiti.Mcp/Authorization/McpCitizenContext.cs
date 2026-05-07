@@ -24,6 +24,23 @@ public sealed class McpCitizenContext(
     public Task<CitizenAuthResult<IdentifiedCitizenContext>> ResolveCitizenWriteAsync(CancellationToken cancellationToken = default)
         => ResolveWithScopeAsync(CivitiWriteScope);
 
+    public async Task<Guid?> TryResolveCitizenAsync(CancellationToken cancellationToken = default)
+    {
+        var user = httpContextAccessor.HttpContext?.User;
+        if (user?.Identity is not { IsAuthenticated: true })
+        {
+            return null;
+        }
+
+        var sub = user.FindFirst(OpenIddictConstants.Claims.Subject)?.Value;
+        if (string.IsNullOrEmpty(sub))
+        {
+            return null;
+        }
+
+        return await userService.GetUserIdAsync(sub);
+    }
+
     private CitizenAuthResult<CitizenContext> RequireScope(string requiredScope)
     {
         var (sub, error) = AuthenticateAndExtractSub(requiredScope);
