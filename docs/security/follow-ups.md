@@ -153,17 +153,26 @@ Each item carries:
     service. (The known case is tracked separately above; this sweep is for
     finding others.)
   - No keys accidentally committed to git. The sweep regex needs to cover
-    both Supabase formats and the other providers — running just `sb_secret_`
-    would miss legacy JWT-style service-role keys, which start with `eyJ` and
-    are visually indistinguishable from any other base64url payload:
+    both Supabase formats and every OpenAI / Anthropic / Resend key shape — a
+    pattern that requires `sk-proj-` or `sk-ant-` would miss the legacy
+    `sk-…` OpenAI keys still in circulation, and a Supabase pattern that
+    only checks `sb_secret_` would miss legacy JWT-style service-role keys
+    (which start with `eyJ` and are visually indistinguishable from any
+    other base64url payload):
     ```bash
-    git log --all -p | grep -E '(sb_secret_|sb_publishable_)[A-Za-z0-9_-]{10,}|sk-(proj-|ant-)[A-Za-z0-9_-]{20,}|re_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}'
+    git log --all -p | grep -E '(sb_secret_|sb_publishable_)[A-Za-z0-9_-]{10,}|sk-(proj-|ant-)?[A-Za-z0-9_-]{20,}|re_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}'
     ```
-    The trailing JWT pattern is intentionally conservative — three
-    base64url-padded segments separated by dots — so it catches Supabase
-    JWTs without also matching every `eyJ` substring (e.g. unrelated base64
-    blobs in test fixtures). Run on a clean clone; review every match
-    individually rather than trusting the sweep blindly.
+    Notes on this regex:
+    - `sk-(proj-|ant-)?…` — the `?` makes the prefix optional, so legacy
+      OpenAI `sk-…` keys, project keys (`sk-proj-…`), and Anthropic keys
+      (`sk-ant-…`) all match.
+    - The trailing JWT pattern is intentionally conservative — three
+      base64url-padded segments separated by dots — so it catches Supabase
+      JWTs without also matching every `eyJ` substring (e.g. unrelated base64
+      blobs in test fixtures).
+    - Run on a clean clone; review every match individually rather than
+      trusting the sweep blindly. False positives (e.g. test-fixture
+      placeholders, comment lines) are easy to identify on inspection.
 
 ### `mark_email_sent` rate-limit per-IP under shared NAT
 
