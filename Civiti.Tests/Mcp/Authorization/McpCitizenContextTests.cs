@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Civiti.Application.Services;
+using Civiti.Domain.Exceptions;
 using Civiti.Mcp.Authorization;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
@@ -302,6 +303,22 @@ public class McpCitizenContextTests
         var result = await sut.TryResolveCitizenAsync();
 
         result.Should().Be(internalId);
+    }
+
+    [Fact]
+    public async Task TryResolveCitizenAsync_AccountSoftDeleted_ReturnsNull()
+    {
+        // UserService.GetUserIdAsync throws AccountDeletedException for IsDeleted=true
+        // profiles. The best-effort contract on TryResolveCitizenAsync requires the
+        // caller to fall through to anonymous (null) rather than surfacing a 500 to
+        // the agent.
+        _userService.Setup(s => s.GetUserIdAsync("abc-deleted", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AccountDeletedException());
+        var sut = CreateSut(AuthenticatedPrincipal(sub: "abc-deleted"));
+
+        var result = await sut.TryResolveCitizenAsync();
+
+        result.Should().BeNull();
     }
 
     private McpCitizenContext CreateSut(ClaimsPrincipal user)

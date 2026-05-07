@@ -1,4 +1,5 @@
 using Civiti.Application.Services;
+using Civiti.Domain.Exceptions;
 using Microsoft.Extensions.Logging;
 using OpenIddict.Abstractions;
 
@@ -38,7 +39,17 @@ public sealed class McpCitizenContext(
             return null;
         }
 
-        return await userService.GetUserIdAsync(sub, cancellationToken);
+        try
+        {
+            return await userService.GetUserIdAsync(sub, cancellationToken);
+        }
+        catch (AccountDeletedException)
+        {
+            // Soft-deleted profile with a still-valid JWT. Best-effort contract:
+            // degrade to anonymous (null) so authenticated read tools fall through
+            // to the public-tier data set rather than surfacing a 500 to the agent.
+            return null;
+        }
     }
 
     private CitizenAuthResult<CitizenContext> RequireScope(string requiredScope)
