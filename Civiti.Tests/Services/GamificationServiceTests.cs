@@ -392,4 +392,46 @@ public class GamificationServiceTests : IDisposable
         var updated = await verifyCtx.UserProfiles.FindAsync(user.Id);
         updated!.Level.Should().Be(3);
     }
+
+    // ── Regression: mid-enumeration navigation fixup ──
+
+    [Fact]
+    public async Task UpdateAchievementProgress_Completion_Triggering_LevelUp_Should_Not_Throw_CollectionModified()
+    {
+        // Regression for the create-issue 400 ("Collection was modified; enumeration
+        // operation may not execute"). Chain: an "issues_reported" achievement completes
+        // inside CheckAndAwardAchievementsAsync's foreach over user.UserAchievements; its
+        // reward points cross a level threshold, so AwardPointsAsync calls
+        // UpdateAchievementProgressAsync("level_up"), which Adds a brand-new level_up
+        // UserAchievement. EF relationship fixup appends that entity to the live
+        // user.UserAchievements collection being enumerated -> InvalidOperationException.
+        // The repro REQUIRES an active level_up achievement AND no pre-existing level_up
+        // UserAchievement, so the Add actually happens mid-loop.
+        var user = TestDataBuilder.CreateUser(points: 0, level: 1);
+        var completing = TestDataBuilder.CreateAchievement(
+            achievementType: "issues_reported", maxProgress: 1, rewardPoints: 100); // 100 pts -> level 2
+        var levelUp = TestDataBuilder.CreateAchievement(
+            achievementType: "level_up", maxProgress: 10, rewardPoints: 0);
+
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            ctx.Achievements.AddRange(completing, levelUp);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+
+        // Must not throw — completes the whole gamification chain in one call.
+        await svc.UpdateAchievementProgressAsync(user.Id, "issues_reported");
+
+        using var verifyCtx = _dbFactory.CreateContext();
+        var completed = verifyCtx.UserAchievements
+            .First(x => x.UserId == user.Id && x.AchievementId == completing.Id);
+        completed.Completed.Should().BeTrue();
+
+        var updatedUser = await verifyCtx.UserProfiles.FindAsync(user.Id);
+        updatedUser!.Points.Should().Be(100);
+        updatedUser.Level.Should().BeGreaterThan(1);
+    }
 }
