@@ -251,7 +251,14 @@ public class GamificationService(
                 return;
             }
 
-            List<UserAchievement> userAchievements = user.UserAchievements;
+            // Snapshot into a new list — do NOT enumerate user.UserAchievements directly.
+            // It is EF Core's live navigation collection, kept in sync by relationship
+            // fixup: nested calls below (a reward-driven AwardPointsAsync -> level-up ->
+            // UpdateAchievementProgressAsync) Add a new UserAchievement for this user, and
+            // fixup appends it to user.UserAchievements mid-loop, which would throw
+            // "Collection was modified; enumeration operation may not execute." A copy also
+            // keeps the AddRange below from mutating the tracked entity's navigation.
+            List<UserAchievement> userAchievements = user.UserAchievements.ToList();
 
             // Also check change tracker for newly added achievements not yet saved
             HashSet<Guid> achievementIdsInDb = userAchievements.Select(ua => ua.AchievementId).ToHashSet();

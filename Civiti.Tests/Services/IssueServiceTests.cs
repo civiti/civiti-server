@@ -644,4 +644,87 @@ public class IssueServiceTests : IDisposable
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*http or https*");
     }
+
+    [Fact]
+    public async Task CreateIssue_Should_Persist_Issue_And_Invoke_Gamification()
+    {
+        // Happy path: a valid submission is created and gamification is invoked. Guards the
+        // post-commit restructure against accidentally dropping the gamification call — the
+        // two pre-existing create tests only cover pre-transaction throws.
+        var user = TestDataBuilder.CreateUser(supabaseUserId: "create_ok_user");
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+        var result = await svc.CreateIssueAsync(
+            new CreateIssueRequest
+            {
+                Title = "Valid title",
+                Description = "Valid description",
+                Category = IssueCategory.Infrastructure,
+                Address = "Str. Test 1",
+                District = "Sector 1",
+                Latitude = 44.4,
+                Longitude = 26.1
+            },
+            "create_ok_user");
+
+        result.Should().NotBeNull();
+        result.Id.Should().NotBe(Guid.Empty);
+
+        using var verifyCtx = _dbFactory.CreateContext();
+        var persisted = await verifyCtx.Issues.FindAsync(result.Id);
+        persisted.Should().NotBeNull();
+        persisted!.Status.Should().Be(IssueStatus.Submitted);
+
+        _gamificationService.Verify(
+            g => g.AwardPointsAsync(user.Id, 10, It.IsAny<string>(), It.IsAny<bool>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateIssue_Should_Still_Create_Issue_When_Gamification_Throws()
+    {
+        // Gamification is a best-effort post-commit side effect: a failure in it (the
+        // mid-enumeration InvalidOperationException, a constraint violation, etc.) must never
+        // roll back or fail the issue the user validly created. Pre-fix, gamification ran
+        // inside the transaction and any throw rolled the issue back and surfaced as HTTP 400.
+        var user = TestDataBuilder.CreateUser(supabaseUserId: "gami_throws_user");
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            await ctx.SaveChangesAsync();
+        }
+
+        _gamificationService
+            .Setup(g => g.AwardPointsAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<bool>()))
+            .ThrowsAsync(new InvalidOperationException(
+                "Collection was modified; enumeration operation may not execute."));
+
+        var svc = CreateService();
+        var result = await svc.CreateIssueAsync(
+            new CreateIssueRequest
+            {
+                Title = "Resilient title",
+                Description = "Resilient description",
+                Category = IssueCategory.Infrastructure,
+                Address = "Str. Test 1",
+                District = "Sector 1",
+                Latitude = 44.4,
+                Longitude = 26.1
+            },
+            "gami_throws_user");
+
+        // Issue creation succeeds and is persisted despite the gamification failure.
+        result.Should().NotBeNull();
+        result.Id.Should().NotBe(Guid.Empty);
+
+        using var verifyCtx = _dbFactory.CreateContext();
+        var persisted = await verifyCtx.Issues.FindAsync(result.Id);
+        persisted.Should().NotBeNull();
+        persisted!.Title.Should().Be("Resilient title");
+    }
 }

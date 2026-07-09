@@ -362,7 +362,7 @@ public class IssueService(
 
         IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
-        return await strategy.ExecuteAsync(async () =>
+        (Issue createdIssue, UserProfile issueOwner) = await strategy.ExecuteAsync(async () =>
         {
             // Clear change tracker to ensure fresh data on retry (prevents double-incrementing counters)
             context.ChangeTracker.Clear();
@@ -502,34 +502,7 @@ public class IssueService(
 
             await context.SaveChangesAsync();
 
-            // Award points for creating an issue (10 points for submission)
-            await gamificationService.AwardPointsAsync(
-                userProfile.Id,
-                10,
-                "Reported a new community issue");
-
-            // Update achievement progress for issues_reported
-            await gamificationService.UpdateAchievementProgressAsync(
-                userProfile.Id,
-                "issues_reported");
-
-            // Update quality_photos achievement if issue has 3+ photos
-            // Use incremental progress (not absolute) to avoid race conditions with concurrent issue creations
-            var photoCount = request.PhotoUrls?.Count(url => !string.IsNullOrWhiteSpace(url)) ?? 0;
-            if (photoCount >= 3)
-            {
-                await gamificationService.UpdateAchievementProgressAsync(
-                    userProfile.Id,
-                    "quality_photos");
-            }
-
-            // Check for badge eligibility based on new stats
-            await gamificationService.CheckAndAwardBadgesAsync(userProfile.Id);
-
             await transaction.CommitAsync();
-
-            // Flush gamification notifications now that the transaction is committed
-            await gamificationService.FlushPendingNotificationsAsync();
 
             // Record activity (outside transaction to avoid circular dependency issues)
             try
@@ -568,12 +541,7 @@ public class IssueService(
             logger.LogInformation("Issue {IssueId} created successfully by user {UserId}",
                 issue.Id, userProfile.Id);
 
-            return new CreateIssueResponse
-            {
-                Id = issue.Id,
-                Status = issue.Status.ToString(),
-                CreatedAt = issue.CreatedAt
-            };
+            return (issue, userProfile!);
         }
             catch (AccountDeletedException)
             {
@@ -592,6 +560,58 @@ public class IssueService(
                 throw;
             }
         });
+
+        // Gamification runs AFTER the issue transaction has committed and is deliberately
+        // OUTSIDE strategy.ExecuteAsync: if a gamification call threw while still inside the
+        // retried lambda, the execution strategy would re-run the whole lambda and create a
+        // DUPLICATE issue. It is also a best-effort side effect — a failure in it (e.g. the
+        // mid-enumeration InvalidOperationException this PR also fixed) must never roll back
+        // or 400 an issue the user validly created. Running it here, once, after commit, also
+        // means its queued notifications are enqueued exactly once instead of being replayed
+        // on a transient-error retry of the insert.
+        try
+        {
+            // Award points for creating an issue (10 points for submission)
+            await gamificationService.AwardPointsAsync(
+                issueOwner.Id,
+                10,
+                "Reported a new community issue");
+
+            // Update achievement progress for issues_reported
+            await gamificationService.UpdateAchievementProgressAsync(
+                issueOwner.Id,
+                "issues_reported");
+
+            // Update quality_photos achievement if issue has 3+ photos
+            // Use incremental progress (not absolute) to avoid race conditions with concurrent issue creations
+            var photoCount = request.PhotoUrls?.Count(url => !string.IsNullOrWhiteSpace(url)) ?? 0;
+            if (photoCount >= 3)
+            {
+                await gamificationService.UpdateAchievementProgressAsync(
+                    issueOwner.Id,
+                    "quality_photos");
+            }
+
+            // Check for badge eligibility based on new stats
+            await gamificationService.CheckAndAwardBadgesAsync(issueOwner.Id);
+
+            // No transaction is open here, so each call above already flushes inline; this
+            // is a defensive flush for any still-queued notification.
+            await gamificationService.FlushPendingNotificationsAsync();
+        }
+        catch (Exception gamificationEx)
+        {
+            logger.LogError(gamificationEx,
+                "Gamification failed for issue {IssueId}; the issue was still created successfully",
+                createdIssue.Id);
+        }
+
+        return new CreateIssueResponse
+        {
+            Id = createdIssue.Id,
+            Status = createdIssue.Status.ToString(),
+            CreatedAt = createdIssue.CreatedAt
+        };
     }
 
     public async Task<(bool Success, string? Error)> IncrementEmailCountAsync(Guid issueId, string? clientIp)

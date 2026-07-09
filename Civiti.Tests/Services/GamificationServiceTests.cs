@@ -392,4 +392,63 @@ public class GamificationServiceTests : IDisposable
         var updated = await verifyCtx.UserProfiles.FindAsync(user.Id);
         updated!.Level.Should().Be(3);
     }
+
+    // ── Regression: mid-enumeration navigation fixup ──
+
+    [Fact]
+    public async Task UpdateAchievementProgress_Completion_Triggering_LevelUp_Should_Not_Throw_CollectionModified()
+    {
+        // Regression for the create-issue 400 ("Collection was modified; enumeration
+        // operation may not execute"). Chain: an "issues_reported" achievement completes
+        // inside CheckAndAwardAchievementsAsync's foreach over user.UserAchievements; its
+        // reward points cross a level threshold, so AwardPointsAsync calls
+        // UpdateAchievementProgressAsync("level_up"), which Adds a brand-new level_up
+        // UserAchievement. EF relationship fixup appends that entity to the live
+        // user.UserAchievements collection being enumerated -> InvalidOperationException.
+        // The repro REQUIRES an active level_up achievement AND no pre-existing level_up
+        // UserAchievement, so the Add actually happens mid-loop.
+        //
+        // Two completing achievements are seeded so the assertions verify the full chain
+        // runs end-to-end past the mid-loop Add (both complete, both rewards applied) rather
+        // than only that no exception escaped; we also assert the mid-loop-created level_up
+        // UserAchievement actually persisted.
+        var user = TestDataBuilder.CreateUser(points: 0, level: 1);
+        var completing1 = TestDataBuilder.CreateAchievement(
+            achievementType: "issues_reported", maxProgress: 1, rewardPoints: 100);
+        var completing2 = TestDataBuilder.CreateAchievement(
+            achievementType: "issues_reported", maxProgress: 1, rewardPoints: 100);
+        var levelUp = TestDataBuilder.CreateAchievement(
+            achievementType: "level_up", maxProgress: 10, rewardPoints: 0);
+
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            ctx.Achievements.AddRange(completing1, completing2, levelUp);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+
+        // Must not throw — completes the whole gamification chain in one call.
+        await svc.UpdateAchievementProgressAsync(user.Id, "issues_reported");
+
+        using var verifyCtx = _dbFactory.CreateContext();
+
+        // Both achievements must be completed — proves the loop processed every element
+        // across the mid-loop UserAchievements.Add rather than aborting on it.
+        var completedIds = verifyCtx.UserAchievements
+            .Where(x => x.UserId == user.Id && x.Completed)
+            .Select(x => x.AchievementId)
+            .ToList();
+        completedIds.Should().Contain(new[] { completing1.Id, completing2.Id });
+
+        // The level_up UserAchievement created mid-loop must have persisted end-to-end.
+        verifyCtx.UserAchievements
+            .Any(x => x.UserId == user.Id && x.AchievementId == levelUp.Id)
+            .Should().BeTrue();
+
+        var updatedUser = await verifyCtx.UserProfiles.FindAsync(user.Id);
+        updatedUser!.Points.Should().Be(200); // both 100-point rewards applied
+        updatedUser.Level.Should().BeGreaterThan(1);
+    }
 }
