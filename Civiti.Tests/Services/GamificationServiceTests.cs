@@ -407,16 +407,23 @@ public class GamificationServiceTests : IDisposable
         // user.UserAchievements collection being enumerated -> InvalidOperationException.
         // The repro REQUIRES an active level_up achievement AND no pre-existing level_up
         // UserAchievement, so the Add actually happens mid-loop.
+        //
+        // Two completing achievements are seeded so the assertions verify the full chain
+        // runs end-to-end past the mid-loop Add (both complete, both rewards applied) rather
+        // than only that no exception escaped; we also assert the mid-loop-created level_up
+        // UserAchievement actually persisted.
         var user = TestDataBuilder.CreateUser(points: 0, level: 1);
-        var completing = TestDataBuilder.CreateAchievement(
-            achievementType: "issues_reported", maxProgress: 1, rewardPoints: 100); // 100 pts -> level 2
+        var completing1 = TestDataBuilder.CreateAchievement(
+            achievementType: "issues_reported", maxProgress: 1, rewardPoints: 100);
+        var completing2 = TestDataBuilder.CreateAchievement(
+            achievementType: "issues_reported", maxProgress: 1, rewardPoints: 100);
         var levelUp = TestDataBuilder.CreateAchievement(
             achievementType: "level_up", maxProgress: 10, rewardPoints: 0);
 
         using (var ctx = _dbFactory.CreateContext())
         {
             ctx.UserProfiles.Add(user);
-            ctx.Achievements.AddRange(completing, levelUp);
+            ctx.Achievements.AddRange(completing1, completing2, levelUp);
             await ctx.SaveChangesAsync();
         }
 
@@ -426,12 +433,22 @@ public class GamificationServiceTests : IDisposable
         await svc.UpdateAchievementProgressAsync(user.Id, "issues_reported");
 
         using var verifyCtx = _dbFactory.CreateContext();
-        var completed = verifyCtx.UserAchievements
-            .First(x => x.UserId == user.Id && x.AchievementId == completing.Id);
-        completed.Completed.Should().BeTrue();
+
+        // Both achievements must be completed — proves the loop processed every element
+        // across the mid-loop UserAchievements.Add rather than aborting on it.
+        var completedIds = verifyCtx.UserAchievements
+            .Where(x => x.UserId == user.Id && x.Completed)
+            .Select(x => x.AchievementId)
+            .ToList();
+        completedIds.Should().Contain(new[] { completing1.Id, completing2.Id });
+
+        // The level_up UserAchievement created mid-loop must have persisted end-to-end.
+        verifyCtx.UserAchievements
+            .Any(x => x.UserId == user.Id && x.AchievementId == levelUp.Id)
+            .Should().BeTrue();
 
         var updatedUser = await verifyCtx.UserProfiles.FindAsync(user.Id);
-        updatedUser!.Points.Should().Be(100);
+        updatedUser!.Points.Should().Be(200); // both 100-point rewards applied
         updatedUser.Level.Should().BeGreaterThan(1);
     }
 }
