@@ -133,7 +133,18 @@ public class ClaudeEnhancementService(
         // invalidates it on edit, the TTL bounds staleness. Regenerate deliberately bypasses this.
         if (cachingEnabled && !request.Regenerate)
         {
-            PetitionCoreCacheEntry? cached = await petitionCache.GetAsync(request.IssueId);
+            PetitionCoreCacheEntry? cached = null;
+            try
+            {
+                cached = await petitionCache.GetAsync(request.IssueId);
+            }
+            catch (Exception ex)
+            {
+                // A cache-read failure (transient DB error, etc.) must degrade to fresh generation,
+                // never fail the request — mirroring the resilience the write path already has.
+                logger.LogWarning(ex, "Petition cache read failed for issue {IssueId}; composing fresh", request.IssueId);
+            }
+
             if (cached is not null
                 && cached.ContentHash == contentHash
                 && DateTime.UtcNow - cached.GeneratedAtUtc < configuration.PetitionCacheTtl)
@@ -162,25 +173,10 @@ public class ClaudeEnhancementService(
 
         try
         {
-            var userPrompt = BuildPetitionUserPrompt(request);
-
-            MessageParameters messageRequest = new()
-            {
-                Model = configuration.Model,
-                MaxTokens = configuration.MaxTokens,
-                System = [new SystemMessage(PetitionCoreSystemPrompt)],
-                Messages = [new Message(RoleType.User, userPrompt)]
-            };
-
             using CancellationTokenSource cts = new(TimeSpan.FromSeconds(configuration.TimeoutSeconds));
-            MessageResponse? response = await anthropicClient.Messages.GetClaudeMessageAsync(messageRequest, cts.Token);
+            var rawCore = await RequestPetitionCoreAsync(request, cts.Token);
 
-            var core = response?.Content?
-                .OfType<TextContent>()
-                .Select(c => c.Text)
-                .FirstOrDefault();
-
-            core = string.IsNullOrWhiteSpace(core) ? null : CleanPetitionCore(core);
+            var core = string.IsNullOrWhiteSpace(rawCore) ? null : CleanPetitionCore(rawCore);
 
             if (string.IsNullOrWhiteSpace(core))
             {
@@ -220,6 +216,31 @@ public class ClaudeEnhancementService(
             logger.LogError(ex, "Error composing petition body for user {UserId}", userId);
             return BuildFallbackPetitionResponse(request, "An error occurred while composing the petition.");
         }
+    }
+
+    /// <summary>
+    /// Sends the composed prompt to Claude and returns the raw (uncleaned) core text, or null when the
+    /// response carries no text. Isolated as a <c>protected virtual</c> seam so tests can drive the
+    /// AI-success path deterministically without a live API call; production behaviour is unchanged.
+    /// </summary>
+    protected virtual async Task<string?> RequestPetitionCoreAsync(PetitionBodyRequest request, CancellationToken cancellationToken)
+    {
+        var userPrompt = BuildPetitionUserPrompt(request);
+
+        MessageParameters messageRequest = new()
+        {
+            Model = configuration.Model,
+            MaxTokens = configuration.MaxTokens,
+            System = [new SystemMessage(PetitionCoreSystemPrompt)],
+            Messages = [new Message(RoleType.User, userPrompt)]
+        };
+
+        MessageResponse? response = await anthropicClient.Messages.GetClaudeMessageAsync(messageRequest, cancellationToken);
+
+        return response?.Content?
+            .OfType<TextContent>()
+            .Select(c => c.Text)
+            .FirstOrDefault();
     }
 
     /// <inheritdoc />

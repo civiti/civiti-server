@@ -52,6 +52,31 @@ public class ClaudeEnhancementServicePetitionBodyTests
         public void Seed(Guid issueId, PetitionCoreCacheEntry entry) => _store[issueId] = entry;
     }
 
+    /// <summary>
+    /// Configured service whose AI call is stubbed via the RequestPetitionCoreAsync seam, so the
+    /// AI-success write path (SetAsync) can be exercised deterministically with no live API call.
+    /// A null core simulates an empty/invalid AI response.
+    /// </summary>
+    private sealed class StubClaudeService : ClaudeEnhancementService
+    {
+        private readonly string? _core;
+
+        public StubClaudeService(ClaudeConfiguration config, IPetitionBodyCacheStore cache, string? core)
+            : base(new Mock<ILogger<ClaudeEnhancementService>>().Object, config,
+                   PartitionedRateLimiter.Create<Guid, Guid>(key => RateLimitPartition.GetNoLimiter(key)),
+                   new AnthropicClient("test-unused"), cache)
+        {
+            _core = core;
+        }
+
+        protected override Task<string?> RequestPetitionCoreAsync(PetitionBodyRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(_core);
+    }
+
+    private static StubClaudeService CreateConfiguredService(IPetitionBodyCacheStore cache, string? aiCore) =>
+        new(new ClaudeConfiguration { ApiKey = "sk-test", PetitionCacheHours = ClaudeConfiguration.DefaultPetitionCacheHours },
+            cache, aiCore);
+
     private static PetitionBodyRequest SampleRequest(int photoCount = 2) => new()
     {
         IssueId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -220,5 +245,115 @@ public class ClaudeEnhancementServicePetitionBodyTests
 
         response.UsedOriginalText.Should().BeTrue();
         response.Body.Should().NotContain(CachedCore);
+    }
+
+    // ── Write path: a configured service (AI call stubbed via the seam) must persist the core ──
+
+    [Fact]
+    public async Task GeneratePetitionBodyAsync_OnAiSuccess_CachesCoreUnderContentHashAndReserves()
+    {
+        var cache = new FakePetitionCache();
+        var request = SampleRequest();
+        const string aiCore = "NUCLEU COMPUS DE AI, distinct de textul de fallback.";
+
+        var response = await CreateConfiguredService(cache, aiCore).GeneratePetitionBodyAsync(request, Guid.NewGuid());
+
+        response.UsedOriginalText.Should().BeFalse();
+        response.Body.Should().Contain(aiCore);
+
+        // Written under the EXACT hash the read path later recomputes (the invariant the design relies on).
+        var stored = await cache.GetAsync(request.IssueId);
+        stored.Should().NotBeNull();
+        stored!.Core.Should().Be(aiCore);
+        stored.ContentHash.Should().Be(ClaudeEnhancementService.ComputePetitionContentHash(request));
+
+        // A second service that would compose a DIFFERENT core still serves the cached one.
+        var second = await CreateConfiguredService(cache, "AR TREBUI IGNORAT").GeneratePetitionBodyAsync(request, Guid.NewGuid());
+        second.UsedOriginalText.Should().BeFalse();
+        second.Body.Should().Contain(aiCore);
+        second.Body.Should().NotContain("AR TREBUI IGNORAT");
+    }
+
+    [Fact]
+    public async Task GeneratePetitionBodyAsync_OnEmptyAiCore_FallsBackAndDoesNotCache()
+    {
+        var cache = new FakePetitionCache();
+        var request = SampleRequest();
+
+        var response = await CreateConfiguredService(cache, aiCore: null).GeneratePetitionBodyAsync(request, Guid.NewGuid());
+
+        response.UsedOriginalText.Should().BeTrue();
+        (await cache.GetAsync(request.IssueId)).Should().BeNull(); // the deterministic fallback is never cached
+    }
+
+    [Fact]
+    public async Task GeneratePetitionBodyAsync_WhenRegenerate_OverwritesCachedCore()
+    {
+        var cache = new FakePetitionCache();
+        var request = SampleRequest();
+        var hash = ClaudeEnhancementService.ComputePetitionContentHash(request);
+        cache.Seed(request.IssueId, new PetitionCoreCacheEntry("NUCLEU VECHI", hash, DateTime.UtcNow));
+        request.Regenerate = true;
+
+        var response = await CreateConfiguredService(cache, "NUCLEU REGENERAT").GeneratePetitionBodyAsync(request, Guid.NewGuid());
+
+        response.UsedOriginalText.Should().BeFalse();
+        response.Body.Should().Contain("NUCLEU REGENERAT");
+        (await cache.GetAsync(request.IssueId))!.Core.Should().Be("NUCLEU REGENERAT");
+    }
+
+    // ── Content-hash contract: pin the value and the field inclusion/exclusion set ──
+
+    private static PetitionBodyRequest GoldenRequest() => new()
+    {
+        IssueId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+        Title = "Titlu fix",
+        Category = IssueCategory.Infrastructure,
+        Address = "Strada Fixa 1",
+        District = "Sector 1",
+        Description = "Descriere fixa.",
+        DesiredOutcome = "Rezultat fix.",
+        CommunityImpact = "Impact fix.",
+        PhotoCount = 3,
+        Regenerate = false
+    };
+
+    private static string HashOf(Action<PetitionBodyRequest> mutate)
+    {
+        var request = GoldenRequest();
+        mutate(request);
+        return ClaudeEnhancementService.ComputePetitionContentHash(request);
+    }
+
+    [Fact]
+    public void ComputePetitionContentHash_IsDeterministic_AndMatchesGoldenValue()
+    {
+        var hash = ClaudeEnhancementService.ComputePetitionContentHash(GoldenRequest());
+
+        hash.Should().MatchRegex("^[0-9A-F]{64}$");
+        hash.Should().Be(ClaudeEnhancementService.ComputePetitionContentHash(GoldenRequest()));
+        // Golden digest: if this breaks, the prompt version / field set / delimiter changed and EVERY
+        // cached core in production will stop matching on the next read — bump deliberately, not by accident.
+        hash.Should().Be("13CDC58392CFECF0FC68B6DD5CAE27DDDD28057C0D368657B4AC264673C1CC90");
+    }
+
+    [Fact]
+    public void ComputePetitionContentHash_ChangesWithPromptFields_ButNotScaffoldOnlyFields()
+    {
+        var baseHash = ClaudeEnhancementService.ComputePetitionContentHash(GoldenRequest());
+
+        // Prompt-affecting fields MUST change the hash (an edit invalidates the cache).
+        HashOf(r => r.Title += "x").Should().NotBe(baseHash);
+        HashOf(r => r.Category = IssueCategory.Environment).Should().NotBe(baseHash);
+        HashOf(r => r.Address += "x").Should().NotBe(baseHash);
+        HashOf(r => r.District += "x").Should().NotBe(baseHash);
+        HashOf(r => r.Description += "x").Should().NotBe(baseHash);
+        HashOf(r => r.DesiredOutcome += "x").Should().NotBe(baseHash);
+        HashOf(r => r.CommunityImpact += "x").Should().NotBe(baseHash);
+
+        // Scaffold-only / bypass fields MUST NOT change the hash (a new photo reuses the core).
+        HashOf(r => r.PhotoCount = 99).Should().Be(baseHash);
+        HashOf(r => r.IssueId = Guid.NewGuid()).Should().Be(baseHash);
+        HashOf(r => r.Regenerate = true).Should().Be(baseHash);
     }
 }
