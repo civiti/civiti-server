@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 using Anthropic.SDK;
 using Anthropic.SDK.Messaging;
@@ -219,11 +220,25 @@ public class ClaudeEnhancementService(
     }
 
     /// <summary>
-    /// Strip any Markdown code fences the model may have wrapped the core in, then trim.
-    /// The scaffold — not the model — owns links, placeholders, and legal text.
+    /// Strip stray Markdown the model was told not to emit (code fences, bold/italic emphasis,
+    /// inline code, and heading markers) so it never leaks into the petition, then trim. The
+    /// scaffold — not the model — owns links, placeholders, and legal text. The emphasis patterns
+    /// only match markers hugging non-space text (e.g. "*urgent*"), so stray asterisks in prose
+    /// (e.g. "A * B") are left untouched.
     /// </summary>
-    private static string CleanPetitionCore(string text) =>
-        text.Replace("```json", "").Replace("```", "").Trim();
+    private static string CleanPetitionCore(string text)
+    {
+        var cleaned = text
+            .Replace("```json", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("```", string.Empty)
+            .Replace("`", string.Empty);
+
+        cleaned = Regex.Replace(cleaned, @"\*\*(\S(?:[^*\n]*\S)?)\*\*", "$1"); // **bold**
+        cleaned = Regex.Replace(cleaned, @"\*(\S(?:[^*\n]*\S)?)\*", "$1");     // *italic*
+        cleaned = Regex.Replace(cleaned, @"(?m)^\s{0,3}#{1,6}\s+", string.Empty); // # heading
+
+        return cleaned.Trim();
+    }
 
     /// <summary>
     /// Deterministically wrap the (AI or fallback) argument core in the legally-compliant
@@ -308,8 +323,32 @@ public class ClaudeEnhancementService(
         return $"La prezenta petiție anexez {photoCount} {noun} problema semnalată.\n";
     }
 
-    private static string FormatDateRo(DateTime date) =>
-        date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+    // Stored timestamps (issue.CreatedAt) and DateTime.UtcNow are UTC; petition dates must read
+    // in Romanian local time (UTC+2/+3, DST-aware), matching what a citizen expects on the letter.
+    private static readonly TimeZoneInfo RomaniaTimeZone = ResolveRomaniaTimeZone();
+
+    private static TimeZoneInfo ResolveRomaniaTimeZone()
+    {
+        // IANA id resolves on Linux (Railway) and, via ICU, on modern .NET on Windows; the Windows
+        // registry id is the fallback. Degrade to UTC rather than throwing if tz data is missing.
+        foreach (var id in new[] { "Europe/Bucharest", "GTB Standard Time" })
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(id);
+            }
+            catch (TimeZoneNotFoundException) { }
+            catch (InvalidTimeZoneException) { }
+        }
+        return TimeZoneInfo.Utc;
+    }
+
+    private static string FormatDateRo(DateTime utc)
+    {
+        var asUtc = DateTime.SpecifyKind(utc, DateTimeKind.Utc);
+        var local = TimeZoneInfo.ConvertTimeFromUtc(asUtc, RomaniaTimeZone);
+        return local.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+    }
 
     private static PetitionBodyResponse BuildFallbackPetitionResponse(PetitionBodyRequest request, string warning) =>
         new()
