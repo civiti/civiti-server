@@ -5,7 +5,7 @@ namespace Civiti.Infrastructure.Configuration;
 /// </summary>
 public class ClaudeConfiguration
 {
-    public const string DefaultModel = "claude-sonnet-4-6";
+    public const string DefaultModel = "claude-haiku-4-5";
     public const int DefaultMaxTokens = 2048;
     public const int DefaultTimeoutSeconds = 30;
     public const int DefaultRateLimitPerMinute = 10;
