@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using System.Threading.RateLimiting;
+using Anthropic.SDK;
 using Civiti.Application.Email.Models;
 using Civiti.Application.Mcp;
 using Civiti.Application.Notifications;
@@ -12,6 +13,7 @@ using Civiti.Infrastructure.Configuration;
 using Civiti.Infrastructure.Data;
 using Civiti.Infrastructure.Services;
 using Civiti.Infrastructure.Services.AdminNotify;
+using Civiti.Infrastructure.Services.Claude;
 using Civiti.Infrastructure.Services.Email;
 using Civiti.Infrastructure.Services.Moderation;
 using Civiti.Infrastructure.Services.Supabase;
@@ -224,6 +226,51 @@ if (!openAIConfig.IsConfigured)
             + "ASPNETCORE_ENVIRONMENT=Development to skip moderation locally.");
     }
 }
+
+// Claude AI config — powers the generate_petition_body tool. Mirrors the wiring in
+// Civiti.Api/Program.cs. Runtime fail-open: ClaudeEnhancementService short-circuits on
+// ClaudeConfiguration.IsConfigured and returns a deterministic, still-compliant petition body
+// when the key is absent, so a missing key degrades gracefully rather than failing the tool.
+var claudeConfig = new ClaudeConfiguration
+{
+    ApiKey = Environment.GetEnvironmentVariable("CLAUDE_API_KEY")
+        ?? builder.Configuration["Claude:ApiKey"]
+        ?? string.Empty,
+    Model = Environment.GetEnvironmentVariable("CLAUDE_MODEL")
+        ?? builder.Configuration["Claude:Model"]
+        ?? ClaudeConfiguration.DefaultModel,
+    MaxTokens = int.TryParse(
+        Environment.GetEnvironmentVariable("CLAUDE_MAX_TOKENS")
+            ?? builder.Configuration["Claude:MaxTokens"], out var claudeMaxTokens)
+        ? claudeMaxTokens : ClaudeConfiguration.DefaultMaxTokens,
+    TimeoutSeconds = int.TryParse(
+        Environment.GetEnvironmentVariable("CLAUDE_TIMEOUT_SECONDS")
+            ?? builder.Configuration["Claude:TimeoutSeconds"], out var claudeTimeout)
+        ? claudeTimeout : ClaudeConfiguration.DefaultTimeoutSeconds,
+    RateLimitPerMinute = int.TryParse(
+        Environment.GetEnvironmentVariable("CLAUDE_RATE_LIMIT_PER_MINUTE")
+            ?? builder.Configuration["Claude:RateLimitPerMinute"], out var claudeRate)
+        ? claudeRate : ClaudeConfiguration.DefaultRateLimitPerMinute
+};
+builder.Services.AddSingleton(claudeConfig);
+// Singleton AnthropicClient so the connection pool is shared (see Civiti.Api/Program.cs).
+builder.Services.AddSingleton<AnthropicClient>(_ => new AnthropicClient(claudeConfig.ApiKey));
+builder.Services.AddSingleton<PartitionedRateLimiter<Guid>>(sp =>
+{
+    ClaudeConfiguration config = sp.GetRequiredService<ClaudeConfiguration>();
+    return PartitionedRateLimiter.Create<Guid, Guid>(userId =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            partitionKey: userId,
+            factory: _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = config.RateLimitPerMinute,
+                Window = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow = 6,
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
+builder.Services.AddScoped<IClaudeEnhancementService, ClaudeEnhancementService>();
 
 // Service graph — the subset IIssueService / IAuthorityService / IGamificationService transitively need.
 builder.Services.AddSingleton<IEmailTemplateService, EmailTemplateService>();
