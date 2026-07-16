@@ -30,6 +30,10 @@ public class IssueConfiguration : IEntityTypeConfiguration<Issue>
         builder.Property(i => i.ReviewedBy)
             .HasMaxLength(255);
 
+        // SHA-256 hex fingerprint of the prompt-affecting fields (64 chars); core is free text.
+        builder.Property(i => i.PetitionBodyContentHash)
+            .HasMaxLength(64);
+
         builder.Property(i => i.ReportCount)
             .HasDefaultValue(0);
 

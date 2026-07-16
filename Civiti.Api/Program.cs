@@ -326,7 +326,8 @@ ClaudeConfiguration claudeConfig = new()
     Model = GetEnvOrConfig("CLAUDE_MODEL", "Claude:Model") ?? ClaudeConfiguration.DefaultModel,
     MaxTokens = GetEnvOrConfigInt("CLAUDE_MAX_TOKENS", "Claude:MaxTokens", ClaudeConfiguration.DefaultMaxTokens),
     TimeoutSeconds = GetEnvOrConfigInt("CLAUDE_TIMEOUT_SECONDS", "Claude:TimeoutSeconds", ClaudeConfiguration.DefaultTimeoutSeconds),
-    RateLimitPerMinute = GetEnvOrConfigInt("CLAUDE_RATE_LIMIT_PER_MINUTE", "Claude:RateLimitPerMinute", ClaudeConfiguration.DefaultRateLimitPerMinute)
+    RateLimitPerMinute = GetEnvOrConfigInt("CLAUDE_RATE_LIMIT_PER_MINUTE", "Claude:RateLimitPerMinute", ClaudeConfiguration.DefaultRateLimitPerMinute),
+    PetitionCacheHours = GetEnvOrConfigInt("PETITION_CACHE_HOURS", "Claude:PetitionCacheHours", ClaudeConfiguration.DefaultPetitionCacheHours)
 };
 builder.Services.AddSingleton(claudeConfig);
 
@@ -532,6 +533,7 @@ builder.Services.AddScoped<IIssueService, IssueService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<IGamificationService, GamificationService>();
 builder.Services.AddScoped<IAuthorityService, AuthorityService>();
+builder.Services.AddScoped<IPetitionBodyCacheStore, PetitionBodyCacheStore>();
 builder.Services.AddScoped<IClaudeEnhancementService, ClaudeEnhancementService>();
 builder.Services.AddScoped<IActivityService, ActivityService>();
 builder.Services.AddScoped<ICommentService, CommentService>();

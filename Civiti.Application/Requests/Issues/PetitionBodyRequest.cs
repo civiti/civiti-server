@@ -35,9 +35,6 @@ public class PetitionBodyRequest
     /// <summary>Number of attached photos (drives the "anexez N fotografii" line).</summary>
     public int PhotoCount { get; set; }
 
-    /// <summary>When the issue was created (rendered as "Data sesizării").</summary>
-    public DateTime CreatedAt { get; set; }
-
     /// <summary>When true, ask the model for a fresh, differently-worded variation.</summary>
     public bool Regenerate { get; set; }
 }

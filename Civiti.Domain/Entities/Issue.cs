@@ -26,6 +26,13 @@ public class Issue
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    // Cached AI-composed petition argument core (see IPetitionBodyCacheStore). Nullable until
+    // first generated. ContentHash is a fingerprint of the prompt-affecting issue fields, so an
+    // edit that changes them invalidates the cache automatically; GeneratedAt drives the TTL.
+    public string? PetitionBodyCore { get; set; }
+    public string? PetitionBodyContentHash { get; set; }
+    public DateTime? PetitionBodyGeneratedAt { get; set; }
+
     // Navigation properties
     public UserProfile User { get; set; } = null!;
     public List<IssuePhoto> Photos { get; set; } = [];
