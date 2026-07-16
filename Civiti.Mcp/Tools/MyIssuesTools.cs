@@ -11,7 +11,10 @@ namespace Civiti.Mcp.Tools;
 /// §2.1 read tool. See Civiti.Mcp/docs/tool-inventory.md.
 /// </summary>
 [McpServerToolType]
-public sealed class MyIssuesTools(IIssueService issues, IMcpCitizenContext citizenContext)
+public sealed class MyIssuesTools(
+    IIssueService issues,
+    IMcpCitizenContext citizenContext,
+    IClaudeEnhancementService enhancement)
 {
     // Whitelist mirrors the cases IssueService.GetUserIssuesAsync recognises: "status",
     // "emails", and a default that falls through to CreatedAt sort (we expose that as "date").
@@ -58,5 +61,57 @@ public sealed class MyIssuesTools(IIssueService issues, IMcpCitizenContext citiz
             SortDescending = sortDescending ?? true
         };
         return await issues.GetUserIssuesAsync(auth.Context.SupabaseUserId, request);
+    }
+
+    [McpServerTool(Name = "generate_petition_body")]
+    [Description("Compose a ready-to-send Romanian petition email body for an issue. Returns the full text: an AI-composed argument core (problem → impact → demand) wrapped in the legally-required O.G. 27/2002 scaffold, with [BRACKETED] placeholders the citizen fills in from their own inbox. Set regenerate=true for a fresh, differently-worded variation. If AI is unavailable, returns a deterministic but still-compliant body. Requires civiti.read scope.")]
+    public async Task<object> GeneratePetitionBody(
+        [Description("Issue id (uuid) the petition is about.")] Guid issueId,
+        [Description("Set true to produce a fresh, differently-worded variation of the body.")] bool regenerate = false,
+        CancellationToken cancellationToken = default)
+    {
+        // ResolveCitizenAsync gives us the internal UserProfile.Id needed as the rate-limit key.
+        var auth = await citizenContext.ResolveCitizenAsync(cancellationToken);
+        if (!auth.Authorized)
+        {
+            return auth.ErrorPayload;
+        }
+
+        // Load server-side (block-list filtered); never trust client-supplied issue text.
+        var issue = await issues.GetIssueByIdAsync(issueId, auth.Context.InternalUserId);
+        if (issue is null)
+        {
+            return new { ok = false, reason = "not_found", message = "Issue not found or not publicly visible." };
+        }
+
+        var request = new PetitionBodyRequest
+        {
+            IssueId = issue.Id,
+            Title = issue.Title,
+            Category = issue.Category,
+            Address = issue.Address,
+            District = issue.District,
+            Description = issue.Description,
+            DesiredOutcome = issue.DesiredOutcome,
+            CommunityImpact = issue.CommunityImpact,
+            PhotoCount = issue.Photos.Count,
+            CreatedAt = issue.CreatedAt,
+            Regenerate = regenerate
+        };
+
+        var response = await enhancement.GeneratePetitionBodyAsync(request, auth.Context.InternalUserId);
+
+        if (response.IsRateLimited)
+        {
+            return new { ok = false, reason = "rate_limited", message = response.Warning };
+        }
+
+        return new
+        {
+            ok = true,
+            body = response.Body,
+            usedOriginalText = response.UsedOriginalText,
+            warning = response.Warning
+        };
     }
 }

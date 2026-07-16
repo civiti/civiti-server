@@ -292,6 +292,81 @@ public static class IssueEndpoints
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(429);
 
+        // POST /api/issues/{id}/petition-body
+        group.MapPost(ApiRoutes.Issues.PetitionBody, [Authorize] async Task<Results<Ok<PetitionBodyResponse>, NotFound, UnauthorizedHttpResult, ProblemHttpResult, StatusCodeHttpResult>> (
+            IClaudeEnhancementService enhancementService,
+            IIssueService issueService,
+            IUserService userService,
+            HttpContext httpContext,
+            Guid id,
+            PetitionBodyOptions? options) =>
+        {
+            var supabaseUserId = httpContext.User.GetSupabaseUserId();
+
+            if (string.IsNullOrEmpty(supabaseUserId))
+            {
+                return TypedResults.Unauthorized();
+            }
+
+            UserProfileResponse? userProfile;
+            try
+            {
+                userProfile = await userService.GetUserProfileAsync(supabaseUserId);
+            }
+            catch (AccountDeletedException)
+            {
+                return TypedResults.Problem(
+                    detail: DomainErrors.AccountDeleted,
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "Account Deleted");
+            }
+
+            if (userProfile == null)
+            {
+                return TypedResults.Unauthorized();
+            }
+
+            // Load the issue server-side (do not trust client-submitted text). Passing the
+            // caller's id applies the block-list filter, same as GET /api/issues/{id}.
+            IssueDetailResponse? issue = await issueService.GetIssueByIdAsync(id, userProfile.Id);
+            if (issue == null)
+            {
+                return TypedResults.NotFound();
+            }
+
+            var request = new PetitionBodyRequest
+            {
+                IssueId = issue.Id,
+                Title = issue.Title,
+                Category = issue.Category,
+                Address = issue.Address,
+                District = issue.District,
+                Description = issue.Description,
+                DesiredOutcome = issue.DesiredOutcome,
+                CommunityImpact = issue.CommunityImpact,
+                PhotoCount = issue.Photos.Count,
+                CreatedAt = issue.CreatedAt,
+                Regenerate = options?.Regenerate ?? false
+            };
+
+            PetitionBodyResponse response = await enhancementService.GeneratePetitionBodyAsync(request, userProfile.Id);
+
+            if (response.IsRateLimited)
+            {
+                return TypedResults.StatusCode(429);
+            }
+
+            return TypedResults.Ok(response);
+        })
+        .WithName("GeneratePetitionBody")
+        .WithSummary("Compose a ready-to-copy petition email body for an issue (requires authentication)")
+        .WithDescription("Uses Claude AI to compose a concise, coherent petition argument (problem → impact → demand), wrapped in the legally-required O.G. 27/2002 scaffold with bracketed placeholders the citizen fills in from their own email client. If AI is unavailable, returns a deterministic but still-compliant body. Rate limited per user per minute.")
+        .Produces<PetitionBodyResponse>()
+        .Produces(401)
+        .Produces(404)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(429);
+
         // GET /api/issues/{id}/poster
         group.MapGet(ApiRoutes.Issues.Poster, async Task<Results<FileContentHttpResult, NotFound>> (
             IPosterService posterService,
