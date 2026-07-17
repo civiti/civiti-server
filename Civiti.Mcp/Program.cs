@@ -250,7 +250,11 @@ var claudeConfig = new ClaudeConfiguration
     RateLimitPerMinute = int.TryParse(
         Environment.GetEnvironmentVariable("CLAUDE_RATE_LIMIT_PER_MINUTE")
             ?? builder.Configuration["Claude:RateLimitPerMinute"], out var claudeRate)
-        ? claudeRate : ClaudeConfiguration.DefaultRateLimitPerMinute
+        ? claudeRate : ClaudeConfiguration.DefaultRateLimitPerMinute,
+    PetitionCacheHours = int.TryParse(
+        Environment.GetEnvironmentVariable("PETITION_CACHE_HOURS")
+            ?? builder.Configuration["Claude:PetitionCacheHours"], out var petitionCacheHours)
+        ? petitionCacheHours : ClaudeConfiguration.DefaultPetitionCacheHours
 };
 builder.Services.AddSingleton(claudeConfig);
 // Singleton AnthropicClient so the connection pool is shared (see Civiti.Api/Program.cs).
@@ -270,6 +274,7 @@ builder.Services.AddSingleton<PartitionedRateLimiter<Guid>>(sp =>
                 AutoReplenishment = true
             }));
 });
+builder.Services.AddScoped<IPetitionBodyCacheStore, PetitionBodyCacheStore>();
 builder.Services.AddScoped<IClaudeEnhancementService, ClaudeEnhancementService>();
 
 // Service graph — the subset IIssueService / IAuthorityService / IGamificationService transitively need.

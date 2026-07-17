@@ -345,7 +345,6 @@ public static class IssueEndpoints
                 DesiredOutcome = issue.DesiredOutcome,
                 CommunityImpact = issue.CommunityImpact,
                 PhotoCount = issue.Photos.Count,
-                CreatedAt = issue.CreatedAt,
                 Regenerate = options?.Regenerate ?? false
             };
 

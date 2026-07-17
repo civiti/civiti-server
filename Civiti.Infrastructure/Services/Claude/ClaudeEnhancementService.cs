@@ -1,4 +1,5 @@
-using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
@@ -19,9 +20,14 @@ public class ClaudeEnhancementService(
     ILogger<ClaudeEnhancementService> logger,
     ClaudeConfiguration configuration,
     PartitionedRateLimiter<Guid> rateLimiter,
-    AnthropicClient anthropicClient)
+    AnthropicClient anthropicClient,
+    IPetitionBodyCacheStore petitionCache)
     : IClaudeEnhancementService
 {
+    // Bump when a change to the petition prompt (system/user) should invalidate every cached core.
+    // Scaffold-only changes need no bump — the scaffold is re-assembled live, only the AI core is cached.
+    private const string PetitionPromptVersion = "v1";
+
     private const string SystemPrompt = """
         Ești un asistent specializat în îmbunătățirea textelor pentru sesizări civice în România.
 
@@ -119,6 +125,38 @@ public class ClaudeEnhancementService(
     /// <inheritdoc />
     public async Task<PetitionBodyResponse> GeneratePetitionBodyAsync(PetitionBodyRequest request, Guid userId)
     {
+        var contentHash = ComputePetitionContentHash(request);
+        var cachingEnabled = configuration.PetitionCacheTtl > TimeSpan.Zero;
+
+        // Serve a fresh cached core without touching Claude or the rate limiter. The core is
+        // user-agnostic, so one entry serves every citizen viewing the issue; the content hash
+        // invalidates it on edit, the TTL bounds staleness. Regenerate deliberately bypasses this.
+        if (cachingEnabled && !request.Regenerate)
+        {
+            PetitionCoreCacheEntry? cached = null;
+            try
+            {
+                cached = await petitionCache.GetAsync(request.IssueId);
+            }
+            catch (Exception ex)
+            {
+                // A cache-read failure (transient DB error, etc.) must degrade to fresh generation,
+                // never fail the request — mirroring the resilience the write path already has.
+                logger.LogWarning(ex, "Petition cache read failed for issue {IssueId}; composing fresh", request.IssueId);
+            }
+
+            if (cached is not null
+                && cached.ContentHash == contentHash
+                && DateTime.UtcNow - cached.GeneratedAtUtc < configuration.PetitionCacheTtl)
+            {
+                return new PetitionBodyResponse
+                {
+                    Body = AssemblePetitionBody(cached.Core, request),
+                    UsedOriginalText = false
+                };
+            }
+        }
+
         // Fall back to a deterministic, still-compliant body when Claude is not configured.
         if (!configuration.IsConfigured)
         {
@@ -135,30 +173,30 @@ public class ClaudeEnhancementService(
 
         try
         {
-            var userPrompt = BuildPetitionUserPrompt(request);
-
-            MessageParameters messageRequest = new()
-            {
-                Model = configuration.Model,
-                MaxTokens = configuration.MaxTokens,
-                System = [new SystemMessage(PetitionCoreSystemPrompt)],
-                Messages = [new Message(RoleType.User, userPrompt)]
-            };
-
             using CancellationTokenSource cts = new(TimeSpan.FromSeconds(configuration.TimeoutSeconds));
-            MessageResponse? response = await anthropicClient.Messages.GetClaudeMessageAsync(messageRequest, cts.Token);
+            var rawCore = await RequestPetitionCoreAsync(request, cts.Token);
 
-            var core = response?.Content?
-                .OfType<TextContent>()
-                .Select(c => c.Text)
-                .FirstOrDefault();
-
-            core = string.IsNullOrWhiteSpace(core) ? null : CleanPetitionCore(core);
+            var core = string.IsNullOrWhiteSpace(rawCore) ? null : CleanPetitionCore(rawCore);
 
             if (string.IsNullOrWhiteSpace(core))
             {
                 logger.LogWarning("Empty or invalid petition core from Claude API");
                 return BuildFallbackPetitionResponse(request, "AI returned an empty response.");
+            }
+
+            // Cache only successful AI cores (never the deterministic fallback), so a transient AI
+            // failure never pins a degraded body for the whole TTL. A cache-write failure must not
+            // discard the body we already composed — log and serve it anyway.
+            if (cachingEnabled)
+            {
+                try
+                {
+                    await petitionCache.SetAsync(request.IssueId, core, contentHash, DateTime.UtcNow);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to cache petition core for issue {IssueId}", request.IssueId);
+                }
             }
 
             logger.LogInformation("Successfully composed petition body for issue {IssueId}", request.IssueId);
@@ -180,11 +218,58 @@ public class ClaudeEnhancementService(
         }
     }
 
+    /// <summary>
+    /// Sends the composed prompt to Claude and returns the raw (uncleaned) core text, or null when the
+    /// response carries no text. Isolated as a <c>protected virtual</c> seam so tests can drive the
+    /// AI-success path deterministically without a live API call; production behaviour is unchanged.
+    /// </summary>
+    protected virtual async Task<string?> RequestPetitionCoreAsync(PetitionBodyRequest request, CancellationToken cancellationToken)
+    {
+        var userPrompt = BuildPetitionUserPrompt(request);
+
+        MessageParameters messageRequest = new()
+        {
+            Model = configuration.Model,
+            MaxTokens = configuration.MaxTokens,
+            System = [new SystemMessage(PetitionCoreSystemPrompt)],
+            Messages = [new Message(RoleType.User, userPrompt)]
+        };
+
+        MessageResponse? response = await anthropicClient.Messages.GetClaudeMessageAsync(messageRequest, cancellationToken);
+
+        return response?.Content?
+            .OfType<TextContent>()
+            .Select(c => c.Text)
+            .FirstOrDefault();
+    }
+
     /// <inheritdoc />
     public bool IsRateLimited(Guid userId)
     {
         RateLimiterStatistics? statistics = rateLimiter.GetStatistics(userId);
         return statistics?.CurrentAvailablePermits == 0;
+    }
+
+    /// <summary>
+    /// SHA-256 fingerprint of the fields that feed the AI core (prompt version + the exact inputs
+    /// of <see cref="BuildPetitionUserPrompt"/>). Excludes IssueId/PhotoCount (scaffold-only, so a
+    /// new photo reuses the core) and Regenerate (a bypass flag). An edit to any prompt-affecting
+    /// field yields a new hash and thus a fresh generation. <c>internal</c> so tests can reproduce it.
+    /// </summary>
+    internal static string ComputePetitionContentHash(PetitionBodyRequest request)
+    {
+        // Unit-separator delimiter avoids field-boundary collisions (e.g. "ab"+"c" vs "a"+"bc").
+        var canonical = string.Join('\u001f',
+            PetitionPromptVersion,
+            request.Title ?? string.Empty,
+            request.Category.ToString(),
+            request.Address ?? string.Empty,
+            request.District ?? string.Empty,
+            request.Description ?? string.Empty,
+            request.DesiredOutcome ?? string.Empty,
+            request.CommunityImpact ?? string.Empty);
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 
     private static string BuildPetitionUserPrompt(PetitionBodyRequest request)
@@ -248,29 +333,26 @@ public class ClaudeEnhancementService(
     private static string AssemblePetitionBody(string core, PetitionBodyRequest request)
     {
         var location = FormatLocation(request.Address, request.District);
-        var createdDate = FormatDateRo(request.CreatedAt);
-        var currentDate = FormatDateRo(DateTime.UtcNow);
         var photosLine = FormatPhotosLine(request.PhotoCount);
 
         var factsBlock = string.Join('\n',
             $"Problemă: {request.Title}",
-            $"Locație: {location}",
-            $"Data sesizării: {createdDate}");
+            $"Locație: {location}");
 
         var documentationBlock = $"{photosLine}Documentație completă: https://civiti.ro/issues/{request.IssueId}";
 
         var signoff = string.Join('\n',
             "Cu stimă,",
             "[NUMELE TĂU COMPLET]",
-            currentDate);
+            "Telefon: [NUMĂRUL TĂU DE TELEFON]");
 
         return string.Join("\n\n",
             "Către: [NUMELE AUTORITĂȚII]",
-            "Subsemnatul/a [NUMELE TĂU COMPLET], CNP [CNP-UL TĂU], cu domiciliul în [ADRESA TA DE DOMICILIU] (email [ADRESA TA DE EMAIL], telefon [NUMĂRUL TĂU DE TELEFON]), vă adresez următoarea petiție:",
+            "Subsemnatul/a [NUMELE TĂU COMPLET], cu domiciliul în [ADRESA TA DE DOMICILIU], vă adresez următoarea petiție:",
             factsBlock,
             core,
             documentationBlock,
-            "Conform O.G. 27/2002, vă rog să îmi comunicați numărul de înregistrare al petiției și răspunsul în termenul legal de 30 de zile, prin email la [ADRESA TA DE EMAIL] sau la adresa de domiciliu.",
+            "Conform O.G. 27/2002, vă rog să îmi comunicați numărul de înregistrare al petiției și răspunsul în termenul legal de 30 de zile.",
             signoff);
     }
 
@@ -321,33 +403,6 @@ public class ClaudeEnhancementService(
         }
         var noun = photoCount == 1 ? "fotografie care documentează" : "fotografii care documentează";
         return $"La prezenta petiție anexez {photoCount} {noun} problema semnalată.\n";
-    }
-
-    // Stored timestamps (issue.CreatedAt) and DateTime.UtcNow are UTC; petition dates must read
-    // in Romanian local time (UTC+2/+3, DST-aware), matching what a citizen expects on the letter.
-    private static readonly TimeZoneInfo RomaniaTimeZone = ResolveRomaniaTimeZone();
-
-    private static TimeZoneInfo ResolveRomaniaTimeZone()
-    {
-        // IANA id resolves on Linux (Railway) and, via ICU, on modern .NET on Windows; the Windows
-        // registry id is the fallback. Degrade to UTC rather than throwing if tz data is missing.
-        foreach (var id in new[] { "Europe/Bucharest", "GTB Standard Time" })
-        {
-            try
-            {
-                return TimeZoneInfo.FindSystemTimeZoneById(id);
-            }
-            catch (TimeZoneNotFoundException) { }
-            catch (InvalidTimeZoneException) { }
-        }
-        return TimeZoneInfo.Utc;
-    }
-
-    private static string FormatDateRo(DateTime utc)
-    {
-        var asUtc = DateTime.SpecifyKind(utc, DateTimeKind.Utc);
-        var local = TimeZoneInfo.ConvertTimeFromUtc(asUtc, RomaniaTimeZone);
-        return local.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
     }
 
     private static PetitionBodyResponse BuildFallbackPetitionResponse(PetitionBodyRequest request, string warning) =>

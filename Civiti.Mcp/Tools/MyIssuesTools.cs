@@ -95,7 +95,6 @@ public sealed class MyIssuesTools(
             DesiredOutcome = issue.DesiredOutcome,
             CommunityImpact = issue.CommunityImpact,
             PhotoCount = issue.Photos.Count,
-            CreatedAt = issue.CreatedAt,
             Regenerate = regenerate
         };
 
