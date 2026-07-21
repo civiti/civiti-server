@@ -12,6 +12,13 @@ public partial class RegisterPushTokenRequest : IValidatableObject
     [Required(ErrorMessage = "Platform is required.")]
     public string Platform { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Optional stable per-installation identifier. When supplied, the server replaces this
+    /// device's previous token instead of leaving an orphaned row behind. Omitted by older clients.
+    /// </summary>
+    [MaxLength(200, ErrorMessage = "Device id must not exceed 200 characters.")]
+    public string? DeviceId { get; set; }
+
     [GeneratedRegex(@"^Expo(nent)?PushToken\[.+\]$")]
     private static partial Regex ExpoPushTokenRegex();
 

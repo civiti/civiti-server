@@ -10,27 +10,31 @@ public class PushTokenService(
     CivitiDbContext context,
     ILogger<PushTokenService> logger) : IPushTokenService
 {
-    public async Task RegisterTokenAsync(Guid userId, string token, string platform, CancellationToken ct = default)
+    public async Task RegisterTokenAsync(Guid userId, string token, string platform, string? deviceId = null, CancellationToken ct = default)
     {
         if (!Enum.TryParse<PushTokenPlatform>(platform, ignoreCase: true, out var parsedPlatform))
             throw new ArgumentException($"Invalid platform: {platform}. Must be 'ios' or 'android'.");
 
+        // Normalize empty/whitespace device ids to null so blank values don't collapse
+        // every deviceless row for the user into one.
+        var normalizedDeviceId = string.IsNullOrWhiteSpace(deviceId) ? null : deviceId;
+
         try
         {
-            await UpsertTokenAsync(userId, token, parsedPlatform, ct);
+            await UpsertTokenAsync(userId, token, parsedPlatform, normalizedDeviceId, ct);
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: "23505" })
         {
             // Unique-constraint violation: another request inserted the same token concurrently.
             // Retry once — the token now exists, so the upsert will take the update path.
             logger.LogDebug(ex, "Race condition detected registering token for user {UserId}, retrying once", userId);
-            await UpsertTokenAsync(userId, token, parsedPlatform, ct);
+            await UpsertTokenAsync(userId, token, parsedPlatform, normalizedDeviceId, ct);
         }
     }
 
     private const int MaxTokensPerUser = 10;
 
-    private async Task UpsertTokenAsync(Guid userId, string token, PushTokenPlatform platform, CancellationToken ct)
+    private async Task UpsertTokenAsync(Guid userId, string token, PushTokenPlatform platform, string? deviceId, CancellationToken ct)
     {
         var strategy = context.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async (cancellationToken) =>
@@ -50,6 +54,8 @@ public class PushTokenService(
                 }
 
                 existing.Platform = platform;
+                if (deviceId != null)
+                    existing.DeviceId = deviceId;
                 existing.UpdatedAt = DateTime.UtcNow;
             }
             else
@@ -58,11 +64,30 @@ public class PushTokenService(
                 {
                     UserId = userId,
                     Token = token,
-                    Platform = platform
+                    Platform = platform,
+                    DeviceId = deviceId
                 });
             }
 
             await context.SaveChangesAsync(cancellationToken);
+
+            // Collapse this device's stale tokens: a device re-registering with a rotated
+            // token should replace its old row, not accumulate one. Only applies when the
+            // client supplies a device id (older clients send none and keep prior behavior).
+            if (deviceId != null)
+            {
+                var supersededTokenIds = await context.PushTokens
+                    .Where(pt => pt.UserId == userId && pt.DeviceId == deviceId && pt.Token != token)
+                    .Select(pt => pt.Id)
+                    .ToListAsync(cancellationToken);
+
+                if (supersededTokenIds.Count > 0)
+                {
+                    await context.PushTokens
+                        .Where(pt => supersededTokenIds.Contains(pt.Id))
+                        .ExecuteDeleteAsync(cancellationToken);
+                }
+            }
 
             // Enforce per-user token cap by removing the oldest excess tokens.
             // ExecuteDeleteAsync bypasses the change tracker, but this is safe on retry:

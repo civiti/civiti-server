@@ -14,10 +14,16 @@ public class PushTokenConfiguration : IEntityTypeConfiguration<PushToken>
             .IsRequired()
             .HasMaxLength(255);
 
+        builder.Property(pt => pt.DeviceId)
+            .HasMaxLength(200);
+
         builder.HasIndex(pt => pt.Token)
             .IsUnique();
 
         builder.HasIndex(pt => pt.UserId);
+
+        // Supports collapsing a device's stale tokens on re-registration.
+        builder.HasIndex(pt => new { pt.UserId, pt.DeviceId });
 
         builder.HasOne(pt => pt.User)
             .WithMany()

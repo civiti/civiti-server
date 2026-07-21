@@ -37,7 +37,7 @@ public static class PushTokenEndpoints
                     return Results.NotFound(new { error = "User profile not found" });
                 }
 
-                await pushTokenService.RegisterTokenAsync(userId.Value, request.Token, request.Platform, ct);
+                await pushTokenService.RegisterTokenAsync(userId.Value, request.Token, request.Platform, request.DeviceId, ct);
                 return Results.Ok(new { success = true });
             }
             catch (ArgumentException ex)
