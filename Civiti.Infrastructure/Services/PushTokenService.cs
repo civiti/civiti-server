@@ -42,6 +42,22 @@ public class PushTokenService(
             context.ChangeTracker.Clear();
             await using var tx = await context.Database.BeginTransactionAsync(cancellationToken);
 
+            // Serialize concurrent registrations for the same (user, device). Without this,
+            // two overlapping transactions rotating the device's token each run the collapse
+            // below before the other's insert commits, so neither sees the other's row and
+            // both survive — leaving the device with duplicate tokens. The advisory lock is
+            // transaction-scoped (released on commit/rollback), so it composes with the retry
+            // execution strategy and forces the later registration to observe the earlier
+            // committed row. Postgres-only: the SQLite test provider serializes writes on its
+            // single connection and has no such function.
+            if (deviceId != null && context.Database.IsNpgsql())
+            {
+                var deviceLockKey = $"push-token:{userId:N}:{deviceId}";
+                await context.Database.ExecuteSqlAsync(
+                    $"SELECT pg_advisory_xact_lock(hashtextextended({deviceLockKey}, 0))",
+                    cancellationToken);
+            }
+
             PushToken? existing = await context.PushTokens
                 .FirstOrDefaultAsync(pt => pt.Token == token, cancellationToken);
 
