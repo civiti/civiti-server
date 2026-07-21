@@ -126,6 +126,57 @@ public class PushTokenServiceTests : IDisposable
                 .Append("ExponentPushToken[token_new]"));
     }
 
+    // ── RegisterTokenAsync: device-scoped replacement ──
+
+    [Fact]
+    public async Task Register_Should_Replace_Same_Device_Token_On_Rotation()
+    {
+        var userId = SeedUser();
+        var svc = CreateService();
+
+        await svc.RegisterTokenAsync(userId, "ExponentPushToken[old]", "ios", "device-A");
+        await svc.RegisterTokenAsync(userId, "ExponentPushToken[new]", "ios", "device-A");
+
+        using var verifyCtx = _dbFactory.CreateContext();
+        var tokens = await verifyCtx.PushTokens.Where(pt => pt.UserId == userId).ToListAsync();
+        tokens.Should().ContainSingle();
+        tokens[0].Token.Should().Be("ExponentPushToken[new]");
+        tokens[0].DeviceId.Should().Be("device-A");
+    }
+
+    [Fact]
+    public async Task Register_Should_Keep_Separate_Rows_For_Different_Devices()
+    {
+        var userId = SeedUser();
+        var svc = CreateService();
+
+        await svc.RegisterTokenAsync(userId, "ExponentPushToken[phone]", "ios", "device-A");
+        await svc.RegisterTokenAsync(userId, "ExponentPushToken[tablet]", "ios", "device-B");
+
+        using var verifyCtx = _dbFactory.CreateContext();
+        var tokens = await verifyCtx.PushTokens.Where(pt => pt.UserId == userId).ToListAsync();
+        tokens.Select(t => t.Token).Should().BeEquivalentTo(
+            "ExponentPushToken[phone]", "ExponentPushToken[tablet]");
+    }
+
+    [Fact]
+    public async Task Register_Without_DeviceId_Should_Not_Collapse_Deviceless_Tokens()
+    {
+        var userId = SeedUser();
+        var svc = CreateService();
+
+        // Older clients send no device id — their rows must both survive...
+        await svc.RegisterTokenAsync(userId, "ExponentPushToken[a]", "ios");
+        await svc.RegisterTokenAsync(userId, "ExponentPushToken[b]", "ios");
+        // ...and a blank device id must behave like "no device id", not collapse them.
+        await svc.RegisterTokenAsync(userId, "ExponentPushToken[c]", "ios", "   ");
+
+        using var verifyCtx = _dbFactory.CreateContext();
+        var tokens = await verifyCtx.PushTokens.Where(pt => pt.UserId == userId).ToListAsync();
+        tokens.Should().HaveCount(3);
+        tokens.Should().OnlyContain(pt => pt.DeviceId == null);
+    }
+
     // ── RegisterTokenAsync: invalid platform ──
 
     [Fact]
