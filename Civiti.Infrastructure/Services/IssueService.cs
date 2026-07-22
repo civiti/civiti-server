@@ -998,6 +998,19 @@ public class IssueService(
                 DateTime loadedUpdatedAt = issue!.UpdatedAt;
                 IssueStatus previousStatus = issue.Status;
 
+                // An issue that is publicly visible right now is showing content an admin
+                // approved, and this is the last moment that is still true. Capturing it here
+                // gives a diff baseline to every issue approved before the snapshot table
+                // existed, which is why this PR ships no data backfill: the alternative was a
+                // migration that rebuilt this JSON in SQL and ran against production the moment
+                // it merged. Only fills a gap — an existing snapshot is never overwritten, since
+                // an edit is not an approval.
+                if (IssueEditPolicy.IsPubliclyViewable(previousStatus))
+                {
+                    await IssueSnapshotStore.CaptureIfMissingAsync(
+                        context, issue, issue.ReviewedAt ?? issue.UpdatedAt);
+                }
+
                 // Claim the row with a conditional UPDATE before touching anything else.
                 //
                 // The comparison above comes from a snapshot: two owner requests can both read

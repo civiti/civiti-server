@@ -1,7 +1,8 @@
 # Owner Edit of an Issue + Re-Approval — Backend Implementation Plan
 
 > **Input:** [`edit-issue-backend-requirements.md`](../../edit-issue-backend-requirements.md) (repo root, 2026-07-22).
-> **Status:** PR 1 implemented (2026-07-22). PR 2 (admin re-review diff) not started.
+> **Status:** PR 1 merged (#152). PR 2 (admin re-review diff) implemented — with one deliberate
+> departure from §4.4: **no data backfill**, see below.
 > **Scope:** `PUT /api/user/issues/{id}` full-field owner edit, re-approval loop, admin re-review diff.
 >
 > **Product decisions confirmed 2026-07-22:** `description` min 10 enforced on create and edit;
@@ -211,10 +212,20 @@ IssueApprovedSnapshot            (NEW entity + table)
 - **No baseline case:** a never-approved issue returns `approvedSnapshot: null` and
   `changedFields: []`. The admin UI must render "first review" rather than "nothing changed" —
   a contract point to state explicitly for the frontend.
-- **Backfill** in the migration for issues currently `Active` or `Resolved` only: their present
-  content *is* the approved content. Deliberately **not** `Submitted`/`UnderReview` — some of
-  those may already hold post-edit content under today's behaviour, and snapshotting that would
-  fabricate a baseline that was never approved.
+- ~~**Backfill** in the migration for issues currently `Active` or `Resolved` only.~~
+  **Superseded during implementation — capture lazily instead.** The reasoning that justified a
+  backfill (a live issue's current content *is* its approved content) holds just as well at the
+  moment that issue is first edited, and that is the last instant it is still true. So
+  `UpdateIssueAsync` captures a snapshot for a publicly-viewable issue that has none, and the
+  migration is a bare `CREATE TABLE`.
+  - **Why this is better here:** the backfill would have had to rebuild the payload JSON in raw
+    SQL — including ordered photo URLs and joined authority names — and, with the `production`
+    branch gone, execute against live data the moment the PR merged. The lazy path reaches the
+    same state one issue at a time, in C#, through the same code that writes every other
+    snapshot, with no migration-time data risk at all.
+  - Same exclusion as before, for the same reason: only publicly-viewable statuses qualify.
+    A `Submitted`/`UnderReview` issue may already hold post-edit content, and snapshotting that
+    would fabricate a baseline nobody approved.
 - **Forward path:** relax the unique index from `IssueId` to `(IssueId, Version)` and this becomes
   the revision history of §11 Q12 without a rewrite.
 
@@ -285,16 +296,17 @@ edits — which need no diff — become correct immediately.
 | Tests | see §7 |
 | Docs | see §8 |
 
-### PR 2 — "Admin re-review diff + enable Active edits"
+### PR 2 — "Admin re-review diff + enable Active edits" ✅ implemented
 
 | Area | Files |
 |---|---|
-| Entity + config | `IssueApprovedSnapshot.cs`, `IssueApprovedSnapshotConfiguration.cs`, `CivitiDbContext` |
-| Migration | table + unique index + backfill for `Active`/`Resolved` |
-| Write | `AdminService.ApproveIssueAsync` — upsert snapshot inside the existing transaction |
-| Read | `AdminIssueDetailResponse` gains `approvedSnapshot`/`changedFields`; diff computation service |
-| Flip | add `Active` to `IssueEditPolicy` editable set |
-| Tests | snapshot written on approve + bulk approve; changed-field computation per field type; no-baseline case; `Active` → `Submitted` pulls from public |
+| Entity + payload | `IssueApprovedSnapshot.cs`, `Snapshots/IssueContentSnapshot.cs` |
+| Config + migration | `IssueApprovedSnapshotConfiguration.cs`, `CivitiDbContext`, `AddIssueApprovedSnapshots` (bare `CREATE TABLE` — no backfill, see §4.4) |
+| Diff | `Civiti.Application/Diffing/IssueSnapshotDiff.cs` + `IssueDiffFields` |
+| Write | `IssueSnapshotStore` — captured by `AdminService.ApproveIssueAsync` on approval, and by `IssueService.UpdateIssueAsync` on the first edit of a live issue |
+| Read | `AdminIssueDetailResponse.ApprovedSnapshot` / `.ChangedFields` |
+| Flip | `Active` added to `IssueEditPolicy.EditableStatuses` |
+| Tests | 25 new: per-field diff semantics, approve + bulk approve capture, re-approval moves the baseline, lazy capture, no-overwrite, no-baseline case, `Active` → `Submitted` pulls from public, full approve → edit → re-approve loop with counters intact |
 
 > **Deployment note.** All Railway services deploy from `master` (the `production` branch was
 > dropped on 2026-07-22), and Civiti-Server runs `Database.MigrateAsync()` at startup — so PR 2's

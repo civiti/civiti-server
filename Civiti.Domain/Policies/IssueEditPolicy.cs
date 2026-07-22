@@ -18,20 +18,28 @@ public static class IssueEditPolicy
     /// are terminal; <see cref="IssueStatus.Unspecified"/> is invalid.
     /// </para>
     /// <para>
-    /// <see cref="IssueStatus.Active"/> is pending the admin re-review diff — editing a live,
-    /// already-approved issue pulls it from public view and preserves its supporter counters,
-    /// which is only safe once a reviewer can see what changed. See
-    /// docs/technical/edit-issue-implementation-plan.md §4.4.
+    /// <see cref="IssueStatus.Active"/> is editable, but only because the admin re-review diff
+    /// exists: editing a live issue pulls it from public view until re-approved while preserving
+    /// its supporter counters, so a reviewer has to be able to see what changed. Removing the
+    /// diff would mean removing this too.
     /// </para>
     /// </summary>
     public static readonly IReadOnlyList<IssueStatus> EditableStatuses =
     [
         IssueStatus.Rejected,
         IssueStatus.Submitted,
-        IssueStatus.UnderReview
+        IssueStatus.UnderReview,
+        IssueStatus.Active
     ];
 
     public static bool IsEditable(IssueStatus status) => EditableStatuses.Contains(status);
+
+    /// <summary>
+    /// Statuses in which an issue is visible to the public. An edit moves an issue out of this
+    /// set until it is re-approved.
+    /// </summary>
+    public static bool IsPubliclyViewable(IssueStatus status) =>
+        status is IssueStatus.Active or IssueStatus.Resolved;
 
     /// <summary>
     /// The status an issue lands in after its owner edits and resubmits it.

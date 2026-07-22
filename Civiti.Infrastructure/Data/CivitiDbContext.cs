@@ -34,6 +34,7 @@ public class CivitiDbContext(DbContextOptions<CivitiDbContext> options)
     public DbSet<Report> Reports { get; set; } = null!;
     public DbSet<BlockedUser> BlockedUsers { get; set; } = null!;
     public DbSet<AdminIssueNotification> AdminIssueNotifications { get; set; } = null!;
+    public DbSet<IssueApprovedSnapshot> IssueApprovedSnapshots { get; set; } = null!;
     public DbSet<McpSession> McpSessions { get; set; } = null!;
     public DbSet<McpUserClientPreference> McpUserClientPreferences { get; set; } = null!;
 
@@ -63,6 +64,7 @@ public class CivitiDbContext(DbContextOptions<CivitiDbContext> options)
         modelBuilder.ApplyConfiguration(new ReportConfiguration());
         modelBuilder.ApplyConfiguration(new BlockedUserConfiguration());
         modelBuilder.ApplyConfiguration(new AdminIssueNotificationConfiguration());
+        modelBuilder.ApplyConfiguration(new IssueApprovedSnapshotConfiguration());
         modelBuilder.ApplyConfiguration(new McpSessionConfiguration());
         modelBuilder.ApplyConfiguration(new McpUserClientPreferenceConfiguration());
 

@@ -185,6 +185,7 @@ public class IssueServiceUpdateTests : IDisposable
     [InlineData(IssueStatus.Rejected, IssueStatus.Submitted)]
     [InlineData(IssueStatus.Submitted, IssueStatus.Submitted)]
     [InlineData(IssueStatus.UnderReview, IssueStatus.UnderReview)]
+    [InlineData(IssueStatus.Active, IssueStatus.Submitted)]
     public async Task UpdateIssue_Should_Land_On_The_Expected_Status(IssueStatus from, IssueStatus expected)
     {
         var (owner, issue) = await SeedIssueAsync(from);
@@ -201,10 +202,6 @@ public class IssueServiceUpdateTests : IDisposable
     [InlineData(IssueStatus.Cancelled)]
     [InlineData(IssueStatus.Unspecified)]
     [InlineData(IssueStatus.Draft)]
-    // Active is intentionally here for now: editing a live issue stays closed until the admin
-    // re-review diff ships, because it would preserve supporter counters while silently
-    // replacing the approved content.
-    [InlineData(IssueStatus.Active)]
     public async Task UpdateIssue_Should_Refuse_A_Non_Editable_Status(IssueStatus status)
     {
         var (owner, issue) = await SeedIssueAsync(status);
@@ -238,6 +235,103 @@ public class IssueServiceUpdateTests : IDisposable
             new GetPendingIssuesRequest { Page = 1, PageSize = 20 });
 
         pending.Items.Should().ContainSingle(i => i.Id == issue.Id);
+    }
+
+    // ── Editing a live issue ──
+
+    [Fact]
+    public async Task UpdateIssue_Should_Pull_An_Active_Issue_From_Public_View()
+    {
+        // The accepted v1 trade-off: an edited live issue stops being public until an admin
+        // re-approves it. Shared links 404 in the meantime.
+        var (owner, issue) = await SeedIssueAsync(IssueStatus.Active);
+
+        var result = await CreateService().UpdateIssueAsync(
+            issue.Id, ValidRequest(issue.UpdatedAt), owner.SupabaseUserId);
+
+        result.Outcome.Should().Be(UpdateIssueOutcome.Success);
+        result.Issue!.Status.Should().Be(IssueStatus.Submitted);
+
+        var publicList = await CreateService().GetAllIssuesAsync(
+            new GetIssuesRequest { Page = 1, PageSize = 50 });
+        publicList.Items.Should().NotContain(i => i.Id == issue.Id);
+
+        // ...but its owner can still read it, which is what keeps the edit form working.
+        (await CreateService().GetIssueByIdAsync(issue.Id, owner.Id)).Should().NotBeNull();
+        (await CreateService().GetIssueByIdAsync(issue.Id)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task UpdateIssue_Should_Capture_A_Diff_Baseline_When_Editing_A_Live_Issue()
+    {
+        // An issue that is public right now is showing content an admin approved, and the edit
+        // is the last moment that is still true. This is what gives a baseline to issues
+        // approved before the snapshot table existed, in place of a data backfill.
+        var (owner, issue) = await SeedIssueAsync(IssueStatus.Active);
+
+        await CreateService().UpdateIssueAsync(
+            issue.Id, ValidRequest(issue.UpdatedAt), owner.SupabaseUserId);
+
+        using var ctx = _dbFactory.CreateContext();
+        IssueApprovedSnapshot snapshot = await ctx.IssueApprovedSnapshots.AsNoTracking()
+            .SingleAsync(s => s.IssueId == issue.Id);
+
+        // The pre-edit content, not the replacement.
+        snapshot.Payload.Should().Contain(issue.Title);
+        snapshot.Payload.Should().NotContain("Updated title");
+        snapshot.ApprovedByUserId.Should().BeNull("the approval predates the snapshot table");
+    }
+
+    [Fact]
+    public async Task UpdateIssue_Should_Not_Capture_A_Baseline_For_A_Never_Approved_Issue()
+    {
+        // A Rejected issue has no approved version, so there is nothing to diff against and
+        // inventing a baseline would show the reviewer a comparison that never happened.
+        var (owner, issue) = await SeedIssueAsync(IssueStatus.Rejected);
+
+        await CreateService().UpdateIssueAsync(
+            issue.Id, ValidRequest(issue.UpdatedAt), owner.SupabaseUserId);
+
+        using var ctx = _dbFactory.CreateContext();
+        (await ctx.IssueApprovedSnapshots.AnyAsync(s => s.IssueId == issue.Id)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task UpdateIssue_Should_Not_Overwrite_An_Existing_Baseline()
+    {
+        // An edit is not an approval. If the owner edits a live issue twice in a row, the
+        // baseline must stay at the last version an admin actually signed off.
+        var (owner, issue) = await SeedIssueAsync(IssueStatus.Active);
+
+        var first = await CreateService().UpdateIssueAsync(
+            issue.Id, ValidRequest(issue.UpdatedAt), owner.SupabaseUserId);
+        first.Outcome.Should().Be(UpdateIssueOutcome.Success);
+
+        // Put it back to Active without going through approval, so the second edit is allowed
+        // and would re-trigger the capture if it were not guarded.
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            Issue live = await ctx.Issues.FirstAsync(i => i.Id == issue.Id);
+            live.Status = IssueStatus.Active;
+            await ctx.SaveChangesAsync();
+        }
+
+        DateTime token;
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            token = (await ctx.Issues.AsNoTracking().FirstAsync(i => i.Id == issue.Id)).UpdatedAt;
+        }
+
+        UpdateIssueRequest second = ValidRequest(token);
+        second.Title = "Second edit";
+        (await CreateService().UpdateIssueAsync(issue.Id, second, owner.SupabaseUserId))
+            .Outcome.Should().Be(UpdateIssueOutcome.Success);
+
+        using var verifyCtx = _dbFactory.CreateContext();
+        IssueApprovedSnapshot snapshot = await verifyCtx.IssueApprovedSnapshots.AsNoTracking()
+            .SingleAsync(s => s.IssueId == issue.Id);
+        snapshot.Payload.Should().Contain(issue.Title, "the baseline is still the approved version");
+        snapshot.Payload.Should().NotContain("Second edit");
     }
 
     // ── Optimistic concurrency ──
@@ -366,10 +460,11 @@ public class IssueServiceUpdateTests : IDisposable
             .Setup(m => m.ModerateContentAsync(It.IsAny<string>()))
             .ReturnsAsync(() =>
             {
+                // Only the status moves, so this isolates the status re-check rather than
+                // tripping the concurrency token as well.
                 using var ctx = _dbFactory.CreateContext();
                 Issue concurrent = ctx.Issues.First(i => i.Id == issue.Id);
-                concurrent.Status = IssueStatus.Active;
-                concurrent.UpdatedAt = DateTime.UtcNow.AddSeconds(5);
+                concurrent.Status = IssueStatus.Resolved;
                 ctx.SaveChanges();
 
                 return new ContentModerationResponse { IsAllowed = true };
@@ -383,7 +478,7 @@ public class IssueServiceUpdateTests : IDisposable
         using var verifyCtx = _dbFactory.CreateContext();
         Issue untouched = await verifyCtx.Issues.AsNoTracking().FirstAsync(i => i.Id == issue.Id);
         untouched.Title.Should().Be(issue.Title);
-        untouched.Status.Should().Be(IssueStatus.Active);
+        untouched.Status.Should().Be(IssueStatus.Resolved);
     }
 
     [Theory]
