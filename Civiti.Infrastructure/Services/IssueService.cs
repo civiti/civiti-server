@@ -976,9 +976,16 @@ public class IssueService(
                         UpdateIssueOutcome.AccountDeleted, DomainErrors.AccountDeleted);
                 }
 
+                // Authority is loaded, not just the link rows: the snapshot captured below
+                // records authorities by name and email, and a predefined link carries neither
+                // of its own. Without it the baseline would store blanks and every later diff
+                // would report the authorities as changed — noise on precisely the field a
+                // reviewer most needs to trust, since redirecting an approved petition is the
+                // edit worth catching.
                 Issue? issue = await context.Issues
                     .Include(i => i.Photos)
                     .Include(i => i.IssueAuthorities)
+                        .ThenInclude(ia => ia.Authority)
                     .FirstOrDefaultAsync(i => i.Id == issueId);
 
                 // Re-run every precondition against the state as it is now: the pre-flight above
@@ -997,6 +1004,19 @@ public class IssueService(
                 DateTime now = UtcTimestamp.Now();
                 DateTime loadedUpdatedAt = issue!.UpdatedAt;
                 IssueStatus previousStatus = issue.Status;
+
+                // An issue that is publicly visible right now is showing content an admin
+                // approved, and this is the last moment that is still true. Capturing it here
+                // gives a diff baseline to every issue approved before the snapshot table
+                // existed, which is why this PR ships no data backfill: the alternative was a
+                // migration that rebuilt this JSON in SQL and ran against production the moment
+                // it merged. Only fills a gap — an existing snapshot is never overwritten, since
+                // an edit is not an approval.
+                if (IssueEditPolicy.IsPubliclyViewable(previousStatus))
+                {
+                    await IssueSnapshotStore.CaptureIfMissingAsync(
+                        context, issue, issue.ReviewedAt ?? issue.UpdatedAt);
+                }
 
                 // Claim the row with a conditional UPDATE before touching anything else.
                 //

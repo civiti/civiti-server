@@ -456,6 +456,40 @@ CREATE POLICY "Users can insert own email tracking" ON public.email_trackings
     ));
 ```
 
+### 8. Issue Approved Snapshots Table
+
+Stores the content of an issue as an admin last approved it, so a later owner edit can be shown to
+the next reviewer as a field-level diff. Without it, an issue approved on benign content could be
+edited into something else and re-approved unnoticed while keeping every supporter it had earned —
+see [`docs/api/endpoints/issue-edit.md`](api/endpoints/issue-edit.md).
+
+Created by EF Core migration `AddIssueApprovedSnapshots`, so the identifiers are the quoted
+PascalCase ones EF generates rather than the snake_case style sketched elsewhere in this document:
+
+```sql
+CREATE TABLE "IssueApprovedSnapshots" (
+    "IssueId"          uuid PRIMARY KEY REFERENCES "Issues"("Id") ON DELETE CASCADE,
+    "ApprovedAt"       timestamptz NOT NULL,
+    "ApprovedByUserId" uuid NULL,        -- null when the approval predates this table
+    "Payload"          text NOT NULL     -- serialised IssueContentSnapshot
+);
+```
+
+**One row per issue.** The key is the issue id alone rather than a `(IssueId, Version)` pair;
+full revision history would be that change and nothing else, which is why the table is shaped
+this way.
+
+**`Payload` is text, not `jsonb`.** It is only ever read back whole and deserialised, never
+queried into, so a JSON column type would buy nothing while making the entity provider-specific
+(the test harness runs on SQLite). It holds the reviewable content only: title, description,
+category, address, district, coordinates, urgency, desired outcome, community impact, the ordered
+photo URLs, and the authorities by name and email. Deliberately not status, supporter counters or
+the creator — nothing the owner cannot change.
+
+**Written in two places, each inside the transaction of the change it describes:** on approval,
+and on the first edit of an already-live issue (whose pre-edit content *is* the approved content).
+The second path is why the migration carries no data backfill.
+
 ## 🚀 Database Functions and Triggers
 
 ### 1. Update Timestamps Trigger

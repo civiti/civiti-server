@@ -33,24 +33,25 @@ this page covers the flow and the decisions behind it.
 | `Rejected` | yes | The original flow — fix what the reviewer objected to |
 | `Submitted` | yes | Fix a mistake spotted right after submitting |
 | `UnderReview` | yes | Content is updated in place; the status is left alone |
-| `Active` | **not yet** | Pending the admin re-review diff — see below |
+| `Active` | yes | The live-issue case — see below |
 | `Resolved`, `Cancelled` | no | Terminal |
 | `Draft` | no | Unreachable: issue creation always produces `Submitted` |
 | `Unspecified` | no | Invalid |
 
 Anything outside the editable set returns `409` with code `ISSUE_NOT_EDITABLE`.
 
-### Why `Active` is still closed
+### Editing a live issue
 
-Editing a live issue is the point of this feature, but it is only safe alongside a field-level
-diff on the admin re-review screen. An edited `Active` issue keeps its supporter counters
-(`emailsSent`, `communityVotes`) and drops back to `Submitted`, which pulls it from public view
-until re-approved. Without a diff, a reviewer re-approving it sees a wall of text with no
-indication of what changed — so an issue approved on benign content could be quietly swapped for
-spam and keep every endorsement it had earned.
+An edited `Active` issue drops to `Submitted`, which **pulls it from public view until an admin
+re-approves it**. Shared, QR-coded and indexed links return not-found in the meantime, and if the
+reviewer rejects the edit the previously-approved public version is gone — there is no revision
+history to roll back to. That is the accepted v1 trade-off; the owner can still read and re-edit
+the issue throughout.
 
-The diff (a last-approved snapshot captured at approve time, plus a computed `changedFields`)
-ships separately; `Active` joins `IssueEditPolicy.EditableStatuses` in the same change.
+The issue keeps its supporter counters across the edit. That combination — preserved endorsements
+plus fully replaced content — is only safe if the reviewer can see what actually changed, which
+is what the [approved-content snapshot](#admin-re-review-diff) provides. **The diff is not
+optional garnish: remove it and `Active` has to come out of the editable set with it.**
 
 ## Optimistic concurrency
 
@@ -108,12 +109,83 @@ fails validation by name instead of binding to `0.0` — the Gulf of Guinea.
 
 ### Photos
 
-Ordered; index 0 becomes the primary photo. Responses order photos deterministically (primary
-first, then oldest first, then by id) so that convention round-trips.
+Ordered; index 0 becomes the primary photo. The position is **stored** on each row
+(`IssuePhoto.DisplayOrder`) rather than inferred, and every read path orders by it through
+`IssuePhotoOrdering.InDisplayOrder`.
+
+Inferring it does not work: a photo set is written in one go, so every row shares a `CreatedAt`
+and the id tiebreak is a fresh random GUID — photos would come back in an arbitrary sequence and
+re-submitting an unchanged list would read as a change in the re-review diff. Rows predating the
+column are all `0` and fall back to the previous ordering; since a photo set is always replaced
+wholesale, a single issue never mixes the two.
 
 **Known gap:** photos dropped from the list are unlinked from the issue but their blobs stay in
 Supabase Storage, still reachable by URL. The backend has no storage client, so collecting them
 needs a storage adapter and a sweep job. Tracked, not shipped.
+
+## Admin re-review diff
+
+`GET /api/admin/issues/{id}` returns, alongside the pending content:
+
+- `approvedSnapshot` — the content as an admin last approved it, or `null`
+- `changedFields` — which fields differ from it
+
+```jsonc
+{
+  "title": "A completely different headline",   // the pending version
+  // ...
+  "approvedSnapshot": {
+    "approvedAt": "2026-07-01T10:00:00Z",
+    "title": "Groapă pe strada Mihai Eminescu",
+    "photoUrls": ["https://.../a.jpg"],
+    "authorities": [{ "name": "Primăria Sector 1", "email": "contact@ps1.ro" }]
+    // ...the rest of the reviewable content
+  },
+  "changedFields": ["title", "location", "authorities"]
+}
+```
+
+> **`approvedSnapshot: null` means "first review", not "nothing changed".** Both cases give an
+> empty `changedFields`, so the client must branch on the snapshot's presence. Rendering a
+> never-approved issue as "unchanged" would be exactly backwards.
+
+Possible `changedFields` values: `title`, `description`, `category`, `address`, `district`,
+`location`, `urgency`, `desiredOutcome`, `communityImpact`, `photos`, `authorities`.
+
+### Comparison semantics
+
+Computed server-side, because the rules are not obvious and a client should not have to
+re-derive them:
+
+- **`location`** covers latitude and longitude together — a coordinate is one thing to a
+  reviewer. Compared exactly, with no tolerance: any tolerance wide enough to absorb float noise
+  from a map widget is also wide enough to hide a deliberate small move. Over-reporting is cheap
+  (the reviewer looks and sees the same address); under-reporting defeats the purpose.
+- **Null and empty are the same value.** A legacy issue with a null `district` that the owner
+  leaves blank has not changed anything.
+- **Photos are ordered**, because index 0 is the primary photo — a reorder changes what the
+  public sees.
+- **Authorities are unordered.** Which institutions are targeted is meaningful; the sequence is
+  not. Compared by name and (case-insensitive) email, so renaming a predefined authority or
+  swapping in a different recipient both register.
+
+### Where the baseline comes from
+
+Two write paths, both in the same transaction as the change they describe:
+
+1. **On approval** — `ApproveIssueAsync` records what it just approved, replacing any earlier
+   snapshot. Bulk approve routes through the same method and is covered automatically.
+2. **On editing a live issue** — if the issue is currently public and has no snapshot yet, its
+   pre-edit content *is* the approved content, and that is captured before the replacement is
+   applied. `approvedByUserId` is null for these: the approval predates the table and inventing
+   an actor would be worse than admitting we do not know.
+
+Path 2 is why this shipped **without a data backfill**. The alternative was a migration that
+rebuilt the same JSON in SQL across every live issue and executed against production the moment
+it merged; the lazy capture reaches the same state, one issue at a time, at the only moment that
+matters. The migration is a bare `CREATE TABLE`.
+
+An edit never overwrites an existing snapshot — an edit is not an approval.
 
 ## Known gap: the admin announcement is best-effort
 

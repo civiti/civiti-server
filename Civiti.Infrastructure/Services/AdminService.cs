@@ -1,6 +1,10 @@
 using Civiti.Infrastructure.Data;
+using Civiti.Infrastructure.Services.Issues;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Entities;
+using Civiti.Domain.Snapshots;
+using Civiti.Domain.Time;
+using Civiti.Application.Diffing;
 using Civiti.Application.Requests.Admin;
 using Civiti.Application.Responses.Admin;
 using Civiti.Application.Responses.Authority;
@@ -134,6 +138,25 @@ public class AdminService(
             var userResolvedIssues = await context.Issues
                 .CountAsync(i => i.UserId == issue.UserId && i.Status == IssueStatus.Resolved);
 
+            // The diff against the last approved version. Computed here rather than in the admin
+            // UI because the comparison carries semantics a client should not re-derive — null
+            // and empty are the same, photo order matters while authority order does not, and a
+            // coordinate is one field. Absent for an issue that has never been approved, which
+            // the client must render as "first review" rather than as "nothing changed".
+            (IssueContentSnapshot Content, DateTime ApprovedAt)? approved =
+                await IssueSnapshotStore.TryReadAsync(context, issueId);
+
+            ApprovedIssueSnapshotResponse? approvedSnapshot = null;
+            List<string> changedFields = [];
+
+            if (approved != null)
+            {
+                approvedSnapshot = ToSnapshotResponse(approved.Value.Content, approved.Value.ApprovedAt);
+                changedFields = IssueSnapshotDiff
+                    .Compare(approved.Value.Content, IssueContentSnapshot.From(issue))
+                    .ToList();
+            }
+
             return new AdminIssueDetailResponse
             {
                 Id = issue.Id,
@@ -161,7 +184,7 @@ public class AdminService(
                 UserTotalIssues = userTotalIssues,
                 UserResolvedIssues = userResolvedIssues,
                 UserPoints = issue.User?.Points ?? 0,
-                Photos = issue.Photos.Select(p => new AdminIssuePhotoResponse
+                Photos = issue.Photos.InDisplayOrder().Select(p => new AdminIssuePhotoResponse
                 {
                     Id = p.Id,
                     Url = p.Url,
@@ -192,7 +215,9 @@ public class AdminService(
                     NewStatus = aa.NewStatus,
                     CreatedAt = aa.CreatedAt
                 }).ToList(),
-                EmailsSent = issue.EmailsSent
+                EmailsSent = issue.EmailsSent,
+                ApprovedSnapshot = approvedSnapshot,
+                ChangedFields = changedFields
             };
         }
         catch (Exception ex)
@@ -201,6 +226,27 @@ public class AdminService(
             throw;
         }
     }
+
+    private static ApprovedIssueSnapshotResponse ToSnapshotResponse(
+        IssueContentSnapshot content,
+        DateTime approvedAt) => new()
+    {
+        ApprovedAt = approvedAt,
+        Title = content.Title,
+        Description = content.Description,
+        Category = content.Category,
+        Address = content.Address,
+        District = content.District,
+        Latitude = content.Latitude,
+        Longitude = content.Longitude,
+        Urgency = content.Urgency,
+        DesiredOutcome = content.DesiredOutcome,
+        CommunityImpact = content.CommunityImpact,
+        PhotoUrls = [.. content.PhotoUrls],
+        Authorities = content.Authorities
+            .Select(a => new ApprovedIssueAuthorityResponse { Name = a.Name, Email = a.Email })
+            .ToList()
+    };
 
     public async Task<IssueActionResponse> ApproveIssueAsync(Guid issueId, ApproveIssueRequest request, string adminUserId)
     {
@@ -212,8 +258,14 @@ public class AdminService(
             // Clear change tracker to ensure fresh data on retry
             context.ChangeTracker.Clear();
 
+            // Photos and authorities are loaded because approval also records what was approved
+            // (see IssueSnapshotStore) — the snapshot has to cover the whole reviewed content,
+            // not just the scalar fields.
             Issue? issue = await context.Issues
                 .Include(i => i.User)
+                .Include(i => i.Photos)
+                .Include(i => i.IssueAuthorities)
+                    .ThenInclude(ia => ia.Authority)
                 .FirstOrDefaultAsync(i => i.Id == issueId);
 
             if (issue == null)
@@ -252,11 +304,18 @@ public class AdminService(
             {
                 // Update issue
                 var previousStatus = issue.Status.ToString();
+                DateTime approvedAt = UtcTimestamp.Now();
                 issue.Status = IssueStatus.Active;
-                issue.ReviewedAt = DateTime.UtcNow;
+                issue.ReviewedAt = approvedAt;
                 issue.ReviewedBy = adminUser.DisplayName;
                 issue.AdminNotes = request.AdminNotes;
-                issue.UpdatedAt = DateTime.UtcNow;
+                issue.UpdatedAt = approvedAt;
+
+                // Record what was approved, so a later owner edit can be shown to the next
+                // reviewer as a diff instead of as an unchanged-looking wall of text. In the
+                // same transaction as the approval: a snapshot that disagrees with the issue's
+                // status would produce a diff against content nobody approved.
+                await IssueSnapshotStore.CaptureAsync(context, issue, adminUser.Id, approvedAt);
 
                 // Create admin action record
                 context.AdminActions.Add(new AdminAction

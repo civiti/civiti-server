@@ -541,15 +541,16 @@ JWT. The client performs no authorization.
 | `resubmit` | yes | Must be `true` — see below |
 | `expectedUpdatedAt` | yes | The `updatedAt` last read for this issue |
 
-**Editable statuses**: `Rejected`, `Submitted`, `UnderReview`. Anything else returns `409`
-with code `ISSUE_NOT_EDITABLE`. (`Active` becomes editable once the admin re-review diff
-ships; `Draft` is unreachable — issue creation always produces `Submitted`.)
+**Editable statuses**: `Rejected`, `Submitted`, `UnderReview`, `Active`. Anything else returns
+`409` with code `ISSUE_NOT_EDITABLE`. (`Draft` is unreachable — issue creation always produces
+`Submitted`.)
 
 **Status after a successful edit**:
 
 | From | To |
 |---|---|
 | `Rejected` | `Submitted` |
+| `Active` | `Submitted` — **the issue leaves public view until re-approved** |
 | `Submitted` | `Submitted` (unchanged) |
 | `UnderReview` | `UnderReview` (unchanged) |
 
@@ -739,6 +740,43 @@ Get detailed issue information for admin review.
   ]
 }
 ```
+
+**Re-review diff.** When the issue is back in the queue because its owner edited it, the response
+also carries the version an admin last approved and the list of fields that differ from it:
+
+```jsonc
+{
+  // ...the pending version, as above
+  "approvedSnapshot": {
+    "approvedAt": "2026-07-01T10:00:00Z",
+    "title": "Groapă pe strada Mihai Eminescu",
+    "description": "...",
+    "category": "Infrastructure",
+    "address": "Strada Mihai Eminescu, Nr. 45",
+    "district": "Sector 2",
+    "latitude": 44.4268,
+    "longitude": 26.1025,
+    "urgency": "medium",
+    "desiredOutcome": "...",
+    "communityImpact": "...",
+    "photoUrls": ["https://.../a.jpg"],
+    "authorities": [{ "name": "Primăria Sector 1", "email": "contact@ps1.ro" }]
+  },
+  "changedFields": ["title", "location", "authorities"]
+}
+```
+
+`changedFields` values: `title`, `description`, `category`, `address`, `district`, `location`
+(latitude and longitude together), `urgency`, `desiredOutcome`, `communityImpact`, `photos`,
+`authorities`.
+
+> **`approvedSnapshot` is `null` for an issue that has never been approved — that means "first
+> review", not "nothing changed".** Both cases return an empty `changedFields`, so branch on the
+> snapshot's presence, not on the array being empty.
+
+Comparison rules (applied server-side): null and empty are the same value; photos are compared in
+order because index 0 is the primary photo; authorities are compared without regard to order, by
+name and case-insensitive email; coordinates are compared exactly.
 
 ---
 

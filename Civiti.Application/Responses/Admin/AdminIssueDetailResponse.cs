@@ -94,6 +94,65 @@ public class AdminIssueDetailResponse
 
     /// <summary>Total emails sent for this issue</summary>
     public int EmailsSent { get; set; }
+
+    /// <summary>
+    /// The content as an admin last approved it, or <c>null</c> if this issue has never been
+    /// approved.
+    /// <para>
+    /// <b>Null means "first review", not "nothing changed"</b> — the two must not render the
+    /// same way. Use <see cref="ChangedFields"/> only when this is present.
+    /// </para>
+    /// </summary>
+    public ApprovedIssueSnapshotResponse? ApprovedSnapshot { get; set; }
+
+    /// <summary>
+    /// Which fields differ from <see cref="ApprovedSnapshot"/>: any of <c>title</c>,
+    /// <c>description</c>, <c>category</c>, <c>address</c>, <c>district</c>, <c>location</c>,
+    /// <c>urgency</c>, <c>desiredOutcome</c>, <c>communityImpact</c>, <c>photos</c>,
+    /// <c>authorities</c>.
+    /// <para>
+    /// Empty when the content is unchanged since approval, and also when there is no approved
+    /// version to compare against — check <see cref="ApprovedSnapshot"/> to tell those apart.
+    /// </para>
+    /// </summary>
+    public List<string> ChangedFields { get; set; } = [];
+}
+
+/// <summary>
+/// An issue's content as an admin last approved it, for side-by-side comparison against the
+/// version now awaiting review.
+/// </summary>
+public class ApprovedIssueSnapshotResponse
+{
+    /// <summary>When this content was approved.</summary>
+    public DateTime ApprovedAt { get; set; }
+
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public IssueCategory Category { get; set; }
+    public string Address { get; set; } = string.Empty;
+    public string? District { get; set; }
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public UrgencyLevel Urgency { get; set; }
+    public string? DesiredOutcome { get; set; }
+    public string? CommunityImpact { get; set; }
+
+    /// <summary>Photo URLs in their approved order — index 0 was the primary photo.</summary>
+    public List<string> PhotoUrls { get; set; } = [];
+
+    /// <summary>
+    /// Authorities as they stood at approval, by value: a predefined authority may have been
+    /// renamed since, and the comparison must reflect what the reviewer actually saw.
+    /// </summary>
+    public List<ApprovedIssueAuthorityResponse> Authorities { get; set; } = [];
+}
+
+/// <summary>An authority as recorded in an approved snapshot.</summary>
+public class ApprovedIssueAuthorityResponse
+{
+    public string Name { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
 }
 
 /// <summary>

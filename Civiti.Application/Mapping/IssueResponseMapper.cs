@@ -42,7 +42,7 @@ public static class IssueResponseMapper
         CommunityImpact = issue.CommunityImpact,
         CreatedAt = issue.CreatedAt,
         UpdatedAt = issue.UpdatedAt,
-        Photos = OrderPhotos(issue.Photos)
+        Photos = issue.Photos.InDisplayOrder()
             .Select(p => new IssuePhotoResponse
             {
                 Id = p.Id,
@@ -78,17 +78,4 @@ public static class IssueResponseMapper
             }
     };
 
-    /// <summary>
-    /// Deterministic photo order: primary first, then oldest first, with the id as a tiebreak.
-    /// <para>
-    /// Without an explicit order the database returns rows in whatever order it likes, which
-    /// would make the client's "index 0 is the primary photo" convention fail to round-trip
-    /// through an edit.
-    /// </para>
-    /// </summary>
-    private static IEnumerable<IssuePhoto> OrderPhotos(IEnumerable<IssuePhoto> photos) =>
-        photos
-            .OrderByDescending(p => p.IsPrimary)
-            .ThenBy(p => p.CreatedAt)
-            .ThenBy(p => p.Id);
 }
