@@ -123,8 +123,11 @@ the same delivery guarantee `POST /api/issues` has always had for a brand-new is
 
 The consequence is bounded: `GET /api/admin/pending-issues` is the authoritative moderation
 surface and always shows the resubmitted issue, so a dropped announcement costs latency, not
-correctness. Capacity is tunable via `AdminNotify:ChannelCapacity`. A durable outbox is the real
-fix and should cover the create path at the same time; it is not part of this work.
+correctness. Capacity is tunable via `AdminNotify:ChannelCapacity`.
+
+A process restart drops the same way, and the email leg has its own bounded channel — all three
+failure modes, and the reconciliation sweep that would close them for the create path too, are
+tracked in [#153](https://github.com/civiti/civiti-server/issues/153).
 
 ### Authorities
 
