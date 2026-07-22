@@ -483,32 +483,56 @@ public static class UserEndpoints
                 return Results.Unauthorized();
             }
 
-            (var success, IssueDetailResponse? issue, var error) = await issueService.UpdateIssueAsync(id, request, supabaseUserId);
-
-            if (!success)
+            UpdateIssueResult result;
+            try
             {
-                return error switch
-                {
-                    DomainErrors.AccountDeleted => Results.Problem(
-                        detail: DomainErrors.AccountDeleted,
-                        statusCode: StatusCodes.Status403Forbidden,
-                        title: "Account Deleted"),
-                    DomainErrors.IssueNotFound => Results.NotFound(new { error }),
-                    DomainErrors.UserProfileNotFound => Results.NotFound(new { error }),
-                    DomainErrors.EditOwnIssuesOnly => Results.Forbid(),
-                    _ => Results.BadRequest(new { error })
-                };
+                result = await issueService.UpdateIssueAsync(id, request, supabaseUserId);
+            }
+            catch (ContentModerationException ex)
+            {
+                // Kept distinct from the validation 400 below so the owner sees the block reason
+                // verbatim, matching how POST /api/issues reports a moderation rejection.
+                return Results.BadRequest(new { error = ex.Message });
             }
 
-            return Results.Ok(issue);
+            // Both conflicts are 409 but mean different things to the client — one is "stop
+            // offering the edit action", the other is "reload and reapply" — so each carries a
+            // stable code. The prose message is for humans and must never be matched on.
+            return result.Outcome switch
+            {
+                UpdateIssueOutcome.Success => Results.Ok(result.Issue),
+                UpdateIssueOutcome.AccountDeleted => Results.Problem(
+                    detail: DomainErrors.AccountDeleted,
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "Account Deleted"),
+                UpdateIssueOutcome.IssueNotFound or UpdateIssueOutcome.UserProfileNotFound =>
+                    Results.NotFound(new { error = result.Error }),
+                UpdateIssueOutcome.NotOwner => Results.Forbid(),
+                UpdateIssueOutcome.StatusNotEditable =>
+                    Results.Conflict(new { error = result.Error, code = ErrorCodes.IssueNotEditable }),
+                UpdateIssueOutcome.ConcurrencyConflict =>
+                    Results.Conflict(new { error = result.Error, code = ErrorCodes.IssueEditConflict }),
+                _ => Results.BadRequest(new { error = result.Error })
+            };
         })
         .WithName("UpdateUserIssue")
         .WithSummary("Update and resubmit an issue")
-        .WithDescription("Allows the authenticated user to edit their own issue. Cannot edit Cancelled or Resolved issues. After editing, the issue status is set to 'UnderReview' for admin re-approval.")
+        .WithDescription(
+            "Replaces the editable content of the authenticated user's own issue and sends it back to the "
+            + "admin approval queue. The body is a full replacement, not a patch: every editable field must "
+            + "be supplied, and photoUrls (ordered, index 0 becomes the primary photo) and authorities are the "
+            + "complete desired sets. Editable statuses are Rejected, Submitted and UnderReview; anything else "
+            + "returns 409 with code ISSUE_NOT_EDITABLE. Send the issue's last-read updatedAt as "
+            + "expectedUpdatedAt — if the issue changed meanwhile the edit is rejected with 409 and code "
+            + "ISSUE_EDIT_CONFLICT, and nothing is written. A Rejected issue lands on Submitted; one already "
+            + "awaiting review keeps its status. Supporter counters are preserved, the creator cannot be "
+            + "changed, and no email is sent to the linked authorities. Returns the full updated issue, whose "
+            + "updatedAt is the concurrency token for the next edit.")
         .Produces<IssueDetailResponse>()
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
-        .Produces(StatusCodes.Status404NotFound);
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict);
     }
 }

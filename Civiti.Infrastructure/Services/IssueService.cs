@@ -1,14 +1,17 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Civiti.Infrastructure.Data;
+using Civiti.Infrastructure.Services.Issues;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Exceptions;
 using Civiti.Domain.Entities;
+using Civiti.Domain.Policies;
+using Civiti.Domain.Time;
+using Civiti.Application.Mapping;
 using Civiti.Application.Requests.Issues;
 using Civiti.Application.Responses.Authority;
 using Civiti.Application.Responses.Common;
 using Civiti.Application.Responses.Issues;
-using Civiti.Application.Responses.Moderation;
 using Civiti.Application.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -211,6 +214,13 @@ public class IssueService(
     {
         try
         {
+            // Publicly viewable statuses, OR any status when the caller is the creator.
+            //
+            // The owner clause is load-bearing, not a convenience: it is what lets an owner
+            // open the edit form for an issue that is Rejected or awaiting moderation, and
+            // what lets them keep working on an Active issue after an edit has pulled it back
+            // into the queue. It must stay this narrow — a non-owner passing a known id must
+            // not be able to read the content of a non-public issue.
             IQueryable<Issue> issueQuery = context.Issues
                 .Include(i => i.Photos)
                 .Include(i => i.User)
@@ -245,54 +255,7 @@ public class IssueService(
                     .AnyAsync(v => v.IssueId == id && v.UserId == currentUserId.Value);
             }
 
-            return new IssueDetailResponse
-            {
-                Id = issue.Id,
-                Title = issue.Title,
-                Description = issue.Description,
-                Category = issue.Category,
-                Address = issue.Address,
-                Latitude = issue.Latitude,
-                Longitude = issue.Longitude,
-                District = issue.District,
-                Urgency = issue.Urgency,
-                Status = issue.Status,
-                EmailsSent = issue.EmailsSent,
-                CommunityVotes = issue.CommunityVotes,
-                HasVoted = hasVoted,
-                DesiredOutcome = issue.DesiredOutcome,
-                CommunityImpact = issue.CommunityImpact,
-                CreatedAt = issue.CreatedAt,
-                UpdatedAt = issue.UpdatedAt,
-                Photos = issue.Photos.Select(p => new IssuePhotoResponse
-                {
-                    Id = p.Id,
-                    Url = p.Url,
-                    Description = p.Description,
-                    IsPrimary = p.IsPrimary,
-                    CreatedAt = p.CreatedAt
-                }).ToList(),
-                Authorities = issue.IssueAuthorities.Select(ia => new IssueAuthorityResponse
-                {
-                    AuthorityId = ia.AuthorityId,
-                    Name = ia.Authority?.Name ?? ia.CustomName ?? string.Empty,
-                    Email = ia.Authority?.Email ?? ia.CustomEmail ?? string.Empty,
-                    IsPredefined = ia.AuthorityId.HasValue
-                }).ToList(),
-                User = issue.User is not null
-                    ? new UserBasicResponse
-                    {
-                        Id = issue.User.Id,
-                        Name = issue.User.DisplayName,
-                        PhotoUrl = issue.User.PhotoUrl
-                    }
-                    : new UserBasicResponse
-                    {
-                        Id = issue.UserId,
-                        Name = "Deleted User",
-                        PhotoUrl = null
-                    }
-            };
+            return IssueResponseMapper.ToDetailResponse(issue, hasVoted);
         }
         catch (Exception ex)
         {
@@ -308,57 +271,13 @@ public class IssueService(
         // across the OpenAI round-trip (300ms-2s). Under concurrency, holding the connection
         // across that RTT exhausts the pool and causes cascading timeouts unrelated to
         // moderation itself.
-
-        // Moderate every free-text field that surfaces unmodified through read tools
-        // (search_issues / get_issue / list_my_activity). Concatenating in one call keeps
-        // the OpenAI moderation cost at one round-trip; rejecting the whole submission on
-        // any flagged field is correct — an issue with a moderation hit anywhere is not
-        // safe to publish. See the 2026-05-05 prompt-injection review for the threat model.
+        //
         // ContentModerationException is the typed signal that callers (CommentService
         // precedent, MCP write tools) distinguish from the unrelated
-        // InvalidOperationException family.
-        string moderationInput = string.Join(
-            "\n\n",
-            request.Title ?? string.Empty,
-            request.Description ?? string.Empty,
-            request.Address ?? string.Empty,
-            request.District ?? string.Empty,
-            request.DesiredOutcome ?? string.Empty,
-            request.CommunityImpact ?? string.Empty);
-        ContentModerationResponse moderationResult =
-            await contentModerationService.ModerateContentAsync(moderationInput);
-        if (!moderationResult.IsAllowed)
-        {
-            throw new ContentModerationException(
-                moderationResult.BlockReason ?? "Content violates community guidelines");
-        }
-
-        // PhotoUrls: same scheme-and-length guard as UserService.UpdateUserProfileAsync's
-        // profile PhotoUrl. Issue photos are surfaced in IssueDetailResponse.Photos and any
-        // MCP/REST client that renders them naively could execute attacker-supplied URIs
-        // (javascript:, data:, file:). Validate up-front so the rejection is uniform across
-        // every photo and we don't write a partially-validated set.
-        if (request.PhotoUrls != null)
-        {
-            foreach (string? url in request.PhotoUrls)
-            {
-                if (string.IsNullOrWhiteSpace(url))
-                {
-                    continue;
-                }
-                if (url.Length > 1000)
-                {
-                    throw new InvalidOperationException(
-                        "Issue photo URL exceeds the 1000-character limit.");
-                }
-                if (!Uri.TryCreate(url, UriKind.Absolute, out var photoUri)
-                    || (photoUri.Scheme != Uri.UriSchemeHttp && photoUri.Scheme != Uri.UriSchemeHttps))
-                {
-                    throw new InvalidOperationException(
-                        "Issue photo URLs must be absolute http or https URLs.");
-                }
-            }
-        }
+        // InvalidOperationException family. See the 2026-05-05 prompt-injection review for
+        // the threat model.
+        await IssueContentModerator.EnsureAllowedAsync(contentModerationService, request);
+        IssuePhotoWriter.ValidateUrls(request.PhotoUrls);
 
         IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
@@ -381,6 +300,8 @@ public class IssueService(
             if (userProfile.IsDeleted)
                 throw new AccountDeletedException();
 
+            DateTime now = UtcTimestamp.Now();
+
             // Create the issue
             Issue issue = new()
             {
@@ -388,117 +309,30 @@ public class IssueService(
                 UserId = userProfile.Id,
                 Title = request.Title,
                 Description = request.Description,
-                Category = request.Category,
+                Category = request.Category!.Value,
                 Address = request.Address,
-                Latitude = request.Latitude,
-                Longitude = request.Longitude,
+                Latitude = request.Latitude!.Value,
+                Longitude = request.Longitude!.Value,
                 District = request.District,
                 Urgency = request.Urgency,
                 DesiredOutcome = request.DesiredOutcome,
                 CommunityImpact = request.CommunityImpact,
                 Status = IssueStatus.Submitted,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                CreatedAt = now,
+                UpdatedAt = now
             };
 
             context.Issues.Add(issue);
 
-            // Add photos if provided
-            if (request.PhotoUrls != null && request.PhotoUrls.Any())
-            {
-                List<string> validPhotoUrls = request.PhotoUrls
-                    .Where(url => !string.IsNullOrWhiteSpace(url))
-                    .ToList();
+            context.IssuePhotos.AddRange(
+                IssuePhotoWriter.Materialize(issue.Id, request.PhotoUrls, now));
 
-                List<IssuePhoto> photos = validPhotoUrls.Select((url, index) => new IssuePhoto
-                {
-                    Id = Guid.NewGuid(),
-                    IssueId = issue.Id,
-                    Url = url,
-                    IsPrimary = index == 0,
-                    CreatedAt = DateTime.UtcNow
-                }).ToList();
-
-                context.IssuePhotos.AddRange(photos);
-            }
-
-            // Add authorities if provided
-            if (request.Authorities != null && request.Authorities.Any())
-            {
-                // Filter out null elements from the list
-                List<IssueAuthorityInput> authorities = request.Authorities.Where(a => a != null).ToList();
-
-                // Check for duplicate AuthorityIds
-                List<Guid> predefinedIds = authorities
-                    .Where(a => a.AuthorityId.HasValue)
-                    .Select(a => a.AuthorityId!.Value)
-                    .ToList();
-
-                if (predefinedIds.Count != predefinedIds.Distinct().Count())
-                {
-                    throw new InvalidOperationException("Duplicate authority IDs are not allowed");
-                }
-
-                // Check for duplicate custom emails (only for custom authorities, not predefined)
-                List<string> customEmails = authorities
-                    .Where(a => !a.AuthorityId.HasValue && !string.IsNullOrWhiteSpace(a.CustomEmail))
-                    .Select(a => a.CustomEmail!.ToLowerInvariant())
-                    .ToList();
-
-                if (customEmails.Count != customEmails.Distinct().Count())
-                {
-                    throw new InvalidOperationException("Duplicate custom authority emails are not allowed");
-                }
-
-                foreach (IssueAuthorityInput authorityInput in authorities)
-                {
-                    // Validate: either AuthorityId OR (CustomName AND CustomEmail) must be provided
-                    bool hasPredefined = authorityInput.AuthorityId.HasValue;
-                    bool hasCustom = !string.IsNullOrWhiteSpace(authorityInput.CustomName) &&
-                                     !string.IsNullOrWhiteSpace(authorityInput.CustomEmail);
-
-                    if (!hasPredefined && !hasCustom)
-                    {
-                        throw new InvalidOperationException(
-                            "Each authority must have either an AuthorityId or both CustomName and CustomEmail");
-                    }
-
-                    if (hasPredefined && hasCustom)
-                    {
-                        throw new InvalidOperationException(
-                            "Authority cannot have both AuthorityId and custom fields");
-                    }
-
-                    // Validate predefined authority exists and is active
-                    if (hasPredefined)
-                    {
-                        bool authorityExists = await context.Authorities
-                            .AnyAsync(a => a.Id == authorityInput.AuthorityId && a.IsActive);
-
-                        if (!authorityExists)
-                        {
-                            throw new InvalidOperationException(
-                                $"Authority with ID {authorityInput.AuthorityId} not found or is inactive");
-                        }
-                    }
-
-                    IssueAuthority issueAuthority = new()
-                    {
-                        Id = Guid.NewGuid(),
-                        IssueId = issue.Id,
-                        AuthorityId = authorityInput.AuthorityId,
-                        CustomName = hasPredefined ? null : authorityInput.CustomName,
-                        CustomEmail = hasPredefined ? null : authorityInput.CustomEmail,
-                        CreatedAt = DateTime.UtcNow
-                    };
-
-                    context.IssueAuthorities.Add(issueAuthority);
-                }
-            }
+            context.IssueAuthorities.AddRange(
+                await IssueAuthorityWriter.MaterializeAsync(context, issue.Id, request.Authorities, now));
 
             // Update user stats
             userProfile.IssuesReported++;
-            userProfile.UpdatedAt = DateTime.UtcNow;
+            userProfile.UpdatedAt = now;
 
             await context.SaveChangesAsync();
 
@@ -993,30 +827,59 @@ public class IssueService(
         return null; // Valid transition
     }
 
-    public async Task<(bool Success, IssueDetailResponse? Issue, string? Error)> UpdateIssueAsync(
+    public async Task<UpdateIssueResult> UpdateIssueAsync(
         Guid issueId,
         UpdateIssueRequest request,
         string supabaseUserId)
     {
+        // The same pre-transaction gate CreateIssueAsync applies, for the same two reasons.
+        // It has to run here too: an edit reaches every read surface a create does, so
+        // moderating only on create would be no gate at all — publish something benign, then
+        // edit the abusive content in. And the moderation round-trip must not be made while
+        // holding a pooled database connection.
+        await IssueContentModerator.EnsureAllowedAsync(contentModerationService, request);
+
+        try
+        {
+            IssuePhotoWriter.ValidateUrls(request.PhotoUrls);
+        }
+        catch (IssueContentValidationException ex)
+        {
+            // Reported through the result type like every other caller mistake on this path —
+            // letting it escape from outside the transaction below would surface a 500.
+            return UpdateIssueResult.Failed(UpdateIssueOutcome.ValidationFailed, ex.Message);
+        }
+
         IExecutionStrategy strategy = context.Database.CreateExecutionStrategy();
 
-        return await strategy.ExecuteAsync<(bool Success, IssueDetailResponse? Issue, string? Error)>(async () =>
+        return await strategy.ExecuteAsync<UpdateIssueResult>(async () =>
         {
+            // Fresh state on retry: this method mutates tracked entities, and replaying it over
+            // a dirty change tracker would reapply those edits to stale copies.
+            context.ChangeTracker.Clear();
+
             using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync();
 
             try
             {
-                // Get user profile (single query bypassing global filter to distinguish deleted vs missing)
+                // Single query bypassing the global filter, so a deleted account stays
+                // distinguishable from a missing one.
                 UserProfile? userProfile = await context.UserProfiles
                     .IgnoreQueryFilters()
                     .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
 
                 if (userProfile == null)
-                    return (false, null, DomainErrors.UserProfileNotFound);
-                if (userProfile.IsDeleted)
-                    return (false, null, DomainErrors.AccountDeleted);
+                {
+                    return UpdateIssueResult.Failed(
+                        UpdateIssueOutcome.UserProfileNotFound, DomainErrors.UserProfileNotFound);
+                }
 
-                // Get the issue with related data
+                if (userProfile.IsDeleted)
+                {
+                    return UpdateIssueResult.Failed(
+                        UpdateIssueOutcome.AccountDeleted, DomainErrors.AccountDeleted);
+                }
+
                 Issue? issue = await context.Issues
                     .Include(i => i.Photos)
                     .Include(i => i.IssueAuthorities)
@@ -1024,245 +887,148 @@ public class IssueService(
 
                 if (issue == null)
                 {
-                    return (false, null, DomainErrors.IssueNotFound);
+                    return UpdateIssueResult.Failed(
+                        UpdateIssueOutcome.IssueNotFound, DomainErrors.IssueNotFound);
                 }
 
-                // Check ownership
+                // Ownership and the editable-status set are enforced here and nowhere else that
+                // matters: the client's own checks are advisory, and the request body never gets
+                // a say in who owns an issue or what status it is in.
                 if (issue.UserId != userProfile.Id)
                 {
-                    return (false, null, DomainErrors.EditOwnIssuesOnly);
+                    return UpdateIssueResult.Failed(
+                        UpdateIssueOutcome.NotOwner, DomainErrors.EditOwnIssuesOnly);
                 }
 
-                // Check if the issue can be edited (not Cancelled or Resolved)
-                if (issue.Status == IssueStatus.Cancelled || issue.Status == IssueStatus.Resolved)
+                if (!IssueEditPolicy.IsEditable(issue.Status))
                 {
-                    return (false, null, $"Cannot edit an issue with status '{issue.Status}'.");
+                    return UpdateIssueResult.Failed(
+                        UpdateIssueOutcome.StatusNotEditable,
+                        $"An issue with status '{issue.Status}' can no longer be edited.");
                 }
 
-                // Track if related entities were modified (photos/authorities)
-                bool hasRelatedChanges = false;
-
-                // Update only provided fields
-                if (request.Title != null)
-                    issue.Title = request.Title;
-
-                if (request.Description != null)
-                    issue.Description = request.Description;
-
-                if (request.Category.HasValue)
-                    issue.Category = request.Category.Value;
-
-                if (request.Address != null)
-                    issue.Address = request.Address;
-
-                if (request.District != null)
-                    issue.District = request.District;
-
-                if (request.Latitude.HasValue)
-                    issue.Latitude = request.Latitude.Value;
-
-                if (request.Longitude.HasValue)
-                    issue.Longitude = request.Longitude.Value;
-
-                if (request.Urgency.HasValue)
-                    issue.Urgency = request.Urgency.Value;
-
-                if (request.DesiredOutcome != null)
-                    issue.DesiredOutcome = request.DesiredOutcome;
-
-                if (request.CommunityImpact != null)
-                    issue.CommunityImpact = request.CommunityImpact;
-
-                // Handle photo updates (replace all if provided)
-                if (request.PhotoUrls != null)
+                // Optimistic concurrency, checked inside the transaction so a moderation action
+                // that lands between the client's read and this write is caught instead of being
+                // silently overwritten.
+                //
+                // Both sides are truncated to the microsecond the database can actually store.
+                // Truncating only the incoming token would break every row written before this
+                // service started stamping truncated timestamps: those carry sub-microsecond
+                // .NET ticks, the client faithfully echoes them back, and the comparison could
+                // never succeed — locking the owner out of their own issue for good.
+                if (UtcTimestamp.NormalizeToUtc(request.ExpectedUpdatedAt!.Value)
+                    != UtcTimestamp.Truncate(issue.UpdatedAt))
                 {
-                    context.IssuePhotos.RemoveRange(issue.Photos);
-
-                    List<string> validPhotoUrls = request.PhotoUrls
-                        .Where(url => !string.IsNullOrWhiteSpace(url))
-                        .ToList();
-
-                    if (validPhotoUrls.Any())
-                    {
-                        List<IssuePhoto> photos = validPhotoUrls.Select((url, index) => new IssuePhoto
-                        {
-                            Id = Guid.NewGuid(),
-                            IssueId = issue.Id,
-                            Url = url,
-                            IsPrimary = index == 0,
-                            CreatedAt = DateTime.UtcNow
-                        }).ToList();
-
-                        context.IssuePhotos.AddRange(photos);
-                    }
-                    hasRelatedChanges = true;
+                    return UpdateIssueResult.Failed(
+                        UpdateIssueOutcome.ConcurrencyConflict, DomainErrors.IssueEditConflict);
                 }
 
-                // Handle authority updates (replace all if provided)
-                if (request.Authorities != null)
+                DateTime now = UtcTimestamp.Now();
+                IssueStatus previousStatus = issue.Status;
+
+                // Full replacement of the editable content — the request carries every field.
+                issue.Title = request.Title;
+                issue.Description = request.Description;
+                issue.Category = request.Category!.Value;
+                issue.Address = request.Address;
+                issue.District = request.District;
+                issue.Latitude = request.Latitude!.Value;
+                issue.Longitude = request.Longitude!.Value;
+                issue.Urgency = request.Urgency;
+                issue.DesiredOutcome = request.DesiredOutcome;
+                issue.CommunityImpact = request.CommunityImpact;
+
+                context.IssuePhotos.RemoveRange(issue.Photos);
+                context.IssuePhotos.AddRange(
+                    IssuePhotoWriter.Materialize(issue.Id, request.PhotoUrls, now));
+
+                // Delete-and-recreate is safe here: nothing in the system emails these rows. The
+                // petition goes out from the citizen's own mail client, and
+                // POST /api/issues/{id}/email-sent only increments a counter — so replacing a
+                // link cannot re-notify anyone who was already contacted.
+                context.IssueAuthorities.RemoveRange(issue.IssueAuthorities);
+                context.IssueAuthorities.AddRange(
+                    await IssueAuthorityWriter.MaterializeAsync(context, issue.Id, request.Authorities, now));
+
+                issue.Status = IssueEditPolicy.ResolveStatusAfterResubmit(previousStatus);
+                issue.UpdatedAt = now;
+
+                // Drop the previous review's verdict: it describes content that no longer exists.
+                // Left in place it would show the next reviewer a rejection reason for text they
+                // are seeing for the first time, and AdminNotes would still hold the change
+                // request the owner has just acted on.
+                issue.RejectionReason = null;
+                issue.ReviewedAt = null;
+                issue.ReviewedBy = null;
+                issue.AdminNotes = null;
+
+                // EmailsSent and CommunityVotes are deliberately left alone. They record what the
+                // community did, not what the text says; resetting them would punish an owner for
+                // fixing a typo.
+
+                // The admin announcement is deduplicated per (issue, admin) so that a retrying
+                // dispatcher cannot mail the same admin twice. A resubmit is a new announcement
+                // cycle rather than a retry, so those markers have to go — otherwise the issue
+                // silently reappears in the queue with no one told about it.
+                context.AdminIssueNotifications.RemoveRange(
+                    context.AdminIssueNotifications.Where(n => n.IssueId == issue.Id));
+
+                // Owner-initiated, so it carries no admin — but it belongs in the moderation
+                // history all the same: it is the answer to "why is this back in my queue?".
+                context.AdminActions.Add(new AdminAction
                 {
-                    // Remove existing authorities
-                    context.IssueAuthorities.RemoveRange(issue.IssueAuthorities);
-
-                    // Add new authorities
-                    if (request.Authorities.Any())
-                    {
-                        List<IssueAuthorityInput> authorities = request.Authorities.Where(a => a != null).ToList();
-
-                        // Check for duplicate AuthorityIds
-                        List<Guid> predefinedIds = authorities
-                            .Where(a => a.AuthorityId.HasValue)
-                            .Select(a => a.AuthorityId!.Value)
-                            .ToList();
-
-                        if (predefinedIds.Count != predefinedIds.Distinct().Count())
-                        {
-                            await transaction.RollbackAsync();
-                            return (false, null, "Duplicate authority IDs are not allowed");
-                        }
-
-                        // Check for duplicate custom emails
-                        List<string> customEmails = authorities
-                            .Where(a => !a.AuthorityId.HasValue && !string.IsNullOrWhiteSpace(a.CustomEmail))
-                            .Select(a => a.CustomEmail!.ToLowerInvariant())
-                            .ToList();
-
-                        if (customEmails.Count != customEmails.Distinct().Count())
-                        {
-                            await transaction.RollbackAsync();
-                            return (false, null, "Duplicate custom authority emails are not allowed");
-                        }
-
-                        foreach (IssueAuthorityInput authorityInput in authorities)
-                        {
-                            bool hasPredefined = authorityInput.AuthorityId.HasValue;
-                            bool hasCustom = !string.IsNullOrWhiteSpace(authorityInput.CustomName) &&
-                                             !string.IsNullOrWhiteSpace(authorityInput.CustomEmail);
-
-                            if (!hasPredefined && !hasCustom)
-                            {
-                                await transaction.RollbackAsync();
-                                return (false, null, "Each authority must have either an AuthorityId or both CustomName and CustomEmail");
-                            }
-
-                            if (hasPredefined && hasCustom)
-                            {
-                                await transaction.RollbackAsync();
-                                return (false, null, "Authority cannot have both AuthorityId and custom fields");
-                            }
-
-                            if (hasPredefined)
-                            {
-                                bool authorityExists = await context.Authorities
-                                    .AnyAsync(a => a.Id == authorityInput.AuthorityId && a.IsActive);
-
-                                if (!authorityExists)
-                                {
-                                    await transaction.RollbackAsync();
-                                    return (false, null, $"Authority with ID {authorityInput.AuthorityId} not found or is inactive");
-                                }
-                            }
-
-                            IssueAuthority issueAuthority = new()
-                            {
-                                Id = Guid.NewGuid(),
-                                IssueId = issue.Id,
-                                AuthorityId = authorityInput.AuthorityId,
-                                CustomName = hasPredefined ? null : authorityInput.CustomName,
-                                CustomEmail = hasPredefined ? null : authorityInput.CustomEmail,
-                                CreatedAt = DateTime.UtcNow
-                            };
-
-                            context.IssueAuthorities.Add(issueAuthority);
-                        }
-                    }
-                    hasRelatedChanges = true;
-                }
-
-                // Use EF Core change tracker to detect if the issue entity was modified
-                bool hasEntityChanges = context.Entry(issue).State == EntityState.Modified;
-
-                // Only proceed if there were actual changes
-                if (!hasEntityChanges && !hasRelatedChanges)
-                {
-                    await transaction.RollbackAsync();
-                    return (false, null, "No changes provided");
-                }
-
-                // Set status to UnderReview for admin re-approval
-                issue.Status = IssueStatus.UnderReview;
-                issue.UpdatedAt = DateTime.UtcNow;
+                    Id = Guid.NewGuid(),
+                    IssueId = issue.Id,
+                    AdminUserId = userProfile.Id,
+                    AdminSupabaseId = supabaseUserId,
+                    ActionType = AdminActionType.Resubmit,
+                    Notes = "Edited by the author and resubmitted for approval",
+                    PreviousStatus = previousStatus.ToString(),
+                    NewStatus = issue.Status.ToString(),
+                    CreatedAt = now
+                });
 
                 await context.SaveChangesAsync();
 
-                // Reload the issue with all relations BEFORE committing
-                // This ensures we can rollback if the reload fails
+                // Reload relations before committing, so a failure while reading them still
+                // rolls the edit back.
                 await context.Entry(issue).Reference(i => i.User).LoadAsync();
                 await context.Entry(issue).Collection(i => i.Photos).LoadAsync();
                 await context.Entry(issue).Collection(i => i.IssueAuthorities).LoadAsync();
 
-                // Load Authority for each IssueAuthority
-                foreach (IssueAuthority ia in issue.IssueAuthorities.Where(ia => ia.AuthorityId.HasValue))
+                foreach (IssueAuthority issueAuthority in issue.IssueAuthorities.Where(ia => ia.AuthorityId.HasValue))
                 {
-                    await context.Entry(ia).Reference(x => x.Authority).LoadAsync();
+                    await context.Entry(issueAuthority).Reference(x => x.Authority).LoadAsync();
                 }
 
-                // Build response before committing
-                IssueDetailResponse response = new()
-                {
-                    Id = issue.Id,
-                    Title = issue.Title,
-                    Description = issue.Description,
-                    Category = issue.Category,
-                    Address = issue.Address,
-                    Latitude = issue.Latitude,
-                    Longitude = issue.Longitude,
-                    District = issue.District,
-                    Urgency = issue.Urgency,
-                    Status = issue.Status,
-                    EmailsSent = issue.EmailsSent,
-                    CommunityVotes = issue.CommunityVotes,
-                    HasVoted = null, // Owner's own issue - voting not applicable
-                    DesiredOutcome = issue.DesiredOutcome,
-                    CommunityImpact = issue.CommunityImpact,
-                    CreatedAt = issue.CreatedAt,
-                    UpdatedAt = issue.UpdatedAt,
-                    Photos = issue.Photos.Select(p => new IssuePhotoResponse
-                    {
-                        Id = p.Id,
-                        Url = p.Url,
-                        Description = p.Description,
-                        IsPrimary = p.IsPrimary,
-                        CreatedAt = p.CreatedAt
-                    }).ToList(),
-                    Authorities = issue.IssueAuthorities.Select(ia => new IssueAuthorityResponse
-                    {
-                        AuthorityId = ia.AuthorityId,
-                        Name = ia.Authority?.Name ?? ia.CustomName ?? string.Empty,
-                        Email = ia.Authority?.Email ?? ia.CustomEmail ?? string.Empty,
-                        IsPredefined = ia.AuthorityId.HasValue
-                    }).ToList(),
-                    User = issue.User is not null
-                        ? new UserBasicResponse
-                        {
-                            Id = issue.User.Id,
-                            Name = issue.User.DisplayName,
-                            PhotoUrl = issue.User.PhotoUrl
-                        }
-                        : new UserBasicResponse
-                        {
-                            Id = issue.UserId,
-                            Name = "Deleted User",
-                            PhotoUrl = null
-                        }
-                };
+                // hasVoted is null: this is the owner's own issue, and owners cannot vote.
+                IssueDetailResponse response = IssueResponseMapper.ToDetailResponse(issue, hasVoted: null);
 
-                // Commit only after everything is ready
                 await transaction.CommitAsync();
 
-                logger.LogInformation("Issue {IssueId} updated and set to UnderReview by user {UserId}", issueId, userProfile.Id);
+                logger.LogInformation(
+                    "Issue {IssueId} edited by its owner {UserId} and resubmitted: {PreviousStatus} -> {NewStatus}",
+                    issueId, userProfile.Id, previousStatus, issue.Status);
 
-                return (true, response, null);
+                // Announce after commit, best-effort — the same fanout a new issue triggers.
+                try
+                {
+                    await adminNotifier.NotifyNewIssueAsync(issue.Id);
+                }
+                catch (Exception adminNotifyEx)
+                {
+                    logger.LogError(adminNotifyEx,
+                        "Failed to enqueue admin notification for resubmitted issue {IssueId}", issue.Id);
+                }
+
+                return UpdateIssueResult.Ok(response);
+            }
+            catch (IssueContentValidationException ex)
+            {
+                // A caller mistake in the photo or authority sets, not a fault: surface the
+                // reason rather than a 500.
+                await transaction.RollbackAsync();
+                return UpdateIssueResult.Failed(UpdateIssueOutcome.ValidationFailed, ex.Message);
             }
             catch (Exception ex)
             {
