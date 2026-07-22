@@ -319,6 +319,73 @@ public class IssueServiceUpdateTests : IDisposable
         untouched.Title.Should().Be(issue.Title);
     }
 
+    [Fact]
+    public async Task UpdateIssue_Should_Not_Moderate_For_A_Caller_Who_May_Not_Edit()
+    {
+        // Moderation is an external, billed call. Reaching it before authorization would let any
+        // authenticated user spend the budget against issues they do not own.
+        var (_, issue) = await SeedIssueAsync(IssueStatus.Rejected);
+        var stranger = TestDataBuilder.CreateUser();
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(stranger);
+            await ctx.SaveChangesAsync();
+        }
+
+        var result = await CreateService().UpdateIssueAsync(
+            issue.Id, ValidRequest(issue.UpdatedAt), stranger.SupabaseUserId);
+
+        result.Outcome.Should().Be(UpdateIssueOutcome.NotOwner);
+        _contentModerationService.Verify(
+            m => m.ModerateContentAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateIssue_Should_Not_Moderate_For_An_Issue_That_Does_Not_Exist()
+    {
+        var (owner, _) = await SeedIssueAsync(IssueStatus.Rejected);
+
+        var result = await CreateService().UpdateIssueAsync(
+            Guid.NewGuid(), ValidRequest(DateTime.UtcNow), owner.SupabaseUserId);
+
+        result.Outcome.Should().Be(UpdateIssueOutcome.IssueNotFound);
+        _contentModerationService.Verify(
+            m => m.ModerateContentAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateIssue_Should_Catch_A_Change_That_Lands_While_Moderation_Is_In_Flight()
+    {
+        // The pre-flight authorization check is a snapshot taken before the moderation
+        // round-trip, which can take seconds. An admin acting in that window must not be
+        // overwritten, so the preconditions are re-run inside the transaction. Moderation is the
+        // seam used to inject the concurrent write deterministically.
+        var (owner, issue) = await SeedIssueAsync(IssueStatus.Rejected);
+
+        _contentModerationService
+            .Setup(m => m.ModerateContentAsync(It.IsAny<string>()))
+            .ReturnsAsync(() =>
+            {
+                using var ctx = _dbFactory.CreateContext();
+                Issue concurrent = ctx.Issues.First(i => i.Id == issue.Id);
+                concurrent.Status = IssueStatus.Active;
+                concurrent.UpdatedAt = DateTime.UtcNow.AddSeconds(5);
+                ctx.SaveChanges();
+
+                return new ContentModerationResponse { IsAllowed = true };
+            });
+
+        var result = await CreateService().UpdateIssueAsync(
+            issue.Id, ValidRequest(issue.UpdatedAt), owner.SupabaseUserId);
+
+        result.Outcome.Should().Be(UpdateIssueOutcome.StatusNotEditable);
+
+        using var verifyCtx = _dbFactory.CreateContext();
+        Issue untouched = await verifyCtx.Issues.AsNoTracking().FirstAsync(i => i.Id == issue.Id);
+        untouched.Title.Should().Be(issue.Title);
+        untouched.Status.Should().Be(IssueStatus.Active);
+    }
+
     [Theory]
     [InlineData("javascript:alert(1)")]
     [InlineData("data:text/html;base64,PHNjcmlwdD4=")]

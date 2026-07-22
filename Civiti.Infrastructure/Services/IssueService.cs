@@ -827,16 +827,112 @@ public class IssueService(
         return null; // Valid transition
     }
 
+    /// <summary>
+    /// Reads the caller and the issue and asks whether this edit may proceed.
+    /// Returns <c>null</c> when it may.
+    /// <para>
+    /// Runs outside any transaction, before the billed moderation call, purely so an
+    /// unauthorized caller is turned away first. It is a snapshot and therefore advisory:
+    /// <see cref="EvaluateEditPreconditions"/> is re-run inside the transaction, where the
+    /// answer is binding.
+    /// </para>
+    /// </summary>
+    private async Task<UpdateIssueResult?> CheckEditPreconditionsAsync(
+        Guid issueId,
+        string supabaseUserId,
+        DateTime expectedUpdatedAt)
+    {
+        UserProfile? userProfile = await context.UserProfiles
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+
+        if (userProfile == null)
+        {
+            return UpdateIssueResult.Failed(
+                UpdateIssueOutcome.UserProfileNotFound, DomainErrors.UserProfileNotFound);
+        }
+
+        if (userProfile.IsDeleted)
+        {
+            return UpdateIssueResult.Failed(
+                UpdateIssueOutcome.AccountDeleted, DomainErrors.AccountDeleted);
+        }
+
+        Issue? issue = await context.Issues
+            .AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == issueId);
+
+        return EvaluateEditPreconditions(issue, userProfile, expectedUpdatedAt);
+    }
+
+    /// <summary>
+    /// The edit preconditions themselves, over already-loaded state.
+    /// Returns <c>null</c> when the edit may proceed.
+    /// </summary>
+    private static UpdateIssueResult? EvaluateEditPreconditions(
+        Issue? issue,
+        UserProfile caller,
+        DateTime expectedUpdatedAt)
+    {
+        if (issue == null)
+        {
+            return UpdateIssueResult.Failed(
+                UpdateIssueOutcome.IssueNotFound, DomainErrors.IssueNotFound);
+        }
+
+        if (issue.UserId != caller.Id)
+        {
+            return UpdateIssueResult.Failed(
+                UpdateIssueOutcome.NotOwner, DomainErrors.EditOwnIssuesOnly);
+        }
+
+        if (!IssueEditPolicy.IsEditable(issue.Status))
+        {
+            return UpdateIssueResult.Failed(
+                UpdateIssueOutcome.StatusNotEditable,
+                $"An issue with status '{issue.Status}' can no longer be edited.");
+        }
+
+        // Both sides are truncated to the microsecond the database can actually store.
+        // Truncating only the incoming token would break every row written before this service
+        // started stamping truncated timestamps: those carry sub-microsecond .NET ticks, the
+        // client faithfully echoes them back, and the comparison could never succeed — locking
+        // the owner out of their own issue for good.
+        if (UtcTimestamp.NormalizeToUtc(expectedUpdatedAt) != UtcTimestamp.Truncate(issue.UpdatedAt))
+        {
+            return UpdateIssueResult.Failed(
+                UpdateIssueOutcome.ConcurrencyConflict, DomainErrors.IssueEditConflict);
+        }
+
+        return null;
+    }
+
     public async Task<UpdateIssueResult> UpdateIssueAsync(
         Guid issueId,
         UpdateIssueRequest request,
         string supabaseUserId)
     {
-        // The same pre-transaction gate CreateIssueAsync applies, for the same two reasons.
-        // It has to run here too: an edit reaches every read surface a create does, so
-        // moderating only on create would be no gate at all — publish something benign, then
-        // edit the abusive content in. And the moderation round-trip must not be made while
-        // holding a pooled database connection.
+        // Authorization first. Moderation is an external, billed call, so it must not be
+        // reachable by a caller who has no right to edit this issue in the first place —
+        // otherwise any authenticated user can burn the moderation budget (and probe for
+        // moderation-specific responses) against issue ids they do not own or that do not
+        // exist. This pre-flight is advisory: every check it makes is repeated inside the
+        // transaction below, where it is actually enforced.
+        UpdateIssueResult? rejection = await CheckEditPreconditionsAsync(
+            issueId, supabaseUserId, request.ExpectedUpdatedAt!.Value);
+
+        if (rejection != null)
+        {
+            return rejection;
+        }
+
+        // The same gate CreateIssueAsync applies, and it has to run here too: an edit reaches
+        // every read surface a create does, so moderating only on create would be no gate at
+        // all — publish something benign, then edit the abusive content in.
+        //
+        // Still outside any transaction, so the provider round-trip (300ms-2s) is not made
+        // while holding a pooled database connection.
         await IssueContentModerator.EnsureAllowedAsync(contentModerationService, request);
 
         try
@@ -885,46 +981,46 @@ public class IssueService(
                     .Include(i => i.IssueAuthorities)
                     .FirstOrDefaultAsync(i => i.Id == issueId);
 
-                if (issue == null)
-                {
-                    return UpdateIssueResult.Failed(
-                        UpdateIssueOutcome.IssueNotFound, DomainErrors.IssueNotFound);
-                }
+                // Re-run every precondition against the state as it is now: the pre-flight above
+                // was taken before the moderation round-trip, and an admin may have acted in the
+                // meantime. Ownership and status are enforced here and nowhere else that matters
+                // — the client's checks are advisory, and the request body never gets a say in
+                // who owns an issue or what status it is in.
+                UpdateIssueResult? blocked = EvaluateEditPreconditions(
+                    issue, userProfile, request.ExpectedUpdatedAt!.Value);
 
-                // Ownership and the editable-status set are enforced here and nowhere else that
-                // matters: the client's own checks are advisory, and the request body never gets
-                // a say in who owns an issue or what status it is in.
-                if (issue.UserId != userProfile.Id)
+                if (blocked != null)
                 {
-                    return UpdateIssueResult.Failed(
-                        UpdateIssueOutcome.NotOwner, DomainErrors.EditOwnIssuesOnly);
-                }
-
-                if (!IssueEditPolicy.IsEditable(issue.Status))
-                {
-                    return UpdateIssueResult.Failed(
-                        UpdateIssueOutcome.StatusNotEditable,
-                        $"An issue with status '{issue.Status}' can no longer be edited.");
-                }
-
-                // Optimistic concurrency, checked inside the transaction so a moderation action
-                // that lands between the client's read and this write is caught instead of being
-                // silently overwritten.
-                //
-                // Both sides are truncated to the microsecond the database can actually store.
-                // Truncating only the incoming token would break every row written before this
-                // service started stamping truncated timestamps: those carry sub-microsecond
-                // .NET ticks, the client faithfully echoes them back, and the comparison could
-                // never succeed — locking the owner out of their own issue for good.
-                if (UtcTimestamp.NormalizeToUtc(request.ExpectedUpdatedAt!.Value)
-                    != UtcTimestamp.Truncate(issue.UpdatedAt))
-                {
-                    return UpdateIssueResult.Failed(
-                        UpdateIssueOutcome.ConcurrencyConflict, DomainErrors.IssueEditConflict);
+                    return blocked;
                 }
 
                 DateTime now = UtcTimestamp.Now();
+                DateTime loadedUpdatedAt = issue!.UpdatedAt;
                 IssueStatus previousStatus = issue.Status;
+
+                // Claim the row with a conditional UPDATE before touching anything else.
+                //
+                // The comparison above comes from a snapshot: two owner requests can both read
+                // the same UpdatedAt, both find it current, and both proceed — at which point
+                // the second write silently clobbers the first, which is exactly the lost update
+                // the token exists to prevent. A conditional UPDATE closes that window, because
+                // the loser blocks on the winner's row lock and then re-evaluates its predicate
+                // against the committed value, matching zero rows.
+                //
+                // Scoped to this operation rather than marking UpdatedAt as an EF concurrency
+                // token: that would turn every other writer of an Issue — approve, reject,
+                // request-changes, votes, email counters — into a DbUpdateConcurrencyException
+                // source none of them handle today.
+                var claimedRows = await context.Issues
+                    .Where(i => i.Id == issueId && i.UpdatedAt == loadedUpdatedAt)
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(i => i.UpdatedAt, now));
+
+                if (claimedRows == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return UpdateIssueResult.Failed(
+                        UpdateIssueOutcome.ConcurrencyConflict, DomainErrors.IssueEditConflict);
+                }
 
                 // Full replacement of the editable content — the request carries every field.
                 issue.Title = request.Title;

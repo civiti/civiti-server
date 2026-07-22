@@ -67,6 +67,36 @@ handed back in a response can never equal the value later read from the database
 second consecutive edit would fail with a bogus conflict. `IssueServiceUpdateTests` covers the
 round-trip explicitly.
 
+Comparing a value that was *read* is not on its own enough: two owner requests can both read the
+same `updatedAt`, both find it current, and both proceed — at which point the second write
+silently clobbers the first, the exact lost update the token exists to prevent. So the edit also
+**claims the row with a conditional `UPDATE`** (`WHERE id = @id AND updatedAt = @loaded`) before
+mutating anything. The loser blocks on the winner's row lock, re-evaluates its predicate against
+the committed value, matches zero rows, and gets `ISSUE_EDIT_CONFLICT`.
+
+That guard is scoped to this one operation rather than marking `Issue.UpdatedAt` as an EF
+concurrency token, which would turn every other writer of an issue — approve, reject,
+request-changes, votes, email counters — into a source of `DbUpdateConcurrencyException` that
+none of them handle today.
+
+## Order of operations
+
+1. **Authorize** — load the caller and the issue, check existence, ownership, editable status and
+   the concurrency token.
+2. **Moderate** — the external content check, plus the photo-URL guard.
+3. **Apply** — open the transaction, re-run every check from step 1, claim the row, write.
+
+Authorization comes first because moderation is an external, billed call: reaching it before the
+ownership check would let any authenticated user spend the moderation budget against issues they
+do not own, and probe for moderation-specific responses on issues they cannot see.
+
+Step 1 is nevertheless only advisory. It is a snapshot taken before a round-trip that can take
+seconds, so an admin can act in that window — which is why step 3 repeats it, and why that repeat
+is the binding one.
+
+None of this holds a pooled database connection across the moderation call: step 1's queries
+complete and release their connection before step 2 begins.
+
 ## Full replacement, not a patch
 
 Every editable field must be present on every call, and `photoUrls` / `authorities` are the
@@ -84,6 +114,17 @@ first, then oldest first, then by id) so that convention round-trips.
 **Known gap:** photos dropped from the list are unlinked from the issue but their blobs stay in
 Supabase Storage, still reachable by URL. The backend has no storage client, so collecting them
 needs a storage adapter and a sweep job. Tracked, not shipped.
+
+## Known gap: the admin announcement is best-effort
+
+The re-announcement is enqueued on the admin-notify channel after the transaction commits. That
+channel is bounded, and a full channel means the announcement is logged at `Error` and dropped —
+the same delivery guarantee `POST /api/issues` has always had for a brand-new issue.
+
+The consequence is bounded: `GET /api/admin/pending-issues` is the authoritative moderation
+surface and always shows the resubmitted issue, so a dropped announcement costs latency, not
+correctness. Capacity is tunable via `AdminNotify:ChannelCapacity`. A durable outbox is the real
+fix and should cover the create path at the same time; it is not part of this work.
 
 ### Authorities
 
