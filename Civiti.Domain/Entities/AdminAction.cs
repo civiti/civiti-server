@@ -21,5 +21,13 @@ public enum AdminActionType
 {
     Approve,
     Reject,
-    RequestChanges
+    RequestChanges,
+
+    /// <summary>
+    /// The issue's own creator edited it and sent it back for re-approval. Not an admin
+    /// action, but it belongs in the same history: it is the answer to "why is this back in
+    /// my queue?", and the moderation timeline is where a reviewer looks for it.
+    /// <see cref="AdminAction.AdminUserId"/> holds the acting owner.
+    /// </summary>
+    Resubmit
 }

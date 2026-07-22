@@ -488,6 +488,116 @@ Get user's own issues (all statuses).
 
 ---
 
+#### PUT /api/user/issues/{id}
+Edit one of your own issues and send it back for admin approval.
+
+**Authentication**: Required
+**Method**: `PUT`
+**URL**: `/api/user/issues/{id}`
+
+The body is a **full replacement** of the editable content, not a patch. Every field below
+marked required must be sent on every call, and `photoUrls` / `authorities` are the complete
+desired sets — anything omitted from them is removed. Validation is identical to
+`POST /api/issues`; the two share one request contract.
+
+Ownership, the editable-status set and the concurrency check are enforced server-side from the
+JWT. The client performs no authorization.
+
+**Request Body**:
+```json
+{
+  "title": "Groapă periculoasă pe strada Mihai Eminescu",
+  "description": "O groapă adâncă de aproximativ 50cm s-a format în asfalt.",
+  "category": "Infrastructure",
+  "address": "Strada Mihai Eminescu, Nr. 45",
+  "district": "Sector 2",
+  "latitude": 44.4268,
+  "longitude": 26.1025,
+  "urgency": "medium",
+  "desiredOutcome": "Reparație imediată a carosabilului",
+  "communityImpact": "Afectează zilnic circa 500 de locuitori",
+  "photoUrls": ["https://storage.civica.ro/photos/a.jpg"],
+  "authorities": [
+    { "authorityId": "uuid-of-predefined" },
+    { "customName": "Primăria Sector 3", "customEmail": "contact@ps3.ro" }
+  ],
+  "resubmit": true,
+  "expectedUpdatedAt": "2026-07-21T09:00:00Z"
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `title` | yes | Max 200 |
+| `description` | yes | Min 10, max 2000 |
+| `category` | yes | `Infrastructure \| Environment \| Transportation \| PublicServices \| Safety \| Other` |
+| `address` | yes | Max 500 |
+| `district` | yes | Max 50 |
+| `latitude` / `longitude` | yes | Range-checked |
+| `urgency` | no | `unspecified \| low \| medium \| high \| urgent`; defaults to `medium` |
+| `desiredOutcome` / `communityImpact` | no | Max 1000 each |
+| `photoUrls` | no | Ordered, max 8; index 0 becomes the primary photo; must be absolute http(s) URLs |
+| `authorities` | no | Max 5; each entry is `authorityId` **or** (`customName` + `customEmail`), never both or neither |
+| `resubmit` | yes | Must be `true` — see below |
+| `expectedUpdatedAt` | yes | The `updatedAt` last read for this issue |
+
+**Editable statuses**: `Rejected`, `Submitted`, `UnderReview`. Anything else returns `409`
+with code `ISSUE_NOT_EDITABLE`. (`Active` becomes editable once the admin re-review diff
+ships; `Draft` is unreachable — issue creation always produces `Submitted`.)
+
+**Status after a successful edit**:
+
+| From | To |
+|---|---|
+| `Rejected` | `Submitted` |
+| `Submitted` | `Submitted` (unchanged) |
+| `UnderReview` | `UnderReview` (unchanged) |
+
+The issue reappears in `GET /api/admin/pending-issues`, and the previous review's
+`rejectionReason` / `reviewedAt` / `reviewedBy` / `adminNotes` are cleared.
+
+**`resubmit` must be `true`.** Every editable status is either already awaiting moderation or
+has been publicly approved, so there is no case in which a silent edit is legitimate — editing
+an approved issue without re-review would be a moderation bypass. `false` is rejected rather
+than ignored.
+
+**Concurrency.** Send the `updatedAt` you last read as `expectedUpdatedAt`. If the issue changed
+meanwhile — typically an admin approving or rejecting it while the owner had the form open — the
+request is rejected with `409` / `ISSUE_EDIT_CONFLICT` and **nothing is written**. Reload the
+issue and let the user reapply their edits. The `updatedAt` in the success response is the token
+for the next edit.
+
+**Preserved on edit**: `emailsSent`, `communityVotes`, `createdAt` and the creator. No email is
+sent to the linked authorities at any point during an edit.
+
+**Response 200 (Success)**: the full `IssueDetailResponse`, identical in shape to
+`GET /api/issues/{id}`, with the new `status` and a bumped `updatedAt`. The client can navigate
+using this payload without re-fetching.
+
+**Response 400**: validation failure. Field-level failures come back as a standard
+`ValidationProblemDetails` (`errors` keyed by field name); a moderation block or a photo/authority
+rule comes back as `{ "error": "..." }`.
+
+**Response 403**: authenticated but not the issue's creator, or the account has been deleted.
+
+**Response 404**: no such issue.
+
+**Response 409**:
+```json
+{
+  "error": "This issue changed since you opened it. Reload it and apply your edits again.",
+  "code": "ISSUE_EDIT_CONFLICT"
+}
+```
+Always branch on `code`, never on the message text.
+
+> **Reading a non-public issue.** The edit form prefills from `GET /api/issues/{id}`, which
+> returns an issue in any status **to its creator** and only publicly-viewable issues
+> (`Active`, `Resolved`) to anyone else. This is what lets an owner open the form for a
+> `Rejected` issue, or keep working on one that an edit has just pushed back into the queue.
+
+---
+
 #### PUT /api/user/points
 Award points to user (internal endpoint, used by gamification system).
 

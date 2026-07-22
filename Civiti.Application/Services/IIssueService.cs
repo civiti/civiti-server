@@ -27,10 +27,19 @@ public interface IIssueService
     Task<(bool Success, string? Error)> UpdateIssueStatusAsync(Guid issueId, UpdateIssueStatusRequest request, string supabaseUserId, bool isAdmin = false);
 
     /// <summary>
-    /// Update an issue (user can only edit their own issues, except Cancelled/Resolved).
-    /// After update, status is set to UnderReview.
+    /// Replace the editable content of an issue on behalf of its creator, and send it back for
+    /// admin re-approval.
+    /// <para>
+    /// Ownership, the editable-status set (<c>IssueEditPolicy</c>), optimistic concurrency and
+    /// content moderation are all enforced here — no caller is trusted to have checked them.
+    /// The request is a full replacement: photos and authorities are the complete desired sets.
+    /// </para>
+    /// <para>
+    /// Never resets the supporter counters, never changes the creator, and never sends mail to
+    /// the linked authorities.
+    /// </para>
     /// </summary>
-    Task<(bool Success, IssueDetailResponse? Issue, string? Error)> UpdateIssueAsync(
+    Task<UpdateIssueResult> UpdateIssueAsync(
         Guid issueId,
         UpdateIssueRequest request,
         string supabaseUserId);
