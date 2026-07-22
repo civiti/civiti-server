@@ -184,7 +184,7 @@ public class AdminService(
                 UserTotalIssues = userTotalIssues,
                 UserResolvedIssues = userResolvedIssues,
                 UserPoints = issue.User?.Points ?? 0,
-                Photos = issue.Photos.Select(p => new AdminIssuePhotoResponse
+                Photos = issue.Photos.InDisplayOrder().Select(p => new AdminIssuePhotoResponse
                 {
                     Id = p.Id,
                     Url = p.Url,

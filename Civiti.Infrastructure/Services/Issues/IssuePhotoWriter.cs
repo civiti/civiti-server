@@ -63,6 +63,7 @@ internal static class IssuePhotoWriter
                 IssueId = issueId,
                 Url = url,
                 IsPrimary = index == 0,
+                DisplayOrder = index,
                 CreatedAt = timestamp
             })
             .ToList();

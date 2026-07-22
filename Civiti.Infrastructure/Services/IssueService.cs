@@ -976,9 +976,16 @@ public class IssueService(
                         UpdateIssueOutcome.AccountDeleted, DomainErrors.AccountDeleted);
                 }
 
+                // Authority is loaded, not just the link rows: the snapshot captured below
+                // records authorities by name and email, and a predefined link carries neither
+                // of its own. Without it the baseline would store blanks and every later diff
+                // would report the authorities as changed — noise on precisely the field a
+                // reviewer most needs to trust, since redirecting an approved petition is the
+                // edit worth catching.
                 Issue? issue = await context.Issues
                     .Include(i => i.Photos)
                     .Include(i => i.IssueAuthorities)
+                        .ThenInclude(ia => ia.Authority)
                     .FirstOrDefaultAsync(i => i.Id == issueId);
 
                 // Re-run every precondition against the state as it is now: the pre-flight above

@@ -46,12 +46,7 @@ public sealed class IssueContentSnapshot
         Urgency = issue.Urgency,
         DesiredOutcome = issue.DesiredOutcome,
         CommunityImpact = issue.CommunityImpact,
-        PhotoUrls = issue.Photos
-            .OrderByDescending(p => p.IsPrimary)
-            .ThenBy(p => p.CreatedAt)
-            .ThenBy(p => p.Id)
-            .Select(p => p.Url)
-            .ToList(),
+        PhotoUrls = issue.Photos.InDisplayOrder().Select(p => p.Url).ToList(),
         Authorities = issue.IssueAuthorities
             .Select(ia => new IssueAuthoritySnapshot
             {

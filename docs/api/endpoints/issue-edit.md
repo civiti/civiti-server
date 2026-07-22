@@ -109,8 +109,15 @@ fails validation by name instead of binding to `0.0` — the Gulf of Guinea.
 
 ### Photos
 
-Ordered; index 0 becomes the primary photo. Responses order photos deterministically (primary
-first, then oldest first, then by id) so that convention round-trips.
+Ordered; index 0 becomes the primary photo. The position is **stored** on each row
+(`IssuePhoto.DisplayOrder`) rather than inferred, and every read path orders by it through
+`IssuePhotoOrdering.InDisplayOrder`.
+
+Inferring it does not work: a photo set is written in one go, so every row shares a `CreatedAt`
+and the id tiebreak is a fresh random GUID — photos would come back in an arbitrary sequence and
+re-submitting an unchanged list would read as a change in the re-review diff. Rows predating the
+column are all `0` and fall back to the previous ordering; since a photo set is always replaced
+wholesale, a single issue never mixes the two.
 
 **Known gap:** photos dropped from the list are unlinked from the issue but their blobs stay in
 Supabase Storage, still reachable by URL. The backend has no storage client, so collecting them

@@ -25,6 +25,12 @@ public class IssuePhotoConfiguration : IEntityTypeConfiguration<IssuePhoto>
         builder.Property(p => p.Format)
             .HasMaxLength(10);
 
+        // Rows written before this column existed default to 0 and fall back to the ordering
+        // they were already displayed in — see IssuePhotoOrdering. No backfill needed: a photo
+        // set is replaced wholesale, so an issue never mixes old and new rows.
+        builder.Property(p => p.DisplayOrder)
+            .HasDefaultValue(0);
+
         // Indexes
         builder.HasIndex(p => p.IssueId);
         builder.HasIndex(p => p.CreatedAt);

@@ -276,6 +276,146 @@ public class AdminServiceSnapshotTests : IDisposable
         final.CommunityVotes.Should().Be(34);
     }
 
+    // ── False positives: the diff is only useful if an untouched field stays quiet ──
+
+    [Fact]
+    public async Task A_Predefined_Authority_Should_Not_Register_As_Changed_When_Untouched()
+    {
+        // A predefined link carries no name or email of its own — they live on the Authority row.
+        // If a capture path forgets to load it, the baseline stores blanks and every later diff
+        // reports the authorities as changed: noise on exactly the field a reviewer most needs to
+        // trust, since redirecting an approved petition elsewhere is the edit worth catching.
+        var (admin, owner, issue) = await SeedAsync();
+
+        var authority = new Authority
+        {
+            Id = Guid.NewGuid(),
+            Name = "Primăria Municipiului București",
+            Email = "contact@pmb.ro",
+            County = "București",
+            City = "București",
+            IsActive = true
+        };
+
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.Authorities.Add(authority);
+            ctx.IssueAuthorities.RemoveRange(
+                ctx.IssueAuthorities.Where(ia => ia.IssueId == issue.Id));
+            ctx.IssueAuthorities.Add(new IssueAuthority
+            {
+                Id = Guid.NewGuid(),
+                IssueId = issue.Id,
+                AuthorityId = authority.Id
+            });
+            await ctx.SaveChangesAsync();
+        }
+
+        await CreateAdminService().ApproveIssueAsync(
+            issue.Id, new ApproveIssueRequest(), admin.SupabaseUserId);
+
+        Issue approved = await ReadIssueAsync(issue.Id);
+        var edit = EditFrom(approved, r =>
+        {
+            r.Title = "Edited headline";
+            r.Authorities = [new IssueAuthorityInput { AuthorityId = authority.Id }];
+        });
+
+        (await CreateIssueService().UpdateIssueAsync(issue.Id, edit, owner.SupabaseUserId))
+            .Outcome.Should().Be(UpdateIssueOutcome.Success);
+
+        AdminIssueDetailResponse? detail =
+            await CreateAdminService().GetIssueDetailsForAdminAsync(issue.Id);
+
+        detail!.ApprovedSnapshot!.Authorities.Should().ContainSingle()
+            .Which.Email.Should().Be("contact@pmb.ro");
+        detail.ChangedFields.Should().Equal([IssueDiffFields.Title]);
+    }
+
+    [Fact]
+    public async Task A_Predefined_Authority_Should_Survive_The_Lazy_Capture_Path_Too()
+    {
+        // Same trap on the other capture path — a live issue snapshotted at edit time.
+        var (_, owner, issue) = await SeedAsync(IssueStatus.Active);
+
+        var authority = new Authority
+        {
+            Id = Guid.NewGuid(),
+            Name = "Primăria Sectorului 4",
+            Email = "contact@ps4.ro",
+            County = "București",
+            City = "București",
+            IsActive = true
+        };
+
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.Authorities.Add(authority);
+            ctx.IssueAuthorities.RemoveRange(
+                ctx.IssueAuthorities.Where(ia => ia.IssueId == issue.Id));
+            ctx.IssueAuthorities.Add(new IssueAuthority
+            {
+                Id = Guid.NewGuid(),
+                IssueId = issue.Id,
+                AuthorityId = authority.Id
+            });
+            await ctx.SaveChangesAsync();
+        }
+
+        Issue live = await ReadIssueAsync(issue.Id);
+        var edit = EditFrom(live, r =>
+        {
+            r.Title = "Edited headline";
+            r.Authorities = [new IssueAuthorityInput { AuthorityId = authority.Id }];
+        });
+
+        (await CreateIssueService().UpdateIssueAsync(issue.Id, edit, owner.SupabaseUserId))
+            .Outcome.Should().Be(UpdateIssueOutcome.Success);
+
+        AdminIssueDetailResponse? detail =
+            await CreateAdminService().GetIssueDetailsForAdminAsync(issue.Id);
+
+        detail!.ApprovedSnapshot!.Authorities.Should().ContainSingle()
+            .Which.Email.Should().Be("contact@ps4.ro");
+        detail.ChangedFields.Should().Equal([IssueDiffFields.Title]);
+    }
+
+    [Fact]
+    public async Task Resubmitting_The_Same_Photo_List_Should_Not_Register_As_Changed()
+    {
+        // Every photo in one edit shares a CreatedAt and gets a fresh GUID, so any ordering that
+        // leans on those is effectively random — an unchanged list would come back reordered and
+        // read as a change. Position is stored instead.
+        var (admin, owner, issue) = await SeedAsync();
+
+        List<string> photos =
+        [
+            "https://example.com/one.jpg",
+            "https://example.com/two.jpg",
+            "https://example.com/three.jpg"
+        ];
+
+        Issue beforeFirstEdit = await ReadIssueAsync(issue.Id);
+        var seed = EditFrom(beforeFirstEdit, r => r.PhotoUrls = photos);
+        (await CreateIssueService().UpdateIssueAsync(issue.Id, seed, owner.SupabaseUserId))
+            .Outcome.Should().Be(UpdateIssueOutcome.Success);
+
+        await CreateAdminService().ApproveIssueAsync(
+            issue.Id, new ApproveIssueRequest(), admin.SupabaseUserId);
+
+        Issue approved = await ReadIssueAsync(issue.Id);
+        var resubmit = EditFrom(approved, r => r.PhotoUrls = photos);
+        (await CreateIssueService().UpdateIssueAsync(issue.Id, resubmit, owner.SupabaseUserId))
+            .Outcome.Should().Be(UpdateIssueOutcome.Success);
+
+        AdminIssueDetailResponse? detail =
+            await CreateAdminService().GetIssueDetailsForAdminAsync(issue.Id);
+
+        detail!.ApprovedSnapshot!.PhotoUrls.Should().Equal(photos);
+        detail.ChangedFields.Should().NotContain(IssueDiffFields.Photos);
+        detail.Photos.Select(p => p.Url).Should().Equal(photos);
+    }
+
     private async Task<Issue> ReadIssueAsync(Guid id)
     {
         using var ctx = _dbFactory.CreateContext();

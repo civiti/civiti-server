@@ -586,6 +586,36 @@ public class IssueServiceUpdateTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateIssue_Should_Return_Photos_In_The_Submitted_Order()
+    {
+        // The whole set is written in one go, so every row shares a CreatedAt and gets a fresh
+        // GUID. Anything ordering on those returns non-primary photos in an arbitrary sequence,
+        // and the client's ordered list would not round-trip.
+        var (owner, issue) = await SeedIssueAsync(IssueStatus.Rejected);
+
+        List<string> ordered =
+        [
+            "https://example.com/first.jpg",
+            "https://example.com/second.jpg",
+            "https://example.com/third.jpg",
+            "https://example.com/fourth.jpg"
+        ];
+
+        UpdateIssueRequest request = ValidRequest(issue.UpdatedAt);
+        request.PhotoUrls = ordered;
+
+        var result = await CreateService().UpdateIssueAsync(issue.Id, request, owner.SupabaseUserId);
+
+        result.Outcome.Should().Be(UpdateIssueOutcome.Success);
+        result.Issue!.Photos.Select(p => p.Url).Should().Equal(ordered);
+        result.Issue.Photos[0].IsPrimary.Should().BeTrue();
+
+        // ...and the order survives a re-read rather than only holding in the write response.
+        var reread = await CreateService().GetIssueByIdAsync(issue.Id, owner.Id);
+        reread!.Photos.Select(p => p.Url).Should().Equal(ordered);
+    }
+
+    [Fact]
     public async Task UpdateIssue_Should_Replace_Authorities_With_The_Submitted_Set()
     {
         var (owner, issue) = await SeedIssueAsync(IssueStatus.Rejected);
