@@ -296,10 +296,11 @@ edits — which need no diff — become correct immediately.
 | Flip | add `Active` to `IssueEditPolicy` editable set |
 | Tests | snapshot written on approve + bulk approve; changed-field computation per field type; no-baseline case; `Active` → `Submitted` pulls from public |
 
-> **Deployment note.** Per `reference_railway_branch_topology`, migrations only reach production
-> via a `master → production` merge. PR 2 carries a schema change with a data backfill — it needs
-> its own promotion, and the frontend must not enable the "edit a live issue" entry point until
-> that promotion lands.
+> **Deployment note.** All Railway services deploy from `master` (the `production` branch was
+> dropped on 2026-07-22), and Civiti-Server runs `Database.MigrateAsync()` at startup — so PR 2's
+> schema change **and its backfill run in production the moment the PR merges**. There is no
+> staging window: the migration must be safe against the currently-running code, and the frontend
+> must not enable the "edit a live issue" entry point until PR 2 is merged and deployed.
 
 ---
 
