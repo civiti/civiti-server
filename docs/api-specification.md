@@ -491,6 +491,9 @@ Get user's own issues (all statuses).
 #### PUT /api/user/issues/{id}
 Edit one of your own issues and send it back for admin approval.
 
+> **Client integrators:** see [`api/issue-edit-integration-notes.md`](api/issue-edit-integration-notes.md)
+> for the changes that break a client written against the original requirements doc.
+
 **Authentication**: Required
 **Method**: `PUT`
 **URL**: `/api/user/issues/{id}`

@@ -4,6 +4,11 @@ How a citizen edits an issue they created, and what that does to the moderation 
 The wire-level contract lives in [`api-specification.md`](../../api-specification.md#put-apiuserissuesid);
 this page covers the flow and the decisions behind it.
 
+> **Integrating a client?** Start with
+> [`issue-edit-integration-notes.md`](../issue-edit-integration-notes.md) — it lists where the
+> shipped behaviour diverges from the original requirements doc, including the changes that break
+> a client written strictly to that spec.
+
 ## The loop
 
 ```
