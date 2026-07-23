@@ -103,12 +103,33 @@ public static class IssueSnapshotDiff
         // Compared as tuples rather than as concatenated keys: any separator character could
         // also occur inside a name, letting ("Primăria X", "a@b") and ("Primăria", "X a@b")
         // collide into one key and hide a redirected recipient.
-        static IEnumerable<(string Name, string Email)> Normalize(List<IssueAuthoritySnapshot> authorities) =>
+        //
+        // Emails are folded with OrdinalIgnoreCase rather than ToLowerInvariant. Invariant
+        // lowercasing applies full Unicode case mapping, which folds distinct code points onto
+        // ASCII — U+212A KELVIN SIGN becomes "k" — so "Kontakt@ps2.ro" written with a Kelvin
+        // sign would compare equal to "kontakt@ps2.ro" while being a different mailbox as far
+        // as the mail system is concerned. Ordinal folding leaves U+212A alone, so the
+        // substitution is reported. That is the exact shape of the attack this diff exists to
+        // catch: a recipient swap that looks identical to a reviewer.
+        static List<(string Name, string Email)> Normalize(List<IssueAuthoritySnapshot> authorities) =>
             authorities
-                .Select(a => (Name: a.Name.Trim(), Email: a.Email.Trim().ToLowerInvariant()))
+                .Select(a => (Name: a.Name.Trim(), Email: a.Email.Trim()))
                 .OrderBy(a => a.Name, StringComparer.Ordinal)
-                .ThenBy(a => a.Email, StringComparer.Ordinal);
+                .ThenBy(a => a.Email, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
-        return Normalize(approved).SequenceEqual(Normalize(current));
+        List<(string Name, string Email)> left = Normalize(approved);
+        List<(string Name, string Email)> right = Normalize(current);
+
+        for (var i = 0; i < left.Count; i++)
+        {
+            if (!string.Equals(left[i].Name, right[i].Name, StringComparison.Ordinal)
+                || !string.Equals(left[i].Email, right[i].Email, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

@@ -138,6 +138,51 @@ public class IssueSnapshotDiffTests
     }
 
     [Fact]
+    public void Redirecting_An_Authority_Email_Should_Count_As_A_Change()
+    {
+        // The headline case of the whole threat model: the name a reviewer reads stays identical
+        // while the mailbox the petition reaches is swapped.
+        IssueContentSnapshot current = Modified(s => s.Authorities[0].Email = "attacker@evil.ro");
+
+        IssueSnapshotDiff.Compare(Baseline(), current).Should().Equal([IssueDiffFields.Authorities]);
+    }
+
+    [Fact]
+    public void A_Unicode_Lookalike_In_An_Authority_Email_Should_Count_As_A_Change()
+    {
+        // U+212A KELVIN SIGN renders as a capital K and passes email validation. Invariant
+        // lowercasing applies full Unicode case mapping and folds it onto ASCII "k", so this
+        // substitution would compare equal to the approved address and sail through re-review
+        // as "no changes" — while being a different string to every system downstream.
+        const string kelvinSign = "\u212A";
+
+        IssueContentSnapshot approved = Modified(s => s.Authorities =
+            [new IssueAuthoritySnapshot { Name = "Autoritate", Email = "kontakt@ps2.ro" }]);
+        IssueContentSnapshot current = Modified(s => s.Authorities =
+            [new IssueAuthoritySnapshot { Name = "Autoritate", Email = kelvinSign + "ontakt@ps2.ro" }]);
+
+        IssueSnapshotDiff.Compare(approved, current).Should().Equal([IssueDiffFields.Authorities]);
+    }
+
+    [Fact]
+    public void Two_Authorities_Sharing_A_Domain_Should_Not_Mask_A_Swap()
+    {
+        // Guards the multiset comparison: same count, same domain, one local part changed.
+        IssueContentSnapshot approved = Modified(s => s.Authorities =
+        [
+            new IssueAuthoritySnapshot { Name = "A", Email = "a@x.ro" },
+            new IssueAuthoritySnapshot { Name = "B", Email = "b@x.ro" }
+        ]);
+        IssueContentSnapshot current = Modified(s => s.Authorities =
+        [
+            new IssueAuthoritySnapshot { Name = "A", Email = "a@x.ro" },
+            new IssueAuthoritySnapshot { Name = "B", Email = "attacker@x.ro" }
+        ]);
+
+        IssueSnapshotDiff.Compare(approved, current).Should().Equal([IssueDiffFields.Authorities]);
+    }
+
+    [Fact]
     public void Swapping_An_Authority_Should_Count_As_A_Change()
     {
         // The case that matters most: quietly redirecting an approved petition elsewhere.
