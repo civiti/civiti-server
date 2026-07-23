@@ -794,8 +794,8 @@ public class IssueService(
     }
 
     /// <summary>
-    /// Validates if a status transition is allowed for users.
-    /// Returns null if valid, or an error message if invalid.
+    /// Validates a status change requested by an issue's own author.
+    /// Returns null if allowed, or an error message if not.
     /// </summary>
     private static string? ValidateStatusTransition(IssueStatus currentStatus, IssueStatus newStatus)
     {
@@ -822,6 +822,17 @@ public class IssueService(
         if (currentStatus == IssueStatus.Resolved && newStatus != IssueStatus.Resolved)
         {
             return "Cannot change status of a resolved issue";
+        }
+
+        // Resolving is only meaningful for an issue that actually went live, and restricting it
+        // to that case is load-bearing rather than tidy: Resolved is publicly viewable, so any
+        // path into it is a path into publication. Without this, an author could submit an issue
+        // and immediately resolve it — publishing arbitrary content that no admin ever saw — or
+        // edit an approved issue and resolve it straight back into public view, skipping the
+        // re-review the edit was supposed to force.
+        if (newStatus == IssueStatus.Resolved && currentStatus != IssueStatus.Active)
+        {
+            return "Only an issue that is currently live can be marked as resolved";
         }
 
         return null; // Valid transition
