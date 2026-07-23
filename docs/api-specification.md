@@ -751,7 +751,7 @@ also carries the version an admin last approved and the list of fields that diff
     "approvedAt": "2026-07-01T10:00:00Z",
     "title": "Groapă pe strada Mihai Eminescu",
     "description": "...",
-    "category": "Infrastructure",
+    "category": "infrastructure",
     "address": "Strada Mihai Eminescu, Nr. 45",
     "district": "Sector 2",
     "latitude": 44.4268,

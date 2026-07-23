@@ -2,6 +2,7 @@ using Civiti.Infrastructure.Data;
 using Civiti.Infrastructure.Services.Issues;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Entities;
+using Civiti.Domain.Policies;
 using Civiti.Domain.Snapshots;
 using Civiti.Domain.Time;
 using Civiti.Application.Diffing;
@@ -91,6 +92,9 @@ public class AdminService(
                     CreatedAt = i.CreatedAt,
                     PhotoCount = i.Photos.Count,
                     EmailsSent = i.EmailsSent,
+                    // An approved baseline on record means this issue has been published before,
+                    // so what is queued is an edit of approved content rather than a new report.
+                    IsReReview = context.IssueApprovedSnapshots.Any(s => s.IssueId == i.Id),
                     UserName = i.User != null ? i.User.DisplayName : "Deleted User"
                 })
                 .ToListAsync();
@@ -302,6 +306,34 @@ public class AdminService(
 
             try
             {
+                // Claim the issue with a conditional update before doing anything else. The
+                // status check above is a read-then-write, so two admins approving the same
+                // item at the same moment both pass it: they would award the points twice and
+                // then collide on the snapshot's primary key, surfacing as a 500 for whoever
+                // lost. The loser now blocks on the row lock, re-evaluates, matches no rows and
+                // is told the issue is no longer reviewable.
+                var claimed = await context.Issues
+                    .Where(i => i.Id == issueId
+                        && (i.Status == IssueStatus.Submitted || i.Status == IssueStatus.UnderReview))
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(i => i.Status, IssueStatus.Active));
+
+                if (claimed == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return new IssueActionResponse
+                    {
+                        Success = false,
+                        Message = "Issue is not in a reviewable state"
+                    };
+                }
+
+                // Whether this is the issue's first approval, decided before the new AdminAction
+                // row is staged. Re-approving an edited issue is a moderation decision, not a
+                // fresh achievement: without this an owner could edit and have their issue
+                // re-approved repeatedly, banking the 50-point bonus every time.
+                var isFirstApproval = !await context.AdminActions
+                    .AnyAsync(a => a.IssueId == issueId && a.ActionType == AdminActionType.Approve);
+
                 // Update issue
                 var previousStatus = issue.Status.ToString();
                 DateTime approvedAt = UtcTimestamp.Now();
@@ -331,9 +363,14 @@ public class AdminService(
                     CreatedAt = DateTime.UtcNow
                 });
 
-                // Award points and badges (don't save yet - accumulate all changes)
-                await gamificationService.AwardPointsAsync(issue.UserId, 50, $"Issue approved: {issue.Title}", saveChanges: false);
-                await gamificationService.CheckAndAwardBadgesAsync(issue.UserId, saveChanges: false);
+                // Award points and badges (don't save yet - accumulate all changes).
+                // First approval only: getting an issue published is the achievement, and an
+                // owner who edits and is re-approved has not achieved it again.
+                if (isFirstApproval)
+                {
+                    await gamificationService.AwardPointsAsync(issue.UserId, 50, $"Issue approved: {issue.Title}", saveChanges: false);
+                    await gamificationService.CheckAndAwardBadgesAsync(issue.UserId, saveChanges: false);
+                }
 
                 // Single atomic save for all changes (issue, admin action, points, badges)
                 await context.SaveChangesAsync();
@@ -342,17 +379,22 @@ public class AdminService(
                 // Flush gamification notifications now that the transaction is committed
                 await gamificationService.FlushPendingNotificationsAsync();
 
-                // Record activity (outside transaction to avoid issues)
-                try
+                // Record activity (outside transaction to avoid issues). Also first-approval
+                // only — the public feed announces that an issue went live, which happens once;
+                // a re-approval after an owner edit is not a second milestone.
+                if (isFirstApproval)
                 {
-                    await activityService.RecordActivityAsync(
-                        ActivityType.IssueApproved,
-                        issueId,
-                        adminUser.Id);
-                }
-                catch (Exception activityEx)
-                {
-                    logger.LogError(activityEx, "Failed to record IssueApproved activity for issue {IssueId}", issueId);
+                    try
+                    {
+                        await activityService.RecordActivityAsync(
+                            ActivityType.IssueApproved,
+                            issueId,
+                            adminUser.Id);
+                    }
+                    catch (Exception activityEx)
+                    {
+                        logger.LogError(activityEx, "Failed to record IssueApproved activity for issue {IssueId}", issueId);
+                    }
                 }
 
                 // Send notification to issue author
@@ -515,7 +557,15 @@ public class AdminService(
             // Clear change tracker to ensure fresh data on retry
             context.ChangeTracker.Clear();
 
+            // Photos and authorities are loaded for the same reason as in ApproveIssueAsync:
+            // this path can take a live issue out of public view, and the baseline captured
+            // below has to cover the whole reviewed content. Split so the two collection
+            // Includes do not multiply into a cartesian result.
             Issue? issue = await context.Issues
+                .Include(i => i.Photos)
+                .Include(i => i.IssueAuthorities)
+                    .ThenInclude(ia => ia.Authority)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(i => i.Id == issueId);
 
             if (issue == null)
@@ -543,11 +593,44 @@ public class AdminService(
 
             try
             {
-                // Update issue
-                var previousStatus = issue.Status.ToString();
+                IssueStatus loadedStatus = issue.Status;
+                var previousStatus = loadedStatus.ToString();
+
+                // Claim the issue before touching anything, exactly as approval does. The load
+                // above is a snapshot, so two admins acting on the same issue at once would both
+                // proceed: they would each stage a baseline insert for an issue that has none and
+                // collide on its primary key, surfacing as a 500 for whoever lost, and the later
+                // status write would silently overwrite the earlier one. The loser now blocks on
+                // the row lock, re-evaluates against the committed status and is turned away.
+                var claimed = await context.Issues
+                    .Where(i => i.Id == issueId && i.Status == loadedStatus)
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(i => i.Status, IssueStatus.UnderReview));
+
+                if (claimed == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return new IssueActionResponse
+                    {
+                        Success = false,
+                        Message = "Issue changed while the request was being prepared; reload it and try again"
+                    };
+                }
+
+                // Requesting changes on a live issue takes it out of public view, so this is the
+                // last moment its content is still the approved content. Without capturing here,
+                // an issue approved before the snapshot table existed loses its baseline for
+                // good: the owner's subsequent edit sees a non-public status, skips its own
+                // capture, and the re-review screen has nothing to diff against — precisely for
+                // the issues that already carry public endorsements.
+                if (IssueEditPolicy.IsPubliclyViewable(loadedStatus))
+                {
+                    await IssueSnapshotStore.CaptureIfMissingAsync(
+                        context, issue, issue.ReviewedAt ?? issue.UpdatedAt);
+                }
+
                 issue.Status = IssueStatus.UnderReview;
                 issue.AdminNotes = request.RequestedChanges;
-                issue.UpdatedAt = DateTime.UtcNow;
+                issue.UpdatedAt = UtcTimestamp.Now();
 
                 // Create admin action record
                 context.AdminActions.Add(new AdminAction
