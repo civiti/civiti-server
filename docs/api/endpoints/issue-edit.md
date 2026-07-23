@@ -145,9 +145,20 @@ needs a storage adapter and a sweep job. Tracked, not shipped.
 }
 ```
 
-> **`approvedSnapshot: null` means "first review", not "nothing changed".** Both cases give an
-> empty `changedFields`, so the client must branch on the snapshot's presence. Rendering a
-> never-approved issue as "unchanged" would be exactly backwards.
+> **`approvedSnapshot: null` means "no approved baseline on record", not "nothing changed".**
+> Both give an empty `changedFields`, so the client must branch on the snapshot's presence —
+> rendering a never-approved issue as "unchanged" would be exactly backwards.
+>
+> Null covers **two** cases, and the API cannot distinguish them for you:
+> 1. the issue has genuinely never been approved — a first review; and
+> 2. it was approved before the snapshot table shipped and has not been edited or sent back
+>    since, so no baseline was ever captured.
+>
+> Case 2 disappears the moment such an issue enters re-review (both the owner's edit and
+> admin request-changes capture a baseline first), so anything actually **awaiting moderation**
+> with a null snapshot is a true first review. A live `Active` issue viewed directly, on the
+> other hand, may well be case 2 — so word the empty state around the issue's status rather than
+> asserting "never approved".
 
 Possible `changedFields` values: `title`, `description`, `category`, `address`, `district`,
 `location`, `urgency`, `desiredOutcome`, `communityImpact`, `photos`, `authorities`.
@@ -168,10 +179,15 @@ re-derive them:
 - **Authorities are unordered.** Which institutions are targeted is meaningful; the sequence is
   not. Compared by name and (case-insensitive) email, so renaming a predefined authority or
   swapping in a different recipient both register.
+  - Email case folding is **ordinal**, not invariant-lowercase. Invariant lowercasing applies
+    full Unicode case mapping and collapses distinct code points onto ASCII — U+212A KELVIN SIGN
+    becomes `k` — which would let a lookalike address compare equal to the approved one and pass
+    re-review as "no changes". Ordinal folding still treats `CONTACT@` and `contact@` as the same
+    mailbox but reports the lookalike.
 
 ### Where the baseline comes from
 
-Two write paths, both in the same transaction as the change they describe:
+Three write paths, each in the same transaction as the change it describes:
 
 1. **On approval** — `ApproveIssueAsync` records what it just approved, replacing any earlier
    snapshot. Bulk approve routes through the same method and is covered automatically.
@@ -179,6 +195,13 @@ Two write paths, both in the same transaction as the change they describe:
    pre-edit content *is* the approved content, and that is captured before the replacement is
    applied. `approvedByUserId` is null for these: the approval predates the table and inventing
    an actor would be worse than admitting we do not know.
+3. **On requesting changes to a live issue** — the same capture, for the same reason.
+   `RequestChangesAsync` also takes a live issue out of public view, and it is the only other way
+   that happens. Without it the baseline is lost permanently: the owner's follow-up edit sees a
+   non-public status, skips path 2, and the re-review screen has nothing to compare against.
+
+The invariant they exist to maintain: **an issue never leaves public view without a baseline on
+record.** Any future path that moves an issue out of `IsPubliclyViewable` has to capture too.
 
 Path 2 is why this shipped **without a data backfill**. The alternative was a migration that
 rebuilt the same JSON in SQL across every live issue and executed against production the moment

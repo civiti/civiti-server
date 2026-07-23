@@ -416,6 +416,135 @@ public class AdminServiceSnapshotTests : IDisposable
         detail.Photos.Select(p => p.Url).Should().Equal(photos);
     }
 
+    // ── The baseline must survive every route out of public view ──
+
+    [Fact]
+    public async Task Requesting_Changes_On_A_Live_Issue_Should_Capture_The_Baseline_First()
+    {
+        // request-changes takes a live issue out of public view without approving anything. If
+        // it does not capture here, the owner's subsequent edit sees a non-public status, skips
+        // its own capture, and the baseline is gone for good — worst for issues approved before
+        // the snapshot table existed, which are exactly the ones already carrying endorsements.
+        var (admin, owner, issue) = await SeedAsync(IssueStatus.Active);
+
+        var result = await CreateAdminService().RequestChangesAsync(
+            issue.Id,
+            new RequestChangesRequest { RequestedChanges = "Please add the street number" },
+            admin.SupabaseUserId);
+        result.Success.Should().BeTrue(result.Message);
+
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            (await ctx.IssueApprovedSnapshots.AnyAsync(s => s.IssueId == issue.Id))
+                .Should().BeTrue("the live content was the approved content until this moment");
+        }
+
+        Issue underReview = await ReadIssueAsync(issue.Id);
+        underReview.Status.Should().Be(IssueStatus.UnderReview);
+
+        var edit = EditFrom(underReview, r => r.Title = "Reworked after admin feedback");
+        (await CreateIssueService().UpdateIssueAsync(issue.Id, edit, owner.SupabaseUserId))
+            .Outcome.Should().Be(UpdateIssueOutcome.Success);
+
+        AdminIssueDetailResponse? detail =
+            await CreateAdminService().GetIssueDetailsForAdminAsync(issue.Id);
+
+        detail!.ApprovedSnapshot.Should().NotBeNull();
+        detail.ApprovedSnapshot!.Title.Should().Be(issue.Title);
+        detail.ChangedFields.Should().Equal([IssueDiffFields.Title]);
+    }
+
+    [Fact]
+    public async Task Requesting_Changes_On_A_Never_Approved_Issue_Should_Not_Fabricate_A_Baseline()
+    {
+        var (admin, _, issue) = await SeedAsync(IssueStatus.Submitted);
+
+        await CreateAdminService().RequestChangesAsync(
+            issue.Id,
+            new RequestChangesRequest { RequestedChanges = "Needs a photo" },
+            admin.SupabaseUserId);
+
+        using var ctx = _dbFactory.CreateContext();
+        (await ctx.IssueApprovedSnapshots.AnyAsync(s => s.IssueId == issue.Id)).Should().BeFalse();
+    }
+
+    // ── Re-approval is a moderation decision, not a fresh achievement ──
+
+    [Fact]
+    public async Task Re_Approval_Should_Not_Re_Award_The_Approval_Bonus()
+    {
+        // Otherwise an owner can edit and be re-approved in a loop, banking 50 points each time.
+        var (admin, owner, issue) = await SeedAsync();
+
+        await CreateAdminService().ApproveIssueAsync(
+            issue.Id, new ApproveIssueRequest(), admin.SupabaseUserId);
+
+        Issue approved = await ReadIssueAsync(issue.Id);
+        await CreateIssueService().UpdateIssueAsync(
+            issue.Id, EditFrom(approved, r => r.Title = "Tweaked"), owner.SupabaseUserId);
+
+        await CreateAdminService().ApproveIssueAsync(
+            issue.Id, new ApproveIssueRequest(), admin.SupabaseUserId);
+
+        _gamificationService.Verify(
+            g => g.AwardPointsAsync(owner.Id, 50, It.IsAny<string>(), It.IsAny<bool>()),
+            Times.Once());
+        _activityService.Verify(
+            a => a.RecordActivityAsync(ActivityType.IssueApproved, issue.Id, It.IsAny<Guid?>(), It.IsAny<string>()),
+            Times.Once());
+    }
+
+    [Fact]
+    public async Task Approving_An_Issue_That_Is_No_Longer_Reviewable_Should_Fail_Cleanly()
+    {
+        // The conditional claim: a second approval of an already-Active issue must be refused
+        // rather than colliding on the snapshot primary key and surfacing as a 500.
+        var (admin, _, issue) = await SeedAsync();
+
+        var first = await CreateAdminService().ApproveIssueAsync(
+            issue.Id, new ApproveIssueRequest(), admin.SupabaseUserId);
+        first.Success.Should().BeTrue();
+
+        var second = await CreateAdminService().ApproveIssueAsync(
+            issue.Id, new ApproveIssueRequest(), admin.SupabaseUserId);
+
+        second.Success.Should().BeFalse();
+        second.Message.Should().Contain("reviewable");
+
+        using var ctx = _dbFactory.CreateContext();
+        (await ctx.IssueApprovedSnapshots.CountAsync(s => s.IssueId == issue.Id)).Should().Be(1);
+        (await ctx.AdminActions.CountAsync(a => a.IssueId == issue.Id)).Should().Be(1);
+    }
+
+    // ── The queue has to say which items are re-reviews ──
+
+    [Fact]
+    public async Task The_Pending_Queue_Should_Flag_A_Re_Review()
+    {
+        // Bulk approve never loads the detail screen, so the list is the only place a reviewer
+        // can be told that an item carries endorsements earned under different content.
+        var (admin, owner, issue) = await SeedAsync();
+        var fresh = TestDataBuilder.CreateIssue(userId: owner.Id, status: IssueStatus.Submitted);
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.Issues.Add(fresh);
+            await ctx.SaveChangesAsync();
+        }
+
+        await CreateAdminService().ApproveIssueAsync(
+            issue.Id, new ApproveIssueRequest(), admin.SupabaseUserId);
+
+        Issue approved = await ReadIssueAsync(issue.Id);
+        await CreateIssueService().UpdateIssueAsync(
+            issue.Id, EditFrom(approved, r => r.Title = "Swapped"), owner.SupabaseUserId);
+
+        var pending = await CreateAdminService().GetPendingIssuesAsync(
+            new GetPendingIssuesRequest { Page = 1, PageSize = 20 });
+
+        pending.Items.Single(i => i.Id == issue.Id).IsReReview.Should().BeTrue();
+        pending.Items.Single(i => i.Id == fresh.Id).IsReReview.Should().BeFalse();
+    }
+
     private async Task<Issue> ReadIssueAsync(Guid id)
     {
         using var ctx = _dbFactory.CreateContext();
