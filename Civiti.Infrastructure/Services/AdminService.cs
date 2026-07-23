@@ -593,8 +593,28 @@ public class AdminService(
 
             try
             {
-                // Update issue
-                var previousStatus = issue.Status.ToString();
+                IssueStatus loadedStatus = issue.Status;
+                var previousStatus = loadedStatus.ToString();
+
+                // Claim the issue before touching anything, exactly as approval does. The load
+                // above is a snapshot, so two admins acting on the same issue at once would both
+                // proceed: they would each stage a baseline insert for an issue that has none and
+                // collide on its primary key, surfacing as a 500 for whoever lost, and the later
+                // status write would silently overwrite the earlier one. The loser now blocks on
+                // the row lock, re-evaluates against the committed status and is turned away.
+                var claimed = await context.Issues
+                    .Where(i => i.Id == issueId && i.Status == loadedStatus)
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(i => i.Status, IssueStatus.UnderReview));
+
+                if (claimed == 0)
+                {
+                    await transaction.RollbackAsync();
+                    return new IssueActionResponse
+                    {
+                        Success = false,
+                        Message = "Issue changed while the request was being prepared; reload it and try again"
+                    };
+                }
 
                 // Requesting changes on a live issue takes it out of public view, so this is the
                 // last moment its content is still the approved content. Without capturing here,
@@ -602,7 +622,7 @@ public class AdminService(
                 // good: the owner's subsequent edit sees a non-public status, skips its own
                 // capture, and the re-review screen has nothing to diff against — precisely for
                 // the issues that already carry public endorsements.
-                if (IssueEditPolicy.IsPubliclyViewable(issue.Status))
+                if (IssueEditPolicy.IsPubliclyViewable(loadedStatus))
                 {
                     await IssueSnapshotStore.CaptureIfMissingAsync(
                         context, issue, issue.ReviewedAt ?? issue.UpdatedAt);

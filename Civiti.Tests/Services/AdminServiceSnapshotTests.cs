@@ -455,6 +455,33 @@ public class AdminServiceSnapshotTests : IDisposable
     }
 
     [Fact]
+    public async Task Requesting_Changes_Twice_Should_Capture_Exactly_One_Baseline()
+    {
+        // The capture is a check-then-insert, so a second pass must not stage a duplicate for
+        // the same issue. (The genuine concurrent case is serialised by the row claim, which the
+        // single-connection SQLite harness cannot exercise.)
+        var (admin, _, issue) = await SeedAsync(IssueStatus.Active);
+
+        var first = await CreateAdminService().RequestChangesAsync(
+            issue.Id, new RequestChangesRequest { RequestedChanges = "Add the street number" },
+            admin.SupabaseUserId);
+        first.Success.Should().BeTrue(first.Message);
+
+        var second = await CreateAdminService().RequestChangesAsync(
+            issue.Id, new RequestChangesRequest { RequestedChanges = "And a photo" },
+            admin.SupabaseUserId);
+        second.Success.Should().BeTrue(second.Message);
+
+        using var ctx = _dbFactory.CreateContext();
+        (await ctx.IssueApprovedSnapshots.CountAsync(s => s.IssueId == issue.Id)).Should().Be(1);
+
+        // The baseline is still the approved content, not anything the second pass saw.
+        IssueApprovedSnapshot snapshot = await ctx.IssueApprovedSnapshots.AsNoTracking()
+            .SingleAsync(s => s.IssueId == issue.Id);
+        snapshot.Payload.Should().Contain(issue.Title);
+    }
+
+    [Fact]
     public async Task Requesting_Changes_On_A_Never_Approved_Issue_Should_Not_Fabricate_A_Baseline()
     {
         var (admin, _, issue) = await SeedAsync(IssueStatus.Submitted);
