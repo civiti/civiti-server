@@ -73,10 +73,12 @@ public static class IssueResponseMapper
             }
             : new UserBasicResponse
             {
-                // The creator's profile row is gone (hard-deleted account); the issue itself is
-                // preserved, attributed to nobody. No Supabase id survives, so leave it empty
-                // rather than leak the internal FK — it matches no caller, which is correct.
-                Id = string.Empty,
+                // No loaded creator: either the profile row is gone (hard delete) or, far more
+                // commonly, it was soft-deleted and the global !IsDeleted query filter nulled the
+                // Include. Either way no Supabase id survives, so emit the all-zeros sentinel — it
+                // stays a valid UUID for clients that parse the field, matches no caller, and does
+                // not leak the internal FK the way the old mapping did.
+                Id = Guid.Empty.ToString(),
                 Name = "Deleted User",
                 PhotoUrl = null
             }

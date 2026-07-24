@@ -243,8 +243,9 @@ holds for itself — so an ownership check may compare `issue.user.id === <my su
 It is *not* the internal `UserProfile` primary key. (Until 2026-07-24 the backend mistakenly returned
 that internal PK here and on `CommentResponse.user.id`, so every owner check failed and owners were
 silently denied the edit action; the request never even left the client. If you saw that, it is fixed
-server-side with no client change required.) A hard-deleted author's `user.id` is an empty string,
-which matches no caller — correct, since a deleted account owns nothing editable.
+server-side with no client change required.) A deleted author's `user.id` is the all-zeros sentinel
+`00000000-0000-0000-0000-000000000000` (a soft-deleted profile is filtered out of the response and
+falls back to this), which matches no caller — correct, since a deleted account owns nothing editable.
 
 ---
 

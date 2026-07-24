@@ -9,7 +9,8 @@ public class CommentUserResponse
 {
     /// <summary>
     /// The comment author's Supabase auth id (the JWT <c>sub</c>) — the identifier a client can
-    /// compare against its own to decide ownership. Empty for a deleted author. Not the internal
+    /// compare against its own to decide ownership. The all-zeros sentinel
+    /// (<c>00000000-0000-0000-0000-000000000000</c>) for a deleted author. Not the internal
     /// <c>UserProfile.Id</c> PK.
     /// </summary>
     public string Id { get; set; } = string.Empty;

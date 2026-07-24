@@ -914,7 +914,10 @@ public class CommentService(
                 }
                 : new CommentUserResponse
                 {
-                    Id = string.Empty,
+                    // Deleted author (soft-deleted → filtered out of the Include, or hard-deleted):
+                    // the all-zeros sentinel, matching no caller. Kept UUID-shaped, as this branch
+                    // was before user.id became the Supabase id.
+                    Id = Guid.Empty.ToString(),
                     DisplayName = "Deleted User",
                     PhotoUrl = null,
                     Level = 0
