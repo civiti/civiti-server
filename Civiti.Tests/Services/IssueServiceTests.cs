@@ -280,6 +280,30 @@ public class IssueServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetIssueById_Should_Expose_Creator_SupabaseId_As_UserId()
+    {
+        // Regression: user.id must be the creator's Supabase auth id (the identifier the client
+        // holds for itself), not the internal UserProfile.Id PK. Returning the PK silently denied
+        // owners the edit action, because issue.user.id === my-supabase-id could never match.
+        var user = TestDataBuilder.CreateUser();
+        var issue = TestDataBuilder.CreateIssue(userId: user.Id, status: IssueStatus.Active);
+
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            ctx.Issues.Add(issue);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+        var result = await svc.GetIssueByIdAsync(issue.Id);
+
+        result.Should().NotBeNull();
+        result!.User.Id.Should().Be(user.SupabaseUserId);
+        result.User.Id.Should().NotBe(user.Id.ToString());
+    }
+
+    [Fact]
     public async Task GetIssueById_Should_Not_Return_Submitted_To_NonOwner()
     {
         var user = TestDataBuilder.CreateUser();

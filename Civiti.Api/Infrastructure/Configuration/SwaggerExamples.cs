@@ -452,7 +452,7 @@ public class CommentResponseExample : IExamplesProvider<CommentResponse>
             ReplyCount = 2,
             User = new CommentUserResponse
             {
-                Id = Guid.NewGuid(),
+                Id = "d1f7c3a2-4b8e-4e2a-9c1d-6f0b2a5e8c94",
                 DisplayName = "Maria Ionescu",
                 PhotoUrl = "https://storage.civiti.ro/avatars/user-456.jpg",
                 Level = 3

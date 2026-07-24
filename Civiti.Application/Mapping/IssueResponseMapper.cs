@@ -64,15 +64,19 @@ public static class IssueResponseMapper
         User = issue.User is not null
             ? new UserBasicResponse
             {
-                Id = issue.User.Id,
+                // The Supabase auth id (JWT sub), not the internal PK: it is the identifier the
+                // client holds for itself, so its ownership check (issue.user.id === my sub) can
+                // actually match. Mapping the PK here silently denied owners their own issues.
+                Id = issue.User.SupabaseUserId,
                 Name = issue.User.DisplayName,
                 PhotoUrl = issue.User.PhotoUrl
             }
             : new UserBasicResponse
             {
                 // The creator's profile row is gone (hard-deleted account); the issue itself is
-                // preserved, attributed to nobody.
-                Id = issue.UserId,
+                // preserved, attributed to nobody. No Supabase id survives, so leave it empty
+                // rather than leak the internal FK — it matches no caller, which is correct.
+                Id = string.Empty,
                 Name = "Deleted User",
                 PhotoUrl = null
             }

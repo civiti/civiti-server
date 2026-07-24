@@ -81,7 +81,7 @@ public class UntrustedAwareSerializerOptionsTests
             Status = IssueStatus.Active,
             DesiredOutcome = null,
             CommunityImpact = null,
-            User = new UserBasicResponse { Id = Guid.NewGuid(), Name = "Anon" }
+            User = new UserBasicResponse { Id = Guid.NewGuid().ToString(), Name = "Anon" }
         };
 
         var json = JsonSerializer.Serialize(dto, Options);
@@ -104,7 +104,7 @@ public class UntrustedAwareSerializerOptionsTests
             Content = "Reasonable comment",
             User = new CommentUserResponse
             {
-                Id = Guid.NewGuid(),
+                Id = Guid.NewGuid().ToString(),
                 DisplayName = "Some User",
                 Level = 1
             }
@@ -135,7 +135,7 @@ public class UntrustedAwareSerializerOptionsTests
             Address = "address text",
             Category = IssueCategory.Infrastructure,
             Status = IssueStatus.Active,
-            User = new UserBasicResponse { Id = Guid.NewGuid(), Name = "Author" }
+            User = new UserBasicResponse { Id = Guid.NewGuid().ToString(), Name = "Author" }
         };
 
         var json = JsonSerializer.Serialize(dto, Options);
