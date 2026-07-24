@@ -123,7 +123,9 @@ public class IssueServiceUpdateTests : IDisposable
         var result = await CreateService().UpdateIssueAsync(
             issue.Id, ValidRequest(issue.UpdatedAt), owner.SupabaseUserId);
 
-        result.Issue!.User.Id.Should().Be(owner.Id);
+        // user.id is the Supabase auth id (the caller's own identifier), not the internal PK —
+        // this is what lets the client's owner check match and permit editing.
+        result.Issue!.User.Id.Should().Be(owner.SupabaseUserId);
         result.Issue.User.Name.Should().Be(owner.DisplayName);
     }
 

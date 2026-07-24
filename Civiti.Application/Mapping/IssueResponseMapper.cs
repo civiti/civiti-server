@@ -64,15 +64,21 @@ public static class IssueResponseMapper
         User = issue.User is not null
             ? new UserBasicResponse
             {
-                Id = issue.User.Id,
+                // The Supabase auth id (JWT sub), not the internal PK: it is the identifier the
+                // client holds for itself, so its ownership check (issue.user.id === my sub) can
+                // actually match. Mapping the PK here silently denied owners their own issues.
+                Id = issue.User.SupabaseUserId,
                 Name = issue.User.DisplayName,
                 PhotoUrl = issue.User.PhotoUrl
             }
             : new UserBasicResponse
             {
-                // The creator's profile row is gone (hard-deleted account); the issue itself is
-                // preserved, attributed to nobody.
-                Id = issue.UserId,
+                // No loaded creator: either the profile row is gone (hard delete) or, far more
+                // commonly, it was soft-deleted and the global !IsDeleted query filter nulled the
+                // Include. Either way no Supabase id survives, so emit the all-zeros sentinel — it
+                // stays a valid UUID for clients that parse the field, matches no caller, and does
+                // not leak the internal FK the way the old mapping did.
+                Id = Guid.Empty.ToString(),
                 Name = "Deleted User",
                 PhotoUrl = null
             }

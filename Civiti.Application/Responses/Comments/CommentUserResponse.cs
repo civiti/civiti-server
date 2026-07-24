@@ -7,7 +7,13 @@ namespace Civiti.Application.Responses.Comments;
 /// </summary>
 public class CommentUserResponse
 {
-    public Guid Id { get; set; }
+    /// <summary>
+    /// The comment author's Supabase auth id (the JWT <c>sub</c>) — the identifier a client can
+    /// compare against its own to decide ownership. The all-zeros sentinel
+    /// (<c>00000000-0000-0000-0000-000000000000</c>) for a deleted author. Not the internal
+    /// <c>UserProfile.Id</c> PK.
+    /// </summary>
+    public string Id { get; set; } = string.Empty;
     [Untrusted] public string DisplayName { get; set; } = string.Empty;
     public string? PhotoUrl { get; set; }
     public int Level { get; set; }

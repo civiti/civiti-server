@@ -905,14 +905,19 @@ public class CommentService(
             User = comment.User is not null
                 ? new CommentUserResponse
                 {
-                    Id = comment.User.Id,
+                    // Supabase auth id (JWT sub), not the internal PK — the client compares this
+                    // against its own id to tell whether the comment is theirs.
+                    Id = comment.User.SupabaseUserId,
                     DisplayName = comment.User.DisplayName,
                     PhotoUrl = comment.User.PhotoUrl,
                     Level = comment.User.Level
                 }
                 : new CommentUserResponse
                 {
-                    Id = Guid.Empty,
+                    // Deleted author (soft-deleted → filtered out of the Include, or hard-deleted):
+                    // the all-zeros sentinel, matching no caller. Kept UUID-shaped, as this branch
+                    // was before user.id became the Supabase id.
+                    Id = Guid.Empty.ToString(),
                     DisplayName = "Deleted User",
                     PhotoUrl = null,
                     Level = 0

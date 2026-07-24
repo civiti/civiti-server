@@ -41,7 +41,14 @@ public class IssuePhotoResponse
 
 public class UserBasicResponse
 {
-    public Guid Id { get; set; }
+    /// <summary>
+    /// The creator's Supabase auth id (the JWT <c>sub</c>) — the same identifier the caller
+    /// holds for itself, so a client can compare it to decide ownership. For a deleted creator it
+    /// is the all-zeros sentinel (<c>00000000-0000-0000-0000-000000000000</c>), which matches no
+    /// caller. This is deliberately not the internal <c>UserProfile.Id</c> PK, which no client can
+    /// match against its own identity.
+    /// </summary>
+    public string Id { get; set; } = string.Empty;
     [Untrusted] public string Name { get; set; } = string.Empty;
     public string? PhotoUrl { get; set; }
 }

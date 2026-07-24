@@ -2,6 +2,7 @@ using Civiti.Infrastructure.Data;
 using Civiti.Domain.Constants;
 using Civiti.Domain.Entities;
 using Civiti.Domain.Exceptions;
+using Civiti.Application.Mapping;
 using Civiti.Application.Requests.Issues;
 using Civiti.Application.Responses.Moderation;
 using Civiti.Infrastructure.Services;
@@ -277,6 +278,51 @@ public class IssueServiceTests : IDisposable
 
         result.Should().NotBeNull();
         result!.Title.Should().Be("Test Title");
+    }
+
+    [Fact]
+    public async Task GetIssueById_Should_Expose_Creator_SupabaseId_As_UserId()
+    {
+        // Regression: user.id must be the creator's Supabase auth id (the identifier the client
+        // holds for itself), not the internal UserProfile.Id PK. Returning the PK silently denied
+        // owners the edit action, because issue.user.id === my-supabase-id could never match.
+        var user = TestDataBuilder.CreateUser();
+        var issue = TestDataBuilder.CreateIssue(userId: user.Id, status: IssueStatus.Active);
+
+        using (var ctx = _dbFactory.CreateContext())
+        {
+            ctx.UserProfiles.Add(user);
+            ctx.Issues.Add(issue);
+            await ctx.SaveChangesAsync();
+        }
+
+        var svc = CreateService();
+        var result = await svc.GetIssueByIdAsync(issue.Id);
+
+        result.Should().NotBeNull();
+        result!.User.Id.Should().Be(user.SupabaseUserId);
+        result.User.Id.Should().NotBe(user.Id.ToString());
+    }
+
+    [Fact]
+    public void ToDetailResponse_Should_Emit_Sentinel_UserId_When_Author_Not_Loaded()
+    {
+        // Deleted-author fallback: when issue.User is null the mapper must emit the all-zeros
+        // sentinel as user.id — UUID-shaped, matching no caller — never a parse-breaking empty
+        // string and never the internal FK. Exercised on the mapper directly because a required-User
+        // Include filters a soft-deleted author's issue out of the detail query (and a hard delete
+        // cascades it away), so this branch is not reachable through GetIssueByIdAsync.
+        var issue = new Issue
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid()
+            // User left null to simulate a missing/filtered author; Photos/IssueAuthorities default to []
+        };
+
+        var result = IssueResponseMapper.ToDetailResponse(issue, hasVoted: null);
+
+        result.User.Name.Should().Be("Deleted User");
+        result.User.Id.Should().Be(Guid.Empty.ToString());
     }
 
     [Fact]
