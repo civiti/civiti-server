@@ -26,7 +26,13 @@ public class ClaudeEnhancementService(
 {
     // Bump when a change to the petition prompt (system/user) should invalidate every cached core.
     // Scaffold-only changes need no bump — the scaffold is re-assembled live, only the AI core is cached.
+    // A model change needs no bump either: ClaudeConfiguration.Model is part of the content hash.
     private const string PetitionPromptVersion = "v1";
+
+    // The only stop reason whose text is a complete answer. "max_tokens" means the reply was cut off
+    // (truncated JSON, or a half-finished petition that would otherwise be cached for the whole TTL);
+    // "refusal" means the model declined, and any text it carries is not the requested output.
+    private const string CompletedStopReason = "end_turn";
 
     private const string SystemPrompt = """
         Ești un asistent specializat în îmbunătățirea textelor pentru sesizări civice în România.
@@ -78,33 +84,14 @@ public class ClaudeEnhancementService(
 
         try
         {
-            var userPrompt = BuildUserPrompt(request);
-
-            MessageParameters messageRequest = new()
-            {
-                Model = configuration.Model,
-                MaxTokens = configuration.MaxTokens,
-                System = [new SystemMessage(SystemPrompt)],
-                Messages = [new Message(RoleType.User, userPrompt)]
-            };
+            MessageParameters messageRequest = BuildMessageParameters(SystemPrompt, BuildUserPrompt(request), configuration.MaxTokens);
 
             using CancellationTokenSource cts = new(TimeSpan.FromSeconds(configuration.TimeoutSeconds));
             MessageResponse? response = await anthropicClient.Messages.GetClaudeMessageAsync(messageRequest, cts.Token);
 
-            if (response?.Content == null || response.Content.Count == 0)
+            var responseText = ReadCompletedText(response, "text enhancement");
+            if (responseText is null)
             {
-                logger.LogWarning("Empty response from Claude API");
-                return CreateFallbackResponse(request, "AI returned an empty response.");
-            }
-
-            var responseText = response.Content
-                .OfType<TextContent>()
-                .Select(c => c.Text)
-                .FirstOrDefault();
-
-            if (string.IsNullOrWhiteSpace(responseText))
-            {
-                logger.LogWarning("No text content in Claude response");
                 return CreateFallbackResponse(request, "AI returned an invalid response.");
             }
 
@@ -220,27 +207,65 @@ public class ClaudeEnhancementService(
 
     /// <summary>
     /// Sends the composed prompt to Claude and returns the raw (uncleaned) core text, or null when the
-    /// response carries no text. Isolated as a <c>protected virtual</c> seam so tests can drive the
-    /// AI-success path deterministically without a live API call; production behaviour is unchanged.
+    /// response carries no usable text (empty, cut off at max_tokens, or refused). Isolated as a
+    /// <c>protected virtual</c> seam so tests can drive the AI-success path deterministically without
+    /// a live API call; production behaviour is unchanged.
     /// </summary>
     protected virtual async Task<string?> RequestPetitionCoreAsync(PetitionBodyRequest request, CancellationToken cancellationToken)
     {
-        var userPrompt = BuildPetitionUserPrompt(request);
-
-        MessageParameters messageRequest = new()
-        {
-            Model = configuration.Model,
-            MaxTokens = configuration.MaxTokens,
-            System = [new SystemMessage(PetitionCoreSystemPrompt)],
-            Messages = [new Message(RoleType.User, userPrompt)]
-        };
+        MessageParameters messageRequest = BuildMessageParameters(
+            PetitionCoreSystemPrompt, BuildPetitionUserPrompt(request), configuration.MaxTokens);
 
         MessageResponse? response = await anthropicClient.Messages.GetClaudeMessageAsync(messageRequest, cancellationToken);
 
-        return response?.Content?
-            .OfType<TextContent>()
-            .Select(c => c.Text)
-            .FirstOrDefault();
+        return ReadCompletedText(response, "petition core");
+    }
+
+    /// <summary>
+    /// The single place a Claude request is shaped. Model and effort come from the
+    /// <see cref="ClaudeConfiguration"/> constants. <c>Thinking</c> is left unset on purpose: the model
+    /// then runs its default adaptive thinking, scaled by effort. An empty <c>ThinkingParameters</c>
+    /// would serialize as <c>{"type":"enabled"}</c>, which current models reject. No temperature/top_p/top_k and no
+    /// assistant prefill either; current models reject non-default sampling and prefills.
+    /// </summary>
+    internal static MessageParameters BuildMessageParameters(string systemPrompt, string userPrompt, int maxTokens) => new()
+    {
+        Model = ClaudeConfiguration.Model,
+        MaxTokens = maxTokens,
+        OutputConfig = new OutputConfig { Effort = ClaudeConfiguration.Effort },
+        System = [new SystemMessage(systemPrompt)],
+        Messages = [new Message(RoleType.User, userPrompt)]
+    };
+
+    /// <summary>
+    /// Returns the reply text only when the model finished normally (<c>end_turn</c>), joining every
+    /// text block and skipping thinking blocks, which can come first. Returns null (and logs why) for
+    /// a missing response, a refusal, a reply cut off at max_tokens, or one with no text.
+    /// </summary>
+    internal string? ReadCompletedText(MessageResponse? response, string operation)
+    {
+        if (response is null)
+        {
+            logger.LogWarning("Empty response from Claude API ({Operation})", operation);
+            return null;
+        }
+
+        if (!string.Equals(response.StopReason, CompletedStopReason, StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "Claude {Operation} did not complete (stop_reason {StopReason}); discarding its output",
+                operation, response.StopReason ?? "(none)");
+            return null;
+        }
+
+        var text = string.Concat(response.Content?.OfType<TextContent>().Select(c => c.Text) ?? []);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            logger.LogWarning("No text content in Claude response ({Operation})", operation);
+            return null;
+        }
+
+        return text;
     }
 
     /// <inheritdoc />
@@ -251,15 +276,20 @@ public class ClaudeEnhancementService(
     }
 
     /// <summary>
-    /// SHA-256 fingerprint of the fields that feed the AI core (prompt version + the exact inputs
-    /// of <see cref="BuildPetitionUserPrompt"/>). Excludes IssueId/PhotoCount (scaffold-only, so a
-    /// new photo reuses the core) and Regenerate (a bypass flag). An edit to any prompt-affecting
-    /// field yields a new hash and thus a fresh generation. <c>internal</c> so tests can reproduce it.
+    /// SHA-256 fingerprint of what produces the AI core: the model, the prompt version and the exact
+    /// inputs of <see cref="BuildPetitionUserPrompt"/>. Excludes IssueId/PhotoCount (scaffold-only, so
+    /// a new photo reuses the core) and Regenerate (a bypass flag). An edit to any prompt-affecting
+    /// field, or a change of <see cref="ClaudeConfiguration.Model"/>, yields a new hash and thus a
+    /// fresh generation. <c>internal</c> so tests can reproduce it.
     /// </summary>
-    internal static string ComputePetitionContentHash(PetitionBodyRequest request)
+    internal static string ComputePetitionContentHash(PetitionBodyRequest request) =>
+        ComputePetitionContentHash(request, ClaudeConfiguration.Model);
+
+    internal static string ComputePetitionContentHash(PetitionBodyRequest request, string model)
     {
         // Unit-separator delimiter avoids field-boundary collisions (e.g. "ab"+"c" vs "a"+"bc").
         var canonical = string.Join('\u001f',
+            model,
             PetitionPromptVersion,
             request.Title ?? string.Empty,
             request.Category.ToString(),

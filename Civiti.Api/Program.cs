@@ -3,8 +3,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
-using System.Threading.RateLimiting;
-using Anthropic.SDK;
 using Civiti.Infrastructure.Data;
 using Civiti.Api.Endpoints;
 using Civiti.Api.Infrastructure.Configuration;
@@ -319,50 +317,24 @@ builder.Services.AddSingleton(new SupabaseConfiguration
     ServiceRoleKey = supabaseServiceRoleKey ?? string.Empty
 });
 
-// Claude AI Configuration
-ClaudeConfiguration claudeConfig = new()
-{
-    ApiKey = GetEnvOrConfig("CLAUDE_API_KEY", "Claude:ApiKey") ?? string.Empty,
-    Model = GetEnvOrConfig("CLAUDE_MODEL", "Claude:Model") ?? ClaudeConfiguration.DefaultModel,
-    MaxTokens = GetEnvOrConfigInt("CLAUDE_MAX_TOKENS", "Claude:MaxTokens", ClaudeConfiguration.DefaultMaxTokens),
-    TimeoutSeconds = GetEnvOrConfigInt("CLAUDE_TIMEOUT_SECONDS", "Claude:TimeoutSeconds", ClaudeConfiguration.DefaultTimeoutSeconds),
-    RateLimitPerMinute = GetEnvOrConfigInt("CLAUDE_RATE_LIMIT_PER_MINUTE", "Claude:RateLimitPerMinute", ClaudeConfiguration.DefaultRateLimitPerMinute),
-    PetitionCacheHours = GetEnvOrConfigInt("PETITION_CACHE_HOURS", "Claude:PetitionCacheHours", ClaudeConfiguration.DefaultPetitionCacheHours)
-};
-builder.Services.AddSingleton(claudeConfig);
-
-// AnthropicClient wraps a SocketsHttpHandler-backed HttpClient. Register as a
-// singleton so the connection pool is shared across all ClaudeEnhancementService
-// calls — constructing a new client per request exhausts sockets under load.
-// When Claude is not configured, the client is still registered but never exercised:
-// ClaudeEnhancementService short-circuits on ClaudeConfiguration.IsConfigured before
-// calling it.
-builder.Services.AddSingleton<AnthropicClient>(_ => new AnthropicClient(claudeConfig.ApiKey));
-
-// Configure rate limiter for Claude AI requests using sliding window algorithm
-builder.Services.AddSingleton<PartitionedRateLimiter<Guid>>(sp =>
-{
-    ClaudeConfiguration config = sp.GetRequiredService<ClaudeConfiguration>();
-    return PartitionedRateLimiter.Create<Guid, Guid>(userId =>
-        RateLimitPartition.GetSlidingWindowLimiter(
-            partitionKey: userId,
-            factory: _ => new SlidingWindowRateLimiterOptions
-            {
-                PermitLimit = config.RateLimitPerMinute,
-                Window = TimeSpan.FromMinutes(1),
-                SegmentsPerWindow = 6, // 10-second segments for smoother rate limiting
-                QueueLimit = 0,
-                AutoReplenishment = true
-            }));
-});
+// Claude AI — settings, client, rate limiter and services. Shared with Civiti.Mcp; the model
+// itself is fixed in ClaudeConfiguration.Model (see docs/technical/ai-models.md).
+ClaudeConfiguration claudeConfig = builder.Services.AddClaudeEnhancement(builder.Configuration);
 
 if (claudeConfig.IsConfigured)
 {
-    Log.Information("Claude AI configured with model: {Model}", claudeConfig.Model);
+    Log.Information("Claude AI configured with model: {Model} (effort {Effort})", ClaudeConfiguration.Model, ClaudeConfiguration.Effort);
 }
 else
 {
     Log.Warning("Claude API key is not configured. AI text enhancement will return original text.");
+}
+
+if (claudeConfig.IgnoredModelOverride is not null)
+{
+    Log.Warning(
+        "CLAUDE_MODEL / Claude:Model is set to {IgnoredModel} but is ignored; the model is fixed in code ({Model}). Delete the setting.",
+        claudeConfig.IgnoredModelOverride, ClaudeConfiguration.Model);
 }
 
 // OpenAI Configuration (for content moderation)
@@ -546,8 +518,6 @@ builder.Services.AddScoped<IIssueService, IssueService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<IGamificationService, GamificationService>();
 builder.Services.AddScoped<IAuthorityService, AuthorityService>();
-builder.Services.AddScoped<IPetitionBodyCacheStore, PetitionBodyCacheStore>();
-builder.Services.AddScoped<IClaudeEnhancementService, ClaudeEnhancementService>();
 builder.Services.AddScoped<IActivityService, ActivityService>();
 builder.Services.AddScoped<ICommentService, CommentService>();
 builder.Services.AddScoped<IContentModerationService, OpenAIModerationService>();

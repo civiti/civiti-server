@@ -328,13 +328,17 @@ public class ClaudeEnhancementServicePetitionBodyTests
     [Fact]
     public void ComputePetitionContentHash_IsDeterministic_AndMatchesGoldenValue()
     {
-        var hash = ClaudeEnhancementService.ComputePetitionContentHash(GoldenRequest());
+        // Pinned to a fixed model string, not ClaudeConfiguration.Model, so a model change (which is
+        // meant to invalidate the cache) doesn't break this test; ComputePetitionContentHash_ChangesWithModel
+        // covers the model.
+        const string goldenModel = "golden-model";
+        var hash = ClaudeEnhancementService.ComputePetitionContentHash(GoldenRequest(), goldenModel);
 
         hash.Should().MatchRegex("^[0-9A-F]{64}$");
-        hash.Should().Be(ClaudeEnhancementService.ComputePetitionContentHash(GoldenRequest()));
+        hash.Should().Be(ClaudeEnhancementService.ComputePetitionContentHash(GoldenRequest(), goldenModel));
         // Golden digest: if this breaks, the prompt version / field set / delimiter changed and EVERY
         // cached core in production will stop matching on the next read — bump deliberately, not by accident.
-        hash.Should().Be("13CDC58392CFECF0FC68B6DD5CAE27DDDD28057C0D368657B4AC264673C1CC90");
+        hash.Should().Be("8CA3CD50457D6040CF71FAE1B8D250377BF15C0D986276BCE55C2972B28BDB27");
     }
 
     [Fact]
