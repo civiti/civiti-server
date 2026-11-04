@@ -100,12 +100,18 @@ public static class AuthorizeEndpoint
                 new CookieOptions
                 {
                     HttpOnly = true,
-                    // Strict (not Lax): the cookie is always written by /authorize and read by
-                    // /Consent within the same same-site redirect chain, so Strict has no
-                    // functional cost. Defense-in-depth on top of Path=/Consent scoping and the
-                    // encrypted payload — blocks the browser from attaching the cookie on any
-                    // cross-site top-level navigation to /Consent.
-                    SameSite = SameSiteMode.Strict,
+                    // Lax, NOT Strict. Browsers decide whether to attach a SameSite cookie from the
+                    // site that *initiated* the navigation, and a same-site 302 partway through the
+                    // chain doesn't reset that. Every real consent flow is cross-site-initiated:
+                    // claude.ai's "Connect" → /authorize → 302 /Consent, or Google → Supabase →
+                    // /supabase-callback → /authorize → 302 /Consent. Under Strict the browser
+                    // never sends this cookie to /Consent, so every first-time consent dies with
+                    // "Consent context missing or expired" (the PR #139 regression). Lax still
+                    // withholds the cookie from cross-site POSTs, so the Approve/Deny submit
+                    // stays protected, on top of HttpOnly, Path=/Consent, the encrypted 10-min
+                    // payload, one-time use, the antiforgery token and the form nonce. The
+                    // session and PKCE cookies are Lax for the same reason.
+                    SameSite = SameSiteMode.Lax,
                     Secure = httpContext.Request.IsHttps,
                     Path = AuthEndpointConstants.ConsentPath,
                     MaxAge = TimeSpan.FromMinutes(10),
