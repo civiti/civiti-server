@@ -60,10 +60,16 @@ Each item carries:
   - **Token contract integrity.** `refresh_token` grant is advertised in DCR
     response — verify it's reliably obtainable end-to-end (PR #137 closed the
     `offline_access` gap; check there's been no regression).
-  - **Consent-cookie lifecycle.** Encrypted, one-time-use, `SameSite=Strict`,
-    `Path=/Consent` (PR #139 hardened this). Confirm the invariants still hold:
+  - **Consent-cookie lifecycle.** Encrypted, one-time-use, `SameSite=Lax`,
+    `Path=/Consent` (PR #139 added one-time use). Confirm the invariants still hold:
     every successful path consumes the cookie; the evaporated-session path
     cleans up; no path leaves it alive past 10 minutes.
+    **Do not tighten it to `SameSite=Strict`.** PR #139 tried that, and it broke
+    every first-time consent: the browser judges SameSite by the site that
+    started the navigation (claude.ai, or Google/Supabase after sign-in), so the
+    `/authorize` → `/Consent` redirect never carries a Strict cookie and the page
+    fails with "Consent context missing or expired". Lax already withholds the
+    cookie from cross-site POSTs, which is where the protection matters.
   - **Cross-tenant leakage.** Civiti is single-tenant today, but if a future
     multi-tenant scheme lands (e.g. per-county admins), the scope model needs
     to be re-read with that in mind.
