@@ -77,6 +77,10 @@ PORT=8080  # Railway provides this
 # Claude AI (Civiti-Server and Civiti-MCP). The model is fixed in code, not here:
 # see docs/technical/ai-models.md.
 CLAUDE_API_KEY=your-claude-api-key
+
+# Civiti-Auth only. Required outside Development; see "Civiti-Auth token keys" below.
+OIDC_SIGNING_KEY=base64-encoded-pem-rsa-private-key
+OIDC_ENCRYPTION_KEY=base64-encoded-pem-rsa-private-key
 ```
 
 ### Local Development
@@ -153,6 +157,31 @@ Contains production-specific settings like CORS origins:
    - `SUPABASE_PUBLISHABLE_KEY`
    - `DATABASE_URL` (automatically provided by Railway PostgreSQL)
 
+### Civiti-Auth token keys
+
+Civiti-Auth signs access tokens with `OIDC_SIGNING_KEY` and encrypts refresh tokens with `OIDC_ENCRYPTION_KEY`. Both keys must stay the same across deploys: if either one changes, every connected MCP client (Claude Desktop, Claude Code and so on) has to sign in again.
+
+Both are required on every environment except Development. Civiti-Auth refuses to start if either is missing or invalid, and a failed healthcheck leaves the previous deployment serving. Development can leave both unset and gets throwaway keys that last until the next restart.
+
+Each value is a 2048-bit RSA private key in PEM format, base64-encoded onto one line. Generate each key separately, because the two must differ:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 | base64 -w0
+```
+
+Keep these out of git and logs. Anyone holding them can forge tokens for any user. To set them without the value appearing in your shell history or a process list, pipe it in, once per key:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 | base64 -w0 \
+  | railway variable set OIDC_SIGNING_KEY --stdin --skip-deploys --service Civiti-Auth --environment production
+```
+
+`--skip-deploys` matters the first time: without it, Railway redeploys the service as soon as a variable changes.
+
+To check it worked, look for `OpenIddict signing and encryption keys loaded from configuration.` in the Civiti-Auth startup logs, and confirm the `kid` at `/.well-known/jwks` stays the same across a redeploy.
+
+Replacing a key signs everyone out once, so only rotate on a suspected leak or a schedule you've announced. Civiti-Auth loads one key of each kind, so there's no overlap period.
+
 ### Verifying Configuration
 
 The application logs configuration sources at startup:
@@ -191,6 +220,12 @@ postgresql://user:password@host:port/database
 ```
 
 The application automatically converts this to .NET's connection string format.
+
+### "OIDC_SIGNING_KEY is required" Error
+
+Civiti-Auth stopped at startup because a token key is missing, malformed, or shorter than 2048 bits.
+
+**Solution**: Set both keys as described in [Civiti-Auth token keys](#civiti-auth-token-keys). The error names the variable at fault; it never includes the value.
 
 ### Configuration Not Loading
 

@@ -78,10 +78,14 @@ No hand-rolled crypto, no custom token formats, no bespoke endpoints.
 
 Civiti.Auth issues **JWT access tokens** (RFC 9068, 15-minute TTL) signed by
 its own JWKS; `Civiti.Mcp` validates them statelessly. **Refresh tokens are
-opaque** 256-bit reference values, stored hashed, rotating on every use
-(30-day absolute TTL). JWT for access gives us zero DB round-trips on tool
-calls; opaque refresh gives us immediate server-side revocation. This is
-the textbook OAuth 2.1 split — one configuration switch in OpenIddict.
+self-contained and encrypted**, rotating on every use (30-day absolute TTL),
+with a row in `OpenIddictTokens` tracking each one's status. JWT for access
+gives us zero DB round-trips on tool calls; the status row gives us immediate
+server-side revocation.
+
+Because a refresh token carries its own encrypted payload, the keys must
+survive restarts: they load from `OIDC_SIGNING_KEY` and `OIDC_ENCRYPTION_KEY`
+(see `docs/technical/configuration-guide.md`).
 
 ## 4. Trust boundary: Civiti.Auth is the identity edge
 
@@ -94,7 +98,7 @@ own tokens, the upstream Supabase session is forgotten.
 2. User is redirected to the Supabase-hosted login (or whatever auth method they use — Google OAuth via Supabase, email/password, etc.).
 3. On return, `Civiti.Auth` has a short-lived Supabase JWT. It extracts `sub` (Supabase user id) and `app_metadata.role`, confirms a matching `UserProfile` row exists, and immediately discards the Supabase JWT.
 4. Consent screen (see §7).
-5. Civiti access token (JWT, 15 min) + refresh token (opaque, rotating, 30 d) are minted and returned.
+5. Civiti access token (JWT, 15 min) + refresh token (encrypted, rotating, 30 d) are minted and returned.
 
 ### Refresh
 
@@ -261,7 +265,7 @@ See [`tool-inventory.md` §3](tool-inventory.md#3-admin-tools) for the two-step 
 - **2026-04-21** — Allow-list only for v1; Dynamic Client Registration endpoint is not exposed. *(Superseded later the same day — see DCR entry below.)*
 - **2026-04-21** — OpenIddict is the AS and token-validation stack.
 - **2026-04-21** — **Anonymous MCP surface in scope for v1 via a dedicated `/mcp/public` endpoint.** (Supersedes an earlier "out of scope" decision made the same day.) Rationale: the Civiti REST API already exposes an anonymous public surface (issue list/detail, authority directory, `email-sent` counter); the MCP path must mirror it for parity. Concrete use case: an AI agent helping a non-signed-up user browse issues, draft a petition email, and bump the email-sent counter — the petition itself is still citizen-originated from their own inbox. Sibling endpoint, IP-based rate limiting, no session or OAuth flow. Tool list defined in [`tool-inventory.md` §1](tool-inventory.md#1-public-anonymous-tools). Everything else in this document applies to the authenticated `/mcp` endpoint only.
-- **2026-04-21** — **Token format: JWT access (15 min) + opaque rotating refresh (30 d).** JWT access → zero DB round-trip in `Civiti.Mcp` (validates via JWKS). Opaque refresh → server-side revocation is immediate. Industry default; one config switch in OpenIddict.
+- **2026-04-21** — **Token format: JWT access (15 min) + opaque rotating refresh (30 d).** JWT access → zero DB round-trip in `Civiti.Mcp` (validates via JWKS). Opaque refresh → server-side revocation is immediate. Industry default; one config switch in OpenIddict. *(Corrected by the 2026-11-05 entry: the switch was never enabled.)*
 - **2026-04-21** — **Device Authorization Grant (RFC 8628) deferred.** All v1 allow-listed clients support browser redirect (loopback or claimed URL scheme). Add if and when a client that cannot open a browser is onboarded.
 - **2026-04-21** — **Admin scopes (`civiti.admin.*`) restricted to `claude-desktop` and `claude-code` in v1.** Enforced via `allowsAdminScopes` flag on allow-list entries (§6). Other clients get the flag on a case-by-case review. Easy to expand; expensive to walk back once an admin has granted a wider client admin access.
 - **2026-04-21** — **Consent-screen copy ownership: product/legal.** Engineering ships the scaffold; the GDPR notice wording is a compliance artefact, not an engineering decision. Blocking item for v1 launch.
@@ -269,3 +273,4 @@ See [`tool-inventory.md` §3](tool-inventory.md#3-admin-tools) for the two-step 
 - **2026-04-28** — **v1c PR 1: JWT-only validation on Civiti.Mcp** (no introspection, no shared OpenIddict.Core dependency on the Mcp host). Refresh-token revocation propagates to access tokens within the 15-min access-token TTL — acceptable for citizen reads. Admin scopes get stronger guarantees via the refresh-time re-validation and the 5-min sweep on Civiti.Auth (see §4); they don't need RS-side introspection on top. If a future tool surfaces a stricter latency requirement, switch on OpenIddict introspection without touching tokens.
 - **2026-04-28** — **Two env vars carry the trust boundary on Civiti.Mcp.** `CIVITI_AUTH_ISSUER` is the authoritative AS URL (drives JWKS fetch + `iss` check); `CIVITI_MCP_PUBLIC_ORIGIN` is the canonical scheme+host this Mcp deploy is reachable on (drives the `resource` value in the RFC 9728 discovery doc and the `resource_metadata` parameter in WWW-Authenticate). Mirrors the same `CIVITI_AUTH_PUBLIC_ORIGIN` defense Civiti.Auth uses against spoofed Host headers — never trust `Request.Host`.
 - **2026-04-21** — **Dynamic Client Registration enabled with guardrails.** (Supersedes the earlier "DCR off" decision made the same day.) Rationale: every practical remote-MCP deployment uses DCR because clients expect it, and with the UX worked out end-to-end a Civiti user pasting `https://mcp.civiti.app/mcp` into Claude Desktop must not also have to paste a `client_id`. Safety shifts from "who can register" to "what redirect URIs are accepted and what scopes can be granted". Policy (§6): loopback-only redirect URIs (RFC 8252), per-IP rate limit on `/register`, DCR-registered clients capped at `civiti.read` + `civiti.write` (never admin), admin scopes stay gated on the pre-registered allow-list via `allowsAdminScopes`, consent screen displays a Verified/Unverified badge.
+- **2026-11-05** — **Persist the OpenIddict keys; refresh tokens are self-contained, not reference tokens.** The 2026-04-21 token-format entry assumed `UseReferenceRefreshTokens()`, which was never enabled, so refresh tokens were encrypted with an ephemeral key and every Civiti.Auth restart signed out every MCP client (seen in production as `invalid_grant` / ID2004 a minute after a deploy). The keys now load from `OIDC_SIGNING_KEY` and `OIDC_ENCRYPTION_KEY`, required outside Development. Reference tokens stay off: they would not have fixed this, because the stored payload is still encrypted with the same key (a refresh after restart with reference tokens on and ephemeral keys was still rejected), and revocation already works through the `OpenIddictTokens` status row.
