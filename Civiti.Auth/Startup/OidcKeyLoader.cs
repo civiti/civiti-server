@@ -51,15 +51,20 @@ public static class OidcKeyLoader
                 + $"each generated with `{GenerateCommand}`. Only Development may leave both unset.");
         }
 
-        if (string.Equals(signingKey!.Trim(), encryptionKey!.Trim(), StringComparison.Ordinal))
+        OidcKeys keys = new(
+            Parse(signingKey!, SigningKeyVariable),
+            Parse(encryptionKey!, EncryptionKeyVariable));
+
+        // Compares the parsed keys, because one key can be written in more than one PEM form.
+        var signingModulus = keys.SigningKey.Rsa.ExportParameters(false).Modulus;
+        var encryptionModulus = keys.EncryptionKey.Rsa.ExportParameters(false).Modulus;
+        if (signingModulus.AsSpan().SequenceEqual(encryptionModulus))
         {
             throw new InvalidOperationException(
                 $"{SigningKeyVariable} and {EncryptionKeyVariable} must be two different keys.");
         }
 
-        return new OidcKeys(
-            Parse(signingKey, SigningKeyVariable),
-            Parse(encryptionKey, EncryptionKeyVariable));
+        return keys;
     }
 
     /// <summary>Registers <paramref name="keys"/>, or ephemeral keys when it is null.</summary>

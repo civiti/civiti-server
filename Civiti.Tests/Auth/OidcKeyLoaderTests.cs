@@ -91,6 +91,19 @@ public class OidcKeyLoaderTests
     }
 
     [Fact]
+    public void Load_Throws_WhenBothVariablesHoldTheSameKeyInDifferentPemForms()
+    {
+        using var rsa = RSA.Create(2048);
+
+        var load = () => OidcKeyLoader.Load(
+            Encode(rsa.ExportRSAPrivateKeyPem()),
+            Encode(rsa.ExportPkcs8PrivateKeyPem()),
+            isDevelopment: false);
+
+        load.Should().Throw<InvalidOperationException>().WithMessage("*two different keys*");
+    }
+
+    [Fact]
     public void Load_Throws_ForKeysShorterThan2048Bits()
     {
         var load = () => OidcKeyLoader.Load(NewKey(1024), NewKey(), isDevelopment: false);
