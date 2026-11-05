@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Civiti.Application.Services;
 using Civiti.Auth.Authentication;
 using Civiti.Auth.Endpoints;
+using Civiti.Auth.Startup;
 using Civiti.Infrastructure.Configuration;
 using Civiti.Infrastructure.Data;
 using Civiti.Infrastructure.Services.Supabase;
@@ -181,6 +182,15 @@ builder.Services.AddRazorPages();
 // OpenIddict Server — per auth-design.md §3/§4/§8. Scope/flow/lifetime values are the spec
 // defaults. v1a ships infrastructure only: /authorize and /token are registered but stubbed
 // with 501 because the Supabase login delegation + consent screen land in v1b.
+// Loaded here, outside the AddServer callback, so a missing key fails startup rather than the
+// first request that resolves the OpenIddict options.
+OidcKeys? oidcKeys = OidcKeyLoader.Load(
+    Environment.GetEnvironmentVariable(OidcKeyLoader.SigningKeyVariable)
+        ?? builder.Configuration[OidcKeyLoader.SigningKeyConfigKey],
+    Environment.GetEnvironmentVariable(OidcKeyLoader.EncryptionKeyVariable)
+        ?? builder.Configuration[OidcKeyLoader.EncryptionKeyConfigKey],
+    builder.Environment.IsDevelopment());
+
 builder.Services.AddOpenIddict()
     .AddCore(options =>
     {
@@ -298,15 +308,13 @@ builder.Services.AddOpenIddict()
         options.RemoveEventHandler(OpenIddictServerHandlers.Exchange.ValidateResources.Descriptor);
         options.IgnoreResourcePermissions();
 
-        // Ephemeral keys rotate on restart. That's fine because refresh tokens are server-side
-        // reference values (opaque + hashed), so losing signing material only invalidates the
-        // short-lived access tokens; the next refresh re-issues against the new JWKS. A
-        // persisted-key story lands if and when restart-induced reauth becomes user-visible.
-        options.AddEphemeralEncryptionKey()
-               .AddEphemeralSigningKey();
+        // Refresh tokens are self-contained: the payload is signed and encrypted with these keys,
+        // and the OpenIddictTokens row only tracks status. Losing either key invalidates every
+        // refresh token, not just the short-lived access tokens, so they have to survive restarts.
+        options.AddOidcKeys(oidcKeys);
 
         // RFC 9068 JWT access tokens so Civiti.Mcp's Validation stack can verify statelessly
-        // against our JWKS; refresh tokens remain opaque (OpenIddict default).
+        // against our JWKS; refresh tokens stay encrypted (OpenIddict default).
         options.DisableAccessTokenEncryption();
 
         options.SetAccessTokenLifetime(TimeSpan.FromMinutes(15))
@@ -460,6 +468,15 @@ app.MapGet(AuthEndpointConstants.SupabaseCallbackPath, SupabaseCallbackEndpoint.
 app.MapPost("/token", TokenEndpoint.HandleAsync);
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8082";
+if (oidcKeys is null)
+{
+    Log.Warning("OpenIddict is using ephemeral keys (Development): tokens will not survive a restart.");
+}
+else
+{
+    Log.Information("OpenIddict signing and encryption keys loaded from configuration.");
+}
+
 Log.Information("Civiti.Auth starting on port {Port}; v1b.2 — login + consent UI, refresh-token rotation with Supabase Admin re-validation, admin-scope gating live.", port);
 await app.RunAsync($"http://0.0.0.0:{port}");
 return;
