@@ -3,7 +3,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using System.Threading.RateLimiting;
-using Anthropic.SDK;
 using Civiti.Application.Email.Models;
 using Civiti.Application.Mcp;
 using Civiti.Application.Notifications;
@@ -227,55 +226,27 @@ if (!openAIConfig.IsConfigured)
     }
 }
 
-// Claude AI config — powers the generate_petition_body tool. Mirrors the wiring in
-// Civiti.Api/Program.cs. Runtime fail-open: ClaudeEnhancementService short-circuits on
-// ClaudeConfiguration.IsConfigured and returns a deterministic, still-compliant petition body
-// when the key is absent, so a missing key degrades gracefully rather than failing the tool.
-var claudeConfig = new ClaudeConfiguration
+// Claude AI — powers the generate_petition_body tool. Same registration as Civiti.Api, so both
+// services always call the same model (fixed in ClaudeConfiguration.Model). Runtime fail-open:
+// ClaudeEnhancementService short-circuits on ClaudeConfiguration.IsConfigured and returns a
+// deterministic, still-compliant petition body when the key is absent, so a missing key degrades
+// gracefully rather than failing the tool.
+var claudeConfig = builder.Services.AddClaudeEnhancement(builder.Configuration);
+if (claudeConfig.IsConfigured)
 {
-    ApiKey = Environment.GetEnvironmentVariable("CLAUDE_API_KEY")
-        ?? builder.Configuration["Claude:ApiKey"]
-        ?? string.Empty,
-    Model = Environment.GetEnvironmentVariable("CLAUDE_MODEL")
-        ?? builder.Configuration["Claude:Model"]
-        ?? ClaudeConfiguration.DefaultModel,
-    MaxTokens = int.TryParse(
-        Environment.GetEnvironmentVariable("CLAUDE_MAX_TOKENS")
-            ?? builder.Configuration["Claude:MaxTokens"], out var claudeMaxTokens)
-        ? claudeMaxTokens : ClaudeConfiguration.DefaultMaxTokens,
-    TimeoutSeconds = int.TryParse(
-        Environment.GetEnvironmentVariable("CLAUDE_TIMEOUT_SECONDS")
-            ?? builder.Configuration["Claude:TimeoutSeconds"], out var claudeTimeout)
-        ? claudeTimeout : ClaudeConfiguration.DefaultTimeoutSeconds,
-    RateLimitPerMinute = int.TryParse(
-        Environment.GetEnvironmentVariable("CLAUDE_RATE_LIMIT_PER_MINUTE")
-            ?? builder.Configuration["Claude:RateLimitPerMinute"], out var claudeRate)
-        ? claudeRate : ClaudeConfiguration.DefaultRateLimitPerMinute,
-    PetitionCacheHours = int.TryParse(
-        Environment.GetEnvironmentVariable("PETITION_CACHE_HOURS")
-            ?? builder.Configuration["Claude:PetitionCacheHours"], out var petitionCacheHours)
-        ? petitionCacheHours : ClaudeConfiguration.DefaultPetitionCacheHours
-};
-builder.Services.AddSingleton(claudeConfig);
-// Singleton AnthropicClient so the connection pool is shared (see Civiti.Api/Program.cs).
-builder.Services.AddSingleton<AnthropicClient>(_ => new AnthropicClient(claudeConfig.ApiKey));
-builder.Services.AddSingleton<PartitionedRateLimiter<Guid>>(sp =>
+    Log.Information("Claude AI configured with model: {Model} (effort {Effort})", ClaudeConfiguration.Model, ClaudeConfiguration.Effort);
+}
+else
 {
-    ClaudeConfiguration config = sp.GetRequiredService<ClaudeConfiguration>();
-    return PartitionedRateLimiter.Create<Guid, Guid>(userId =>
-        RateLimitPartition.GetSlidingWindowLimiter(
-            partitionKey: userId,
-            factory: _ => new SlidingWindowRateLimiterOptions
-            {
-                PermitLimit = config.RateLimitPerMinute,
-                Window = TimeSpan.FromMinutes(1),
-                SegmentsPerWindow = 6,
-                QueueLimit = 0,
-                AutoReplenishment = true
-            }));
-});
-builder.Services.AddScoped<IPetitionBodyCacheStore, PetitionBodyCacheStore>();
-builder.Services.AddScoped<IClaudeEnhancementService, ClaudeEnhancementService>();
+    Log.Warning("Claude API key is not configured. generate_petition_body will return the deterministic template.");
+}
+
+if (claudeConfig.IgnoredModelOverride is not null)
+{
+    Log.Warning(
+        "CLAUDE_MODEL / Claude:Model is set to {IgnoredModel} but is ignored; the model is fixed in code ({Model}). Delete the setting.",
+        claudeConfig.IgnoredModelOverride, ClaudeConfiguration.Model);
+}
 
 // Service graph — the subset IIssueService / IAuthorityService / IGamificationService transitively need.
 builder.Services.AddSingleton<IEmailTemplateService, EmailTemplateService>();
