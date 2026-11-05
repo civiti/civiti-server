@@ -828,7 +828,7 @@ public class StaticDataSeeder(
             {
                 Id = Guid.Parse("a0000000-0000-0000-0000-000000005006"),
                 Name = "Administrația Dezvoltare Urbană",
-                Email = "dezvoltareurbana@sector5.ro",
+                Email = "sesizari@adusector5.ro",
                 County = "București",
                 City = "București",
                 District = "Sector 5",
