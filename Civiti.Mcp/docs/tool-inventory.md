@@ -2,9 +2,12 @@
 
 > **Status:** Living document. Section numbers are stable; new sections
 > append to §8+.
-> Last revision: 2026-04-21 — added §1 Public (anonymous) tools;
-> corrected `search_issues` filter signature to match REST; phased rollout
-> updated to ship public endpoint first.
+> Last revision: 2026-11-06 — rebuilt §1 and §2 from `Civiti.Mcp/Tools/*.cs`;
+> marked §3–§6 as designed but not built.
+
+**21 tools are live**, all listed in §1 and §2. Nothing else here is running: there are no admin tools, MCP resources or MCP prompts. §3–§6 keep that design for later phases.
+
+`scripts/check-mcp-tool-inventory.py` runs in CI and fails when the §1 and §2 tables stop matching the code. For URLs, auth and rate limits, see the [technical reference](../README.md).
 
 ## Guiding principles
 
@@ -12,27 +15,32 @@
    descriptions outperforms a 1:1 mirror of the REST API. Agents struggle
    when two tools overlap.
 2. **Tools wrap services, not endpoints.** Each handler calls an existing
-   method on `Civiti.Application` so business rules, moderation, and audit
-   trails are identical to the REST path. No logic duplication.
-3. **Every write tool has a rate-limit class and an audit tag.** The audit
-   record stamps `Source = "mcp"` and the MCP tool name.
-4. **No tool returns raw DB entities.** Responses are trimmed DTOs — large
-   fields (long descriptions, base64 images) are summarized or replaced
-   with resource URIs the agent can fetch on demand.
-5. **Public tools mirror the public REST surface exactly.** If the REST
+   method on `Civiti.Application` so business rules and moderation are
+   identical to the REST path. No logic duplication.
+3. **No tool returns raw DB entities.** Responses are DTOs, and user-supplied
+   strings are wrapped as untrusted content (see §2.3).
+4. **Public tools mirror the public REST surface exactly.** If the REST
    endpoint is anonymous, its MCP counterpart is anonymous on the same
-   terms (filters, rate limits, public-fields-only filtering).
+   terms (filters and public-fields-only filtering).
 
 ## Endpoints
 
-Two MCP endpoints are exposed:
+Both mounts serve the same MCP server, so `tools/list` returns all 21 tools on each. What differs is what a call can do:
 
-- **`/mcp/public`** — no auth. Serves §1 Public tools. Rate-limited per source IP.
-- **`/mcp`** — OAuth 2.1 bearer required (see [`auth-design.md`](auth-design.md)). Serves the §1 Public tools *with enriched authenticated responses* (e.g. `HasVoted` on issue lookups), plus §2–§4 tools scoped by the granted OAuth scope.
+- **`/mcp/public`** needs no token. Public tools work. Authenticated tools are listed, but calling one returns `{ok: false, reason: "unauthenticated"}`.
+- **`/mcp`** needs a bearer token on every request, including `tools/list`. Without one it returns `401`. See [`auth-design.md`](auth-design.md).
 
-The same tool name (`search_issues`, `get_issue`, `list_authorities`, …) appears on both endpoints. The handler lives in `Civiti.Application`; `Civiti.Mcp` passes `currentUserId: null` on the public path and the resolved user on the authenticated path. No divergent logic.
+The table columns in §1 and §2 mean:
+
+| Column | Values |
+| --- | --- |
+| Endpoint | **Public**: works anonymously, on either mount. **Authenticated**: needs a token, so in practice `/mcp`. |
+| Scope | The scope the handler checks. `none` means it checks nothing. |
+| Access | **Read** or **Write**, as seen by the caller. |
 
 ## Rate-limit classes
+
+**None of these classes are built.** Every call counts against one shared limit per source IP; see [Rate limits](../README.md#rate-limits) for what runs today. Per-user limits are tracked in #118. The table below is the design.
 
 | Class | Per-session | Per-user (global) | Notes |
 | --- | --- | --- | --- |
@@ -45,59 +53,88 @@ The same tool name (`search_issues`, `get_issue`, `list_authorities`, …) appea
 
 ## 1. Public (anonymous) tools
 
-Exposed on `/mcp/public`. No authentication. Rate-limited per source IP. They mirror the already-public surface of `Civiti.Api` one-for-one.
-
 **Intent:** let an AI agent browse civic data and help a non-user draft a petition email without requiring signup. The citizen still composes and sends the petition from their own inbox; Civiti only counts it via `mark_email_sent`. This mirrors how the Civiti web UI works for unauthenticated visitors.
 
-| Tool | Backing service | Input summary | Rate class |
-| --- | --- | --- | --- |
-| `search_issues` | `IssueService.GetAllIssuesAsync(request, null)` | `page?` (int, default 1), `pageSize?` (int, 1–100, default 12), `category?` (enum: Infrastructure, Environment, Transportation, PublicServices, Safety, Other), `urgency?` (enum: UrgencyLevel), `status?` (comma-separated list of IssueStatus; defaults to `Active`), `district?` (string), `address?` (string), `sortBy?` (`date`\|`popularity`\|`votes`\|`urgency`, default `date`), `sortDescending?` (bool, default `true`) | `read.public` |
-| `get_issue` | `IssueService.GetIssueByIdAsync(id, null)` | `id: uuid` | `read.public` |
-| `list_authorities` | `AuthorityService.GetActiveAuthoritiesAsync(city?, district?, search?)` | `city?`, `district?`, `search?` | `read.public` |
-| `get_categories` | `CategoryLocalization.GetAll()` (static, from `Civiti.Application.Localization`) | none | `read.public` (cached) |
-| `get_leaderboard` | `GamificationService.GetLeaderboardAsync(period, category, limit)` | `period?` (`all`\|`month`\|`week`, default `all`), `category?` (`points`\|`issues`\|..., default `points`), `limit?` (1–50, default 50) | `read.public` |
-| `mark_email_sent` | `IssueService.IncrementEmailCountAsync(id, clientIp)` | `id: uuid` | Bound by the existing service-layer rule: **1 / IP / issue / hour** (same as REST `POST /api/issues/{id}/email-sent`). |
+| Tool | Endpoint | Scope | Access | Purpose |
+| --- | --- | --- | --- | --- |
+| `search_issues` | Public | none | Read | Search publicly visible issues, with paging, filters and sorting. |
+| `get_issue` | Public | none | Read | Get the full details of one issue. |
+| `list_authorities` | Public | none | Read | List active local authorities, by city or district. |
+| `get_categories` | Public | none | Read | List the issue categories with their Romanian labels. |
+| `get_leaderboard` | Public | none | Read | Rank contributors by points, issues, resolved issues or votes. |
+| `mark_email_sent` | Public | none | Write | Add one to an issue's public petition-email counter. |
+| `whoami` | Public | none | Read | Show the caller's subject, scopes and role, or `authenticated: false`. Diagnostic; removal is tracked in #116. |
 
-### Filter surface and safety
+### Parameters worth knowing
 
-- `search_issues` mirrors the REST `GET /api/issues` query contract exactly — no invented filters.
-- Public tool responses return publicly visible data only: `Approved` / `Active` / `Resolved` issues (never `Pending` / `Rejected`), author PII stripped (display name allowed, email/phone never exposed), and no `HasVoted` field (no user context).
-- These rules live in `IssueService.GetAllIssuesAsync` / `GetIssueByIdAsync` — the MCP tool does not re-implement them, so drift between REST-public and MCP-public is impossible.
-- `clientIp` for `mark_email_sent` is taken from `HttpContext.Connection.RemoteIpAddress` via the existing `ForwardedHeaders` middleware (to be moved into `Civiti.Infrastructure` during the shared-library refactor).
+- `search_issues`: `page`, `pageSize` (1–100, default 12), `category`, `urgency`, `status` (comma-separated, default `Active`), `district`, `address`, `sortBy` (`date`, `emails`, `votes` or `urgency`; default `date`), `sortDescending` (default `true`). An unrecognised `category`, `urgency` or `status` is ignored rather than rejected.
+- `get_leaderboard`: `period` (`all`, `week`, `month` or `year`; default `all`), `category` (`points`, `issues`, `resolved` or `votes`; default `points`), `limit` (1–50, default 50).
+- `list_authorities`: `city`, `district`.
+
+### Behaviour and safety
+
+- Only `Active` and `Resolved` issues are returned, whatever `status` asks for. These rules live in `IssueService`, so REST and MCP can't drift apart.
+- With a token, `search_issues` and `get_issue` also hide content from users the caller has blocked and add `HasVoted`. Anonymous calls get neither.
+- `mark_email_sent` is the only anonymous write, and it behaves the same on both mounts: it bumps the counter and nothing else, with no activity row or points, even with a token. It only accepts `Active` issues and allows one call per IP, per issue, per hour. The client IP comes from the proxy-trust middleware in `Program.cs`.
 
 ## 2. Citizen tools
 
-Exposed on `/mcp` with `civiti.read` or `civiti.write` scope. All §1 public tools are also available here, returning the same payloads **plus** user-contextual fields (e.g. `HasVoted` on issues). The tools below are the citizen-specific additions.
-
 ### 2.1 Read
 
-| Tool | Scope | Backing service | Input summary | Rate class |
+| Tool | Endpoint | Scope | Access | Purpose |
 | --- | --- | --- | --- | --- |
-| `get_my_profile` | `civiti.read` | `UserService.GetProfileAsync(userId)` | none | `read.cheap` |
-| `get_my_gamification` | `civiti.read` | `GamificationService.GetForUserAsync(userId)` | none | `read.cheap` |
-| `list_my_issues` | `civiti.read` | `IssueService.GetForUserAsync(userId, status?, take, skip)` | optional status filter, paging | `read.cheap` |
-| `list_my_activity` | `civiti.read` | `ActivityService.GetForUserAsync(userId, take)` | paging | `read.cheap` |
-| `list_my_blocked_users` | `civiti.read` | `BlockService.ListBlockedAsync(userId)` | none | `read.cheap` |
+| `get_my_profile` | Authenticated | `civiti.read` | Read | Get the user's Civiti profile. |
+| `get_my_gamification` | Authenticated | `civiti.read` | Read | Get the user's points, level, badges, achievements and streak. |
+| `list_my_issues` | Authenticated | `civiti.read` | Read | List the issues the user created, filtered by status and sorted by date, status or emails. |
+| `list_my_activity` | Authenticated | `civiti.read` | Read | List activity on issues the user follows. |
+| `list_my_blocked_users` | Authenticated | `civiti.read` | Read | List the users this user has blocked. |
+| `generate_petition_body` | Authenticated | `civiti.read` | Read | Compose a Romanian petition email body for an existing, publicly visible issue. |
+
+**`generate_petition_body` belongs to the issue flow, not to petition writing.** It backs the starter email on an issue's page in the web app. Petitions are written by the `civiti-petitions` skill, which will be hosted at `https://civiti.ro/skills/civiti-petitions/SKILL.md` once civiti-web#84 lands.
+
+The tool composes the body with Claude and falls back to a fixed template if Claude is unavailable. Results are cached per issue for 24 hours by default, and `regenerate=true` asks for a fresh wording. Fresh compositions are limited to 10 per minute per user; cached results don't count.
 
 ### 2.2 Write
 
-| Tool | Scope | Backing service | Input summary | Rate class | Audit |
-| --- | --- | --- | --- | --- | --- |
-| `create_issue` | `civiti.write` | `IssueService.CreateAsync(dto)` | `title`, `description`, `category`, `urgencyLevel`, `address`, `lat`, `lon` | `write.citizen` | `Activity{Source=mcp, Tool=create_issue}` |
-| `update_my_profile` | `civiti.write` | `UserService.UpdateProfileAsync(userId, dto)` | `displayName?`, `county?`, `city?`, `district?` | `write.citizen` | audit row |
-| `vote_on_issue` | `civiti.write` | `IssueService.VoteAsync(userId, issueId, direction)` | `issueId`, `direction: up\|remove` | `write.citizen` | activity |
-| `add_comment` | `civiti.write` | `CommentService.CreateAsync(userId, issueId, text)` | `issueId`, `text` | `write.citizen` | activity |
-| `vote_on_comment` | `civiti.write` | `CommentService.VoteAsync(userId, commentId, direction)` | `commentId`, `direction` | `write.citizen` | activity |
-| `report_content` | `civiti.write` | `ReportService.CreateAsync(userId, targetType, targetId, reason)` | `targetType: issue\|comment`, `targetId`, `reason`, `notes?` | `write.citizen` | report row |
-| `block_user` | `civiti.write` | `BlockService.BlockAsync(userId, blockedId)` | `blockedUserId` | `write.citizen` | block row |
-| `unblock_user` | `civiti.write` | `BlockService.UnblockAsync(userId, blockedId)` | `blockedUserId` | `write.citizen` | — |
-Note on `mark_email_sent`: there is only **one** tool name across both endpoints. On `/mcp/public` the handler is anonymous and only bumps the counter. On `/mcp` the same tool name is the authenticated variant — the handler receives the resolved `userId` and additionally logs an `Activity` row against the user's profile for gamification / streak tracking. Same MCP signature, enriched behavior when authenticated. **No second tool name.** This keeps the tool list free of overlapping names on `/mcp` so an agent cannot silently pick the wrong one and drop a gamification write.
+| Tool | Endpoint | Scope | Access | Purpose |
+| --- | --- | --- | --- | --- |
+| `create_issue` | Authenticated | `civiti.write` | Write | Create an issue, which waits for admin approval before it is public. |
+| `update_my_profile` | Authenticated | `civiti.write` | Write | Update the user's display name, photo URL, county, city or district. |
+| `vote_on_issue` | Authenticated | `civiti.write` | Write | Add or remove the user's vote on an issue. |
+| `add_comment` | Authenticated | `civiti.write` | Write | Comment on an issue, or reply to a comment. |
+| `vote_on_comment` | Authenticated | `civiti.write` | Write | Mark a comment as helpful, or remove that mark. |
+| `report_content` | Authenticated | `civiti.write` | Write | Report an issue or a comment to the moderators. |
+| `block_user` | Authenticated | `civiti.write` | Write | Hide another user's content from this user. |
+| `unblock_user` | Authenticated | `civiti.write` | Write | Remove a user from the block list. |
 
-### 2.3 Content-moderation note
+Both vote tools take `direction` as `up` or `remove`. `add_comment` allows one comment per 10 seconds per user per issue, and rejects identical text repeated within 5 minutes.
 
-`create_issue`, `update_my_profile` (display name), and `add_comment` send user text through the same OpenAI moderation pipeline `Civiti.Api` uses today. The tool result on rejection is a structured error (`{ok: false, reason: "moderation_rejected", category: ...}`) so the agent can explain the block to the user rather than retry.
+### 2.3 Errors, moderation and untrusted content
+
+Tools report expected failures as a normal result with `{ok: false, reason, message}`, so an agent can explain the problem instead of retrying:
+
+| `reason` | Meaning |
+| --- | --- |
+| `unauthenticated` | An authenticated tool was called without a token. |
+| `missing_scope` | The token doesn't carry the scope the tool needs. |
+| `missing_subject` | The token has no `sub` claim. |
+| `user_profile_missing` | The account has no Civiti profile yet. |
+| `moderation_rejected` | Moderation blocked the text. |
+| `invalid_input` | A value is outside the allowed list, such as `direction`. |
+| `not_found` | `generate_petition_body` can't see the issue. |
+| `rate_limited` | `generate_petition_body` hit the per-user limit. |
+| `service_error` | The service refused the operation; `message` says why. |
+| `ip_unresolvable` | `mark_email_sent` couldn't determine the client IP. |
+
+`mark_email_sent` puts the service's own error in `reason`, for example `RATE_LIMITED`, and has no `message`. Other failures, such as `add_comment` hitting its limit, come back as a generic MCP tool error (`isError: true`) without the service's message.
+
+`create_issue`, `update_my_profile` (display name only) and `add_comment` send text through the same OpenAI moderation as the REST API. Moderation lets content through if OpenAI times out or fails, so it reduces abuse rather than guaranteeing a block.
+
+User-supplied strings in tool results, marked `[Untrusted]` on the response DTOs, are returned as an envelope with `value`, `untrusted` and `source` fields rather than as bare strings. See `UntrustedStringConverter` and the [prompt-injection review](../../docs/security/mcp-prompt-injection-review-2026-05-05.md).
 
 ## 3. Admin tools
+
+> **Not built.** No admin tool exists in `Civiti.Mcp/Tools`, no tool checks an admin scope, and neither `UserProfile.McpAdminAccessEnabled` nor `McpPendingAdminActions` exists. This section keeps the design for a later phase.
 
 All admin tools require `civiti.admin.read` or `civiti.admin.write` **and** the underlying Supabase role `admin` **and** `UserProfile.McpAdminAccessEnabled` to be `true`. See [`auth-design.md#9`](auth-design.md#9-admin-specific-hardening).
 
@@ -151,6 +188,8 @@ Rules:
 
 ## 4. AI-assisted tools
 
+> **Not built.** The only AI-backed tool today is `generate_petition_body` (§2.1).
+
 ### `draft_issue_description`
 
 | Field | Value |
@@ -164,6 +203,8 @@ Rules:
 Usage note in the tool description: instructs the agent to present the draft to the user for confirmation before calling `create_issue`.
 
 ## 5. Resources
+
+> **Not built.** The server registers no MCP resources.
 
 Resources are URI-addressable reads the agent can fetch without spending a tool call.
 
@@ -180,6 +221,8 @@ Resources are URI-addressable reads the agent can fetch without spending a tool 
 
 ## 6. Prompts (optional, later)
 
+> **Not built.** The server registers no MCP prompts.
+
 MCP prompts are reusable templates the client can offer as commands in its UI. Proposed starter set:
 
 | Prompt | Trigger |
@@ -189,15 +232,15 @@ MCP prompts are reusable templates the client can offer as commands in its UI. P
 | `/civiti-my-dashboard` | Fetches `civiti://me`, `list_my_issues`, `list_my_activity` and summarizes. |
 | `/civiti-review-queue` (admin) | Fetches `civiti://admin/pending-queue` and offers the agent a moderation workflow. |
 
-Prompts are low priority for v1 — ship tools + resources first, iterate on prompts once we see how users actually interact.
+Prompts are low priority — iterate on them once we see how users actually interact.
 
 ## 7. Phased rollout
 
-1. **v0 (public smoke test):** `/mcp/public` endpoint with §1 tools. No OAuth, no session. Simplest possible end-to-end validation against any MCP client (Claude Desktop, Cursor, etc.). Confirms transport, tool definitions, and service-layer shape before we add auth complexity.
-2. **v1 (authenticated read):** `/mcp` endpoint with §2.1 Citizen read tools + OAuth flow against Civiti.Auth. Claude Desktop as the canonical test client.
-3. **v2 (citizen write):** §2.2 Citizen write tools + `draft_issue_description` + §5 user-scoped resources.
-4. **v3 (admin preview, gated):** §3 Admin tools with the two-step confirm flow. Opt-in only; comms to admin users first.
-5. **v4:** Prompts (§6), broader client onboarding beyond the initial allow-list.
+1. **v0 (public smoke test):** `/mcp/public` endpoint with §1 tools. No OAuth, no session. **Shipped.**
+2. **v1 (authenticated read):** `/mcp` endpoint with §2.1 citizen read tools and the OAuth flow against Civiti.Auth. **Shipped.**
+3. **v2 (citizen write):** §2.2 citizen write tools. **Shipped**, without `draft_issue_description` or the §5 resources.
+4. **v3 (admin preview, gated):** §3 admin tools with the two-step confirm flow. Not started.
+5. **v4:** Prompts (§6), broader client onboarding beyond the initial allow-list. Not started.
 
 ## 8. Open questions
 
@@ -215,3 +258,4 @@ Prompts are low priority for v1 — ship tools + resources first, iterate on pro
   - `list_authorities` → `IAuthorityService.GetActiveAuthoritiesAsync(city?, district?, search?)` (the earlier `ListForLocationAsync(city, district?)` reference was aspirational; the real method is a superset and we now pass `search: null` from the MCP handler).
   - `get_leaderboard` → `IGamificationService.GetLeaderboardAsync(period, category, limit)`. The earlier `(scope, city?, take)` signature imagined a city dimension that neither the service nor the REST endpoint exposes. City-scoped leaderboards deferred to §8 open question #4; if needed, ship on REST first.
   - `get_categories` → `CategoryLocalization.GetAll()` (static helper in `Civiti.Application.Localization`). No `IStaticDataService` exists; the data is already in a static class. If a second static-data tool lands later, wrap in a service at that point.
+- **2026-11-06** — **Inventory rebuilt from `Civiti.Mcp/Tools/*.cs`, and a CI check added.** Earlier revisions described plans as if they were live. Corrections: every tool is listed on both mounts, and the 14 authenticated ones fail closed on `/mcp/public`; `mark_email_sent` does the same thing on both mounts, so the "enriched when authenticated" variant was never built; `search_issues` sorts by `emails`, not `popularity`; `get_leaderboard` also takes `year`, and its categories are `points`, `issues`, `resolved` and `votes`; the per-class rate limits and the `Source = "mcp"` audit stamp don't exist. The admin, AI, resource and prompt designs stay in §3–§6, marked as not built.
