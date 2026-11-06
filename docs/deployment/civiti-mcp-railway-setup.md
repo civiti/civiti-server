@@ -1,15 +1,16 @@
 # Civiti.Mcp — Railway deployment
 
-> **Status:** First deployment of the v0 `/mcp/public` endpoint. Lives in the
-> same Railway project as `Civiti.Api`, sharing the Postgres instance.
-> Civiti.Auth (v1) and the authenticated `/mcp` endpoint are separate future services.
+> **Status:** How the `Civiti-MCP` service is set up. It lives in the same Railway
+> project as `Civiti-Server` and `Civiti-Auth`, sharing the Postgres instance. For
+> what the service exposes, see the [technical reference](../../Civiti.Mcp/README.md).
 
 ## Service topology
 
 ```
-Railway project: civiti (shared)
-├── Civiti.Api        ← existing REST host; runs migrations
-├── Civiti.Mcp  NEW   ← MCP Resource Server; /mcp/public anonymous endpoint
+Railway project: civiti-server (shared)
+├── Civiti-Server     ← Civiti.Api, the REST host; runs migrations
+├── Civiti-MCP        ← Civiti.Mcp, the MCP Resource Server; /mcp and /mcp/public
+├── Civiti-Auth       ← Civiti.Auth, the OAuth 2.1 Authorization Server
 └── Postgres          ← shared database
 ```
 
@@ -26,11 +27,16 @@ Per [`Civiti.Mcp/docs/architecture.md §2`](../../Civiti.Mcp/docs/architecture.m
    | --- | --- | --- |
    | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Service reference to the shared Postgres instance |
    | `ASPNETCORE_ENVIRONMENT` | `Production` | Static |
+   | `CIVITI_AUTH_ISSUER` | The Civiti-Auth URL, e.g. `https://<auth-domain>/` | The issuer whose tokens `/mcp` accepts |
+   | `CIVITI_MCP_PUBLIC_ORIGIN` | This service's public scheme and host, no path | Builds the OAuth discovery document |
+   | `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` | Same values as `Civiti-Server` | Required by the shared services |
+   | `OPENAI_API_KEY` | Same value as `Civiti-Server` | Content moderation. Required outside Development |
+   | `CLAUDE_API_KEY` | Same value as `Civiti-Server` | Optional. `generate_petition_body` uses the template without it |
    | `PORT` | *(do not set — Railway injects automatically)* | — |
-   `Program.cs` reads `PORT` and binds `0.0.0.0:$PORT`; if `DATABASE_URL` arrives in the URI format (`postgresql://…`) it's converted to the Npgsql key/value form inline. No other v0 vars are required — Supabase creds are only needed from v1 onward.
+   `Program.cs` reads `PORT` and binds `0.0.0.0:$PORT`; if `DATABASE_URL` arrives in the URI format (`postgresql://…`) it's converted to the Npgsql key/value form inline, with SSL required.
 4. **Connect GitHub source.** Service **Settings → Source → Connect Repo** → `civiti/civiti-server` → branch `master`. This triggers the first build, which now uses the Config Path from step 2 and the env vars from step 3.
-5. **Public domain.** Service **Settings → Domains → Generate Domain**. For production, add a custom domain (e.g. `mcp.civiti.app`) and point the DNS CNAME at the Railway-provided target. The connector URL users paste into Claude is `https://<domain>/mcp/public`.
-6. **Deploy-order dependency.** Service **Settings → Deploy Triggers** → add a dependency on the `Civiti.Api` service. This ensures schema migrations (run by Civiti.Api per [`architecture.md §3`](../../Civiti.Mcp/docs/architecture.md#3-library-extraction-prerequisite)) complete before Civiti.Mcp re-deploys. Civiti.Mcp never runs migrations itself.
+5. **Public domain.** Service **Settings → Domains → Generate Domain**. Production uses the generated domain; the URL is recorded [in the technical reference](../../Civiti.Mcp/README.md#production-url). Moving to a custom domain also means updating `CIVITI_MCP_PUBLIC_ORIGIN`, which clients read from the discovery document.
+6. **Deploy-order dependency.** Service **Settings → Deploy Triggers** → add a dependency on the `Civiti.Api` service. This ensures schema migrations (run by Civiti.Api per [`architecture.md §3`](../../Civiti.Mcp/docs/architecture.md#library-extraction-prerequisite)) complete before Civiti.Mcp re-deploys. Civiti.Mcp never runs migrations itself.
 
 **If you connected the repo before setting the Config Path by mistake:** the first build will fail or deploy `Civiti.Api`'s binary into this service. Set the Config Path (step 2), then **Deployments → Redeploy** to rebuild with the correct Dockerfile. No data loss — this is just a cold start.
 
@@ -39,10 +45,10 @@ Per [`Civiti.Mcp/docs/architecture.md §2`](../../Civiti.Mcp/docs/architecture.m
 Once the first deploy settles:
 
 - `GET https://<domain>/api/health` → `200 { "status": "Healthy", "database": "connected" }`. Health returns `503` (not `200`) if the DB is unreachable, so Railway's healthcheck gate works as expected.
-- `POST https://<domain>/mcp/public` with an MCP `initialize` request returns a tool list containing the six §1 tools (`search_issues`, `get_issue`, `list_authorities`, `get_categories`, `get_leaderboard`, `mark_email_sent`). Easiest smoke test: add a custom connector in Claude Desktop pointing at the public URL — no OAuth flow runs on `/mcp/public`.
+- `POST https://<domain>/mcp/public` with an MCP `tools/list` request returns every tool in [`tool-inventory.md`](../../Civiti.Mcp/docs/tool-inventory.md). Easiest smoke test: add a custom connector in Claude Desktop pointing at the public URL — no OAuth flow runs on `/mcp/public`.
+- `POST https://<domain>/mcp` without a token returns `401` with a `WWW-Authenticate` header pointing at `/.well-known/oauth-protected-resource`.
 
 ## Known limitations to address in follow-ups
 
-1. **ForwardedHeaders proxy trust.** `Program.cs` clears `KnownIPNetworks` + `KnownProxies` to match `Civiti.Api`'s current config, so `X-Forwarded-For` is trusted from any upstream. On Railway this is bounded by the edge appending (not overwriting) the header chain, but a header-rotating attacker reaching the container can still inflate IP-keyed rate-limit counters. Once we've observed the live `X-Forwarded-For` chain from this deployed service, replace the clears with explicit `KnownNetworks` covering Railway's forward range — applies to both `Civiti.Mcp` and `Civiti.Api`.
-2. **Migration ordering is dashboard-configured, not code-enforced.** [`architecture.md §3`](../../Civiti.Mcp/docs/architecture.md#3-library-extraction-prerequisite) describes a planned `Civiti.Api --migrate-only` pre-deploy command plus a compiled-in `RequiredMigrationId` floor check on the other hosts. Neither exists yet. For v0 that's acceptable — the schema hasn't changed; but the floor-check belt-and-braces lands when Civiti.Auth introduces `McpSessions`.
-3. **No Grafana / external metrics.** Observability is stdout → Railway logs only. Revisit with the rest of the observability story when Civiti.Auth ships.
+1. **Migration ordering is dashboard-configured, not code-enforced.** [`architecture.md §3`](../../Civiti.Mcp/docs/architecture.md#library-extraction-prerequisite) describes a planned `Civiti.Api --migrate-only` pre-deploy command plus a compiled-in `RequiredMigrationId` floor check on the other hosts. Neither exists yet.
+2. **No Grafana / external metrics.** Observability is stdout → Railway logs only.

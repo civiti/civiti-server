@@ -74,7 +74,7 @@ SUPABASE_PUBLISHABLE_KEY=your-publishable-key
 SUPABASE_SERVICE_KEY=your-service-role-key
 PORT=8080  # Railway provides this
 
-# Claude AI (Civiti-Server only; Civiti-MCP runs without it). The model is fixed in code, not here:
+# Claude AI (Civiti-Server and Civiti-MCP). The model is fixed in code, not here:
 # see docs/technical/ai-models.md.
 CLAUDE_API_KEY=your-claude-api-key
 

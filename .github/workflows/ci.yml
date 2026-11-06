@@ -7,6 +7,15 @@ on:
     branches: [master]
 
 jobs:
+  mcp-tool-inventory:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tool-inventory.md against Civiti.Mcp/Tools
+        run: python3 scripts/check-mcp-tool-inventory.py
+
   build-and-test:
     runs-on: ubuntu-latest
 

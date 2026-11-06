@@ -15,7 +15,7 @@ API-ul gestionează toată logica de business a platformei Civiti:
 
 ## Tech Stack
 
-- **Framework**: .NET 8 Minimal API, C#
+- **Framework**: .NET 10 Minimal API, C#
 - **Auth**: Supabase Auth (JWT validation, custom claims pentru roluri)
 - **Database**: PostgreSQL (via Supabase)
 - **Email**: Resend (template-uri în română)
@@ -35,6 +35,13 @@ Necesită un fișier `.env` — vezi `.env.example` pentru variabilele necesare.
 ## Deployment
 
 Serverul este deploy-at pe **Railway** cu două medii: `dev` și `production`. Deploy-ul se face automat la push pe branch-ul corespunzător.
+
+## Civiti MCP
+
+Serverul [MCP](https://modelcontextprotocol.io) le permite asistenților AI, precum Claude, să citească date civice din Civiti și, cu acordul utilizatorului, să acționeze în contul acestuia.
+
+- **Pentru cetățeni:** [ghidul de pe civiti.ro](https://civiti.ro/ghid) (în curs de publicare)
+- **Pentru dezvoltatori:** [referința tehnică](Civiti.Mcp/README.md), cu endpoint-urile, autentificarea, lista de tool-uri și depanarea
 
 ## Alte repo-uri
 
