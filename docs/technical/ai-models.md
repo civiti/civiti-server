@@ -25,9 +25,9 @@ The model is set in one place: **`ClaudeConfiguration.Model`** in `Civiti.Infras
 | Request timeout | `DefaultTimeoutSeconds`, overridable with `CLAUDE_TIMEOUT_SECONDS` | 30s |
 | Per-user rate limit | `DefaultRateLimitPerMinute`, overridable with `CLAUDE_RATE_LIMIT_PER_MINUTE` | 10/min |
 | Petition cache TTL | `DefaultPetitionCacheHours`, overridable with `PETITION_CACHE_HOURS` | 24h |
-| API key | `CLAUDE_API_KEY` env var, set on Civiti-Server only | - |
+| API key | `CLAUDE_API_KEY` env var, set on Civiti-Server and Civiti-MCP | - |
 
-Civiti-MCP has no `CLAUDE_API_KEY` on purpose, so `generate_petition_body` returns the deterministic template there and never calls Claude. Test model changes through the web app, not the MCP tool. Setting the key on Civiti-MCP would turn Claude on with no code change.
+Civiti-MCP has the key too, so `generate_petition_body` calls the same model there as the web app does. Without the key, a service returns the deterministic template and logs a warning at startup.
 
 The model and effort can't be overridden from env vars or appsettings, on purpose. A new model usually needs request changes too, and an env var that swaps only the model is how the code and the model drift apart. `CLAUDE_MODEL` / `Claude:Model` are ignored. If either is still set, both services log a startup warning; delete the variable.
 
