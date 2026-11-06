@@ -73,7 +73,7 @@ The table columns in §1 and §2 mean:
 
 ### Behaviour and safety
 
-- Only `Active` and `Resolved` issues are returned, whatever `status` asks for. These rules live in `IssueService`, so REST and MCP can't drift apart.
+- `search_issues` only returns `Active` and `Resolved` issues, whatever `status` asks for. `get_issue` does the same for anonymous calls, but with a token it also returns the caller's own issues in any status. These rules live in `IssueService`, so REST and MCP can't drift apart.
 - With a token, `search_issues` and `get_issue` also hide content from users the caller has blocked and add `HasVoted`. Anonymous calls get neither.
 - `mark_email_sent` is the only anonymous write, and it behaves the same on both mounts: it bumps the counter and nothing else, with no activity row or points, even with a token. It only accepts `Active` issues and allows one call per IP, per issue, per hour. The client IP comes from the proxy-trust middleware in `Program.cs`.
 
@@ -88,7 +88,7 @@ The table columns in §1 and §2 mean:
 | `list_my_issues` | Authenticated | `civiti.read` | Read | List the issues the user created, filtered by status and sorted by date, status or emails. |
 | `list_my_activity` | Authenticated | `civiti.read` | Read | List activity on issues the user follows. |
 | `list_my_blocked_users` | Authenticated | `civiti.read` | Read | List the users this user has blocked. |
-| `generate_petition_body` | Authenticated | `civiti.read` | Read | Compose a Romanian petition email body for an existing, publicly visible issue. |
+| `generate_petition_body` | Authenticated | `civiti.read` | Read | Compose a Romanian petition email body for an existing issue the caller can see. |
 
 **`generate_petition_body` belongs to the issue flow, not to petition writing.** It backs the starter email on an issue's page in the web app. Petitions are written by the `civiti-petitions` skill, which will be hosted at `https://civiti.ro/skills/civiti-petitions/SKILL.md` once civiti-web#84 lands.
 

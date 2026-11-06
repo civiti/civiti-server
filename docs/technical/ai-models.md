@@ -6,7 +6,7 @@ Civiti uses one Claude model for every AI feature, in both backend services:
 |---|---|---|
 | Issue text enhancement (`POST /api/issues/enhance-text`) | `ClaudeEnhancementService.EnhanceTextAsync` | Civiti-Server |
 | Petition drafting (`POST /api/issues/{id}/petition-body`) | `ClaudeEnhancementService.GeneratePetitionBodyAsync` | Civiti-Server |
-| MCP `generate_petition_body` tool | same method, but template only in production (see below) | Civiti-MCP |
+| MCP `generate_petition_body` tool | same method (see below) | Civiti-MCP |
 
 The web and mobile apps never name a model; they call these endpoints.
 
