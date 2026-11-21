@@ -43,6 +43,7 @@ The frontend is feature-complete with mock services but will continue to evolve 
 - **`docs/technical/GOOGLE_MAPS_SECURITY.md`** - Maps API security
 - **`docs/technical/README_GOOGLE_MAPS.md`** - Maps integration guide
 - **`docs/README.md`** - Documentation structure overview
+- **`Civiti.Mcp/README.md`** - Civiti MCP technical reference (endpoints, auth, tools, operations)
 
 **New Feature Documentation:**
 - **`docs/design/user-registration-ux-research.md`** - UX research for user system

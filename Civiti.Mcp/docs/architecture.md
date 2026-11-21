@@ -5,6 +5,9 @@
 > (Api + Mcp + Auth); switched to standard 3-library Clean Architecture
 > split (Domain / Application / Infrastructure); open questions
 > consolidated into §10 decisions log.
+>
+> This is the design record, and parts of it were never built. For what is
+> running today, see the [technical reference](../README.md).
 
 ## 1. Goals and non-goals
 
@@ -67,7 +70,7 @@
 - **`/mcp`** — OAuth 2.1 bearer required. Full tool surface, scoped by granted OAuth scope. See [`auth-design.md`](auth-design.md).
 - **`/mcp/public`** — no auth. Mirrors the existing anonymous REST surface (issue browsing, authority directory, petition-counter bump). IP-rate-limited. See [`tool-inventory.md` §1](tool-inventory.md#1-public-anonymous-tools).
 
-Both endpoints share the same tool handlers in `Civiti.Application`; the difference is whether `Civiti.Mcp` passes an authenticated `userId` or `null`. The public endpoint exists so an AI agent can help an unauthenticated visitor browse Civiti and draft a petition without being signed up — it is the MCP equivalent of visiting civiti.app anonymously.
+Both endpoints serve the same tool classes from `Civiti.Mcp/Tools`, which call `Civiti.Application` services; the difference is whether the request carries a validated token. The public endpoint exists so an AI agent can help an unauthenticated visitor browse Civiti and draft a petition without being signed up — it is the MCP equivalent of visiting civiti.ro anonymously.
 
 ### Why not embed MCP into Civiti.Api?
 
@@ -171,6 +174,8 @@ Civiti.Auth follows the same runtime choices; its specifics are documented in [`
 - **Metrics:** Expose `/api/health` (DB + Supabase check) the same way `Civiti.Api` does. Add tool-level counters later.
 
 ## 7. Rate limiting and abuse
+
+> **Only the per-source-IP limit is built, and it covers `/mcp` as well as `/mcp/public`.** The other limits below are the design. See [what runs today](../README.md#rate-limits).
 
 - **Per-MCP-session** sliding-window limit on total tool invocations (authenticated `/mcp` only).
 - **Per-source-IP** limits on anonymous `/mcp/public`.

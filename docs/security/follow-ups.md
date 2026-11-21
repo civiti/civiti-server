@@ -7,7 +7,7 @@
 >
 > **Scope.** This is the project's internal backlog. It is not a vulnerability
 > disclosure policy — for reporting issues from outside the team, use whatever
-> channel `civiti.app` advertises (or open a private GitHub security advisory).
+> channel `civiti.ro` advertises (or open a private GitHub security advisory).
 >
 > **Companion document.** [`mcp-prompt-injection-review-2026-05-05.md`](./mcp-prompt-injection-review-2026-05-05.md)
 > is the prompt-injection-specific audit whose actionable findings have been
